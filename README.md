@@ -174,6 +174,7 @@ While the main benchmark uses a specific machine configuration for reproducibili
 - [x] GreptimeDB
 - [x] FerretDB
 - [x] Apache Doris
+- [x] TreeDB (local `snissn/gomap` harness in [`treedb`](./treedb/))
 - [ ] Quickwit
 - [ ] Meilisearch
 - [ ] Sneller

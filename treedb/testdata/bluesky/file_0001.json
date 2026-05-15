@@ -1,0 +1,6 @@
+{"did":"did:plc:alice","time_us":1700000000000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.post"}}
+{"did":"did:plc:bob","time_us":1700003600000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.like"}}
+{"did":"did:plc:alice","time_us":1700007200000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.post"}}
+{"did":"did:plc:carol","time_us":1700010800000000,"kind":"commit","commit":{"operation":"delete","collection":"app.bsky.feed.post"}}
+{"did":"did:plc:dora","time_us":1700014400000000,"kind":"identity","commit":{"operation":"create","collection":"app.bsky.graph.follow"}}
+{"did":"did:plc:bob","time_us":1700018000000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.repost"}}
