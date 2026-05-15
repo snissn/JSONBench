@@ -1,2 +1,9 @@
 *.bak
 .idea
+.DS_Store
+treedb/results/
+treedb/*.test
+duckdb/local_results/
+duckdb/*.duckdb
+clickhouse/local_results/
+.clickhouse/
