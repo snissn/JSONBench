@@ -29,9 +29,15 @@ The default TreeDB matrix is the strict minimal JSON suite:
 the fields needed by that query plus the TreeDB primary key. For example, `q1`
 stores only `event = commit.collection`.
 
-Full-document and `template-v1` cells are available with environment overrides.
-The harness opens TreeDB with the cached leaf-log backend so collection data
-roots can store oversized documents through persistent value-log pointers.
+Full-document and `template-v1` row-layout cells are available with environment
+overrides. A `column-store` storage layout is also available for query-shaped
+`json` projection cells. It stores declared projection fields in TreeDB
+physical column row assets with `retained_payload=none` and uses physical column
+reducers for q1, q2, q4, and q5. q3 still uses the materialized JSON scan over the
+column-store fixture because the current physical reducer API has no combined
+`event, hour` grouped shape. The harness opens TreeDB with the cached leaf-log
+backend so collection data roots can store oversized documents through
+persistent value-log pointers.
 
 ## Test Data
 
@@ -89,12 +95,30 @@ the storage column represents the audited post-compaction footprint.
 current cached TreeDB promotes collection data roots with large values to
 value-log leaf storage at runtime.
 
-For a quick 1MM proof run on one minimal cell:
+For a quick 1MM proof run on one minimal row-layout cell:
 
 ```sh
 cd /Users/michaelseiler/dev/snissn/JSONBench/treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 QUERY_CELLS=q1 ./run_matrix.sh
 ```
+
+For a 1MM TreeDB column-store proof run, add `STORAGE_LAYOUTS=column-store`.
+Column-store cells are query-shaped, so the runner loads one projection/query
+per cell:
+
+```sh
+cd /Users/michaelseiler/dev/snissn/JSONBench/treedb
+DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
+  STORAGE_LAYOUTS=column-store QUERY_CELLS="q1 q2 q4 q5" \
+  ./run_matrix.sh
+```
+
+q2/q4/q5 use query-specific sentinel masking during load to match JSONBench
+filter semantics because the current physical column reducers do not yet expose
+separate filter predicates. The matrix runner skips q3 for `column-store` by
+default because q3 currently falls back to a slow materialized scan rather than
+a physical aggregate; set `COLUMN_STORE_Q3_FALLBACK=1` only when you explicitly
+want that fallback measurement.
 
 ## Smoke Run
 
@@ -182,12 +206,8 @@ go run ./cmd/jsonbench_treedb run \
 
 ## Notes
 
-This harness uses the public TreeDB collections API. It does not add a TreeDB
-column-store mode. The minimal projections are intentionally query-specific so
-we can compare full-document scans against a direct “only the needed fields were
-loaded” shape.
-
-Future TreeDB column-store work should add a separate TreeDB layout/cell here
-once `snissn/gomap` has the required command-WAL publish/recovery contract. Until
-then, this harness is the row-store/template-v1 baseline and normalized report
-surface for column-store planning.
+This harness uses the public TreeDB collections API. The default `row` storage
+layout remains the row-store/template-v1 baseline. The `column-store` layout is
+a separate TreeDB physical-column cell for current reducer coverage and is
+intentionally documented with its q2/q4/q5 filter-masking and q3 fallback
+limitations.
