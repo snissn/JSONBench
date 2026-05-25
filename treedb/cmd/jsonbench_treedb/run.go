@@ -162,7 +162,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.IntVar(&cfg.Rows, "rows", 0, "Maximum rows to load; defaults from -scale")
 	fs.IntVar(&cfg.MaxFiles, "max-files", 0, "Maximum input files to read; defaults from -scale")
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "TreeDB collection format: json or template-v1")
-	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row or column-store")
+	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row, column-store, or column-store-prepared-metadata")
 	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q5")
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q5")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
@@ -386,7 +386,7 @@ func openBackend(cfg runConfig) (*backenddb.DB, func() error, error) {
 		opts.IndexOuterLeavesInValueLog = true
 		opts.IndexInternalBaseDelta = false
 	}
-	if cfg.StorageLayout == storageLayoutColumnStore {
+	if isColumnStoreLayout(cfg.StorageLayout) {
 		// Current typed-column publication requires durable command-WAL mode even
 		// for benchmark-relaxed column-store metadata. Keep the selected profile's
 		// other performance knobs, but force the durability mode required by the
@@ -413,8 +413,8 @@ func createCollection(manager *collections.CollectionManager, cfg runConfig) (*c
 		return nil, err
 	}
 	var columnStore *collections.ColumnStoreConfig
-	if cfg.StorageLayout == storageLayoutColumnStore {
-		columnStore, err = columnStoreConfigForProjection(cfg.Projection)
+	if isColumnStoreLayout(cfg.StorageLayout) {
+		columnStore, err = columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout)
 		if err != nil {
 			return nil, err
 		}
@@ -601,7 +601,7 @@ func buildDocument(raw []byte, format collections.DocumentFormat, cfg runConfig,
 		return nil, err
 	}
 	extracted := extractFullJSONFields(raw, fields)
-	if cfg.StorageLayout == storageLayoutColumnStore {
+	if isColumnStoreLayout(cfg.StorageLayout) {
 		applyColumnStoreQueryMask(&extracted, projection)
 	}
 	if format == collections.DocumentFormatTemplateV1 {

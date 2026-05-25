@@ -113,12 +113,28 @@ DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
   ./run_matrix.sh
 ```
 
+To also run the prepared physical-query path with q4/q5 aggregate metadata, add
+`column-store-prepared-metadata`:
+
+```sh
+cd /Users/michaelseiler/dev/snissn/JSONBench/treedb
+DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
+  STORAGE_LAYOUTS="column-store column-store-prepared-metadata" \
+  QUERY_CELLS="q1 q2 q4 q5" \
+  ./run_matrix.sh
+```
+
+`column-store-prepared-metadata` prepares physical query runners outside timed
+attempts. Its q4/q5 cells declare `min_time_us` aggregate metadata and pass that
+metadata name to TreeDB, so those queries answer from aggregate metadata instead
+of scanning base rows.
+
 q2/q4/q5 use query-specific sentinel masking during load to match JSONBench
 filter semantics because the current physical column reducers do not yet expose
-separate filter predicates. The matrix runner skips q3 for `column-store` by
-default because q3 currently falls back to a slow materialized scan rather than
-a physical aggregate; set `COLUMN_STORE_Q3_FALLBACK=1` only when you explicitly
-want that fallback measurement.
+separate filter predicates. The matrix runner skips q3 for non-row column-store
+layouts by default because q3 currently falls back to a slow materialized scan
+rather than a physical aggregate; set `COLUMN_STORE_Q3_FALLBACK=1` only when you
+explicitly want that fallback measurement.
 
 ## Smoke Run
 
@@ -208,6 +224,8 @@ go run ./cmd/jsonbench_treedb run \
 
 This harness uses the public TreeDB collections API. The default `row` storage
 layout remains the row-store/template-v1 baseline. The `column-store` layout is
-a separate TreeDB physical-column cell for current reducer coverage and is
-intentionally documented with its q2/q4/q5 filter-masking and q3 fallback
-limitations.
+a separate TreeDB physical-column cell for current reducer coverage. The
+`column-store-prepared-metadata` layout uses prepared physical query runners and
+q4/q5 aggregate metadata to model the optimized production column-store path.
+Both column-store layouts are intentionally documented with their q2/q4/q5
+filter-masking and q3 fallback limitations.

@@ -21,16 +21,28 @@ var querySQL = map[string]string{
 func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]queryRun, error) {
 	out := make([]queryRun, 0, len(cfg.Queries))
 	for _, name := range cfg.Queries {
+		prepared, err := prepareColumnQueryIfNeeded(collection, cfg, name)
+		if err != nil {
+			return nil, fmt.Errorf("%s prepare: %w", name, err)
+		}
 		var attempts []float64
 		var final queryComputation
 		for i := 0; i < cfg.Tries; i++ {
 			start := time.Now()
-			computed, err := runQueryOnce(collection, cfg, name, rows)
+			computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
 			if err != nil {
+				if prepared != nil {
+					_ = prepared.Close()
+				}
 				return nil, fmt.Errorf("%s attempt %d: %w", name, i+1, err)
 			}
 			attempts = append(attempts, seconds(time.Since(start)))
 			final = computed
+		}
+		if prepared != nil {
+			if err := prepared.Close(); err != nil {
+				return nil, fmt.Errorf("%s close prepared query: %w", name, err)
+			}
 		}
 		best, median := bestMedian(attempts)
 		hash, err := hashRows(final.Rows)
@@ -57,8 +69,15 @@ type queryComputation struct {
 	Rows        []queryRow
 }
 
+func runQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, prepared *preparedColumnQuery) (queryComputation, error) {
+	if prepared != nil {
+		return prepared.Run(rows)
+	}
+	return runQueryOnce(collection, cfg, name, rows)
+}
+
 func runQueryOnce(collection *collections.Collection, cfg runConfig, name string, rows int) (queryComputation, error) {
-	if cfg.StorageLayout == storageLayoutColumnStore {
+	if isColumnStoreLayout(cfg.StorageLayout) {
 		switch name {
 		case "q1":
 			return runColumnQ1(collection, cfg, rows)

@@ -8,8 +8,11 @@ import (
 )
 
 const (
-	storageLayoutRow         = "row"
-	storageLayoutColumnStore = "column-store"
+	storageLayoutRow                         = "row"
+	storageLayoutColumnStore                 = "column-store"
+	storageLayoutColumnStorePreparedMetadata = "column-store-prepared-metadata"
+
+	columnStoreAggregateMetadataName = "min_time_us"
 )
 
 func normalizeStorageLayout(raw string) (string, error) {
@@ -18,45 +21,79 @@ func normalizeStorageLayout(raw string) (string, error) {
 		return storageLayoutRow, nil
 	case storageLayoutColumnStore, "column", "columns", "column_store", "columnstore":
 		return storageLayoutColumnStore, nil
+	case storageLayoutColumnStorePreparedMetadata, "column_store_prepared_metadata", "column-store-prepared-aggmeta", "column_store_prepared_aggmeta", "column-store-aggmeta", "column_store_aggmeta":
+		return storageLayoutColumnStorePreparedMetadata, nil
 	default:
 		return "", fmt.Errorf("unsupported -storage-layout %q", raw)
 	}
 }
 
 func validateStorageLayoutConfig(cfg runConfig) error {
-	if cfg.StorageLayout != storageLayoutColumnStore {
+	if !isColumnStoreLayout(cfg.StorageLayout) {
 		return nil
 	}
 	if cfg.Format != "json" {
-		return fmt.Errorf("-storage-layout %s currently supports -format json only", storageLayoutColumnStore)
+		return fmt.Errorf("-storage-layout %s currently supports -format json only", cfg.StorageLayout)
 	}
 	if cfg.Projection == "full" {
-		return fmt.Errorf("-storage-layout %s requires a query projection (q1..q5), not full", storageLayoutColumnStore)
+		return fmt.Errorf("-storage-layout %s requires a query projection (q1..q5), not full", cfg.StorageLayout)
 	}
 	if len(cfg.Queries) != 1 {
-		return fmt.Errorf("-storage-layout %s uses query-shaped column fixtures; pass exactly one -queries value", storageLayoutColumnStore)
+		return fmt.Errorf("-storage-layout %s uses query-shaped column fixtures; pass exactly one -queries value", cfg.StorageLayout)
 	}
 	if cfg.Projection != cfg.Queries[0] {
-		return fmt.Errorf("-storage-layout %s requires -projection to match -queries (got projection %q, query %q)", storageLayoutColumnStore, cfg.Projection, cfg.Queries[0])
+		return fmt.Errorf("-storage-layout %s requires -projection to match -queries (got projection %q, query %q)", cfg.StorageLayout, cfg.Projection, cfg.Queries[0])
 	}
 	return nil
 }
 
-func treeDBEngineName(cfg runConfig) string {
-	if cfg.StorageLayout == storageLayoutColumnStore {
-		return "treedb-collections-column-store-direct-go"
+func isColumnStoreLayout(layout string) bool {
+	switch layout {
+	case storageLayoutColumnStore, storageLayoutColumnStorePreparedMetadata:
+		return true
+	default:
+		return false
 	}
-	return "treedb-collections-direct-go"
+}
+
+func isPreparedColumnStoreLayout(layout string) bool {
+	return layout == storageLayoutColumnStorePreparedMetadata
+}
+
+func columnStoreUsesAggregateMetadata(layout, query string) bool {
+	if layout != storageLayoutColumnStorePreparedMetadata {
+		return false
+	}
+	switch query {
+	case "q4", "q5":
+		return true
+	default:
+		return false
+	}
+}
+
+func treeDBEngineName(cfg runConfig) string {
+	switch cfg.StorageLayout {
+	case storageLayoutColumnStore:
+		return "treedb-collections-column-store-direct-go"
+	case storageLayoutColumnStorePreparedMetadata:
+		return "treedb-collections-column-store-prepared-metadata-direct-go"
+	default:
+		return "treedb-collections-direct-go"
+	}
 }
 
 func runNotes(cfg runConfig) []string {
-	if cfg.StorageLayout != storageLayoutColumnStore {
+	if !isColumnStoreLayout(cfg.StorageLayout) {
 		return nil
 	}
 	notes := []string{
-		"storage_layout=column-store stores declared projection fields in TreeDB physical column row assets with retained_payload=none.",
-		"storage_layout=column-store forces TreeDB durable command-WAL mode because current column-store publication requires it.",
+		fmt.Sprintf("storage_layout=%s stores declared projection fields in TreeDB physical column row assets with retained_payload=none.", cfg.StorageLayout),
+		fmt.Sprintf("storage_layout=%s forces TreeDB durable command-WAL mode because current column-store publication requires it.", cfg.StorageLayout),
 		"q2/q4/q5 column-store cells use query-specific sentinel masking during load because the current physical column reducers do not expose separate filter predicates.",
+	}
+	if isPreparedColumnStoreLayout(cfg.StorageLayout) {
+		notes = append(notes, "column-store-prepared-metadata prepares physical query runners outside timed attempts; q4/q5 declare and use aggregate metadata named min_time_us.")
 	}
 	for _, q := range cfg.Queries {
 		if q == "q3" {
@@ -67,7 +104,7 @@ func runNotes(cfg runConfig) []string {
 	return notes
 }
 
-func columnStoreConfigForProjection(projection string) (*collections.ColumnStoreConfig, error) {
+func columnStoreConfigForProjection(projection, storageLayout string) (*collections.ColumnStoreConfig, error) {
 	fields, err := projectionFields(projection)
 	if err != nil {
 		return nil, err
@@ -90,6 +127,14 @@ func columnStoreConfigForProjection(projection string) (*collections.ColumnStore
 		if field == "time_us" {
 			cfg.SortKey = []collections.ColumnSortKey{{Column: "time_us"}}
 		}
+	}
+	if columnStoreUsesAggregateMetadata(storageLayout, projection) {
+		cfg.AggregateMetadata = []collections.ColumnAggregateMetadata{{
+			Name:        columnStoreAggregateMetadataName,
+			Column:      "time_us",
+			GroupColumn: "did",
+			Kind:        collections.ColumnAggregateMin,
+		}}
 	}
 	return cfg, nil
 }

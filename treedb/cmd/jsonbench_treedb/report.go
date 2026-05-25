@@ -350,21 +350,22 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		return buf.Bytes()
 	}
 	fmt.Fprintf(&buf, "## Query Runtime Matrix\n\n")
-	fmt.Fprintf(&buf, "| rows/scale | system | layout | query | best | rows/s | median | attempts | requested | loaded | storage | load |\n")
-	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| rows/scale | system | layout | query | best | rows/s | median | attempts | requested | loaded | scanned | storage | load |\n")
+	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|\n")
 	for _, row := range doc.Rows {
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s | %s |\n",
 			row.Scale,
 			row.System,
 			reportRowLayout(row),
 			row.Query,
 			formatSeconds(row.BestSec),
-			formatRowsPerSecond(row.RowsScanned, row.BestSec),
+			formatRowsPerSecond(row.DatasetSize, row.BestSec),
 			formatSeconds(row.MedianSec),
 			formatAttempts(row.AttemptsSec),
 			formatCount(row.RequestedRows),
+			formatCount(row.DatasetSize),
 			row.RowsScanned,
 			formatBytes(row.StorageBytes),
 			formatSeconds(row.LoadSec),

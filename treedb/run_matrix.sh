@@ -29,8 +29,8 @@ Environment:
   OUT_DIR             Output directory. Defaults to results/run_<timestamp>_<pid>.
   SCALES              Space-separated scales. Defaults to "subset".
   FORMATS             Space-separated formats. Defaults to "json".
-  STORAGE_LAYOUTS     Space-separated TreeDB storage layouts: row or column-store.
-                      Defaults to "row".
+  STORAGE_LAYOUTS     Space-separated TreeDB storage layouts: row, column-store,
+                      or column-store-prepared-metadata. Defaults to "row".
   SUITE               minimal, full, or all. Defaults to "minimal".
   QUERY_CELLS         Query-specific minimal cells for SUITE=minimal/all.
                       Defaults to "q1 q2 q3 q4 q5".
@@ -48,7 +48,7 @@ Environment:
   COMPACT_AFTER_LOAD  Set to 1/true/yes/on to run full TreeDB compaction after
                       loading and before queries. Defaults to 0.
   COLUMN_STORE_Q3_FALLBACK
-                      Set to 1/true/yes/on to run q3 for storage_layout=column-store.
+                      Set to 1/true/yes/on to run q3 for non-row storage layouts.
                       Defaults to 0 because q3 currently uses a slow materialized
                       fallback, not a physical column reducer.
 

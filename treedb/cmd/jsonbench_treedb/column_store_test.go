@@ -18,6 +18,28 @@ func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 	}
 }
 
+func TestColumnStorePreparedMetadataLayoutMatchesRowFixture(t *testing.T) {
+	for _, query := range []string{"q1", "q2", "q4", "q5"} {
+		query := query
+		t.Run(query, func(t *testing.T) {
+			row := runJSONBenchFixtureCell(t, storageLayoutRow, query)
+			column := runJSONBenchFixtureCell(t, storageLayoutColumnStorePreparedMetadata, query)
+			if got, want := column.Queries[0].ResultHash, row.Queries[0].ResultHash; got != want {
+				t.Fatalf("column-store-prepared-metadata result hash=%s want row hash=%s", got, want)
+			}
+			if query == "q4" || query == "q5" {
+				if got := column.Queries[0].RowsScanned; got != 0 {
+					t.Fatalf("column-store-prepared-metadata rows_scanned=%d want 0 for aggregate metadata", got)
+				}
+				return
+			}
+			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
+				t.Fatalf("column-store-prepared-metadata rows_scanned=%d want %d", got, want)
+			}
+		})
+	}
+}
+
 func runJSONBenchFixtureCell(t *testing.T, layout, query string) runResult {
 	t.Helper()
 	cfg := runConfig{
