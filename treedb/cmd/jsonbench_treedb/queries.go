@@ -87,10 +87,7 @@ func runQueryOnce(collection *collections.Collection, cfg runConfig, name string
 		case "q2":
 			return runColumnQ2(collection, cfg, rows)
 		case "q3":
-			// Current physical column reducers do not expose the JSONBench q3
-			// event+hour grouped shape, so q3 remains a materialized scan over the
-			// column-store fixture.
-			return runQ3(collection, cfg, rows)
+			return runColumnQ3(collection, cfg, rows)
 		case "q4":
 			return runColumnQ4(collection, cfg, rows)
 		case "q5":

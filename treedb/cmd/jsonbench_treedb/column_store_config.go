@@ -92,14 +92,14 @@ func runNotes(cfg runConfig) []string {
 	notes := []string{
 		fmt.Sprintf("storage_layout=%s stores declared projection fields in TreeDB physical column row assets with retained_payload=none.", cfg.StorageLayout),
 		fmt.Sprintf("storage_layout=%s forces TreeDB durable command-WAL mode because current column-store publication requires it.", cfg.StorageLayout),
-		"q2/q4/q5 column-store cells use query-specific sentinel masking during load because the current physical column reducers do not expose separate filter predicates.",
+		"q3/q4/q5 column-store cells use physical dictionary predicates when supported; q4/q5 aggregate-metadata cells still use load-time sentinel masking for metadata semantics; q2 remains sentinel-masked.",
 	}
 	if isPreparedColumnStoreLayout(cfg.StorageLayout) {
 		notes = append(notes, "column-store-prepared-metadata prepares physical query runners outside timed attempts; q4/q5 declare and use aggregate metadata named min_time_us.")
 	}
 	for _, q := range cfg.Queries {
 		if q == "q3" {
-			notes = append(notes, "q3 uses the existing JSON materialization scan over the column-store fixture; the current physical column reducers do not expose an event+hour grouped reducer.")
+			notes = append(notes, "q3 uses TreeDB's physical grouped-hour reducer over dictionary and int64 column sidecars.")
 			break
 		}
 	}
@@ -160,7 +160,7 @@ func columnStoreColumnForField(field string) (collections.ColumnStoreColumn, err
 	}
 }
 
-func applyColumnStoreQueryMask(fields *extractedFields, projection string) {
+func applyColumnStoreQueryMask(fields *extractedFields, projection, storageLayout string) {
 	if fields == nil {
 		return
 	}
@@ -171,7 +171,7 @@ func applyColumnStoreQueryMask(fields *extractedFields, projection string) {
 			fields.DID = ""
 		}
 	case "q4", "q5":
-		if fields.Kind != "commit" || fields.Operation != "create" || fields.Event != "app.bsky.feed.post" {
+		if columnStoreUsesAggregateMetadata(storageLayout, projection) && (fields.Kind != "commit" || fields.Operation != "create" || fields.Event != "app.bsky.feed.post") {
 			fields.DID = ""
 		}
 	}
