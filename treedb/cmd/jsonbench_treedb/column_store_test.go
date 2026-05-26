@@ -1,6 +1,9 @@
 package main
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 	for _, query := range []string{"q1", "q2", "q4", "q5"} {
@@ -40,6 +43,46 @@ func TestColumnStorePreparedMetadataLayoutMatchesRowFixture(t *testing.T) {
 				t.Fatalf("column-store-prepared-metadata rows_scanned=%d want %d", got, want)
 			}
 		})
+	}
+}
+
+func TestColumnStoreTopRowsTieBreak(t *testing.T) {
+	var q4 []queryRow
+	for _, row := range []queryRow{
+		{"user_id": "did:d", "first_post_time_us": int64(5)},
+		{"user_id": "did:b", "first_post_time_us": int64(5)},
+		{"user_id": "did:a", "first_post_time_us": int64(5)},
+		{"user_id": "did:c", "first_post_time_us": int64(4)},
+		{"user_id": "did:e", "first_post_time_us": int64(6)},
+	} {
+		insertTopQueryRow(&q4, row, 3, lessQ4Row)
+	}
+	wantQ4 := []queryRow{
+		{"user_id": "did:c", "first_post_time_us": int64(4)},
+		{"user_id": "did:a", "first_post_time_us": int64(5)},
+		{"user_id": "did:b", "first_post_time_us": int64(5)},
+	}
+	if !reflect.DeepEqual(q4, wantQ4) {
+		t.Fatalf("q4 top rows=%v want %v", q4, wantQ4)
+	}
+
+	var q5 []queryRow
+	for _, row := range []queryRow{
+		{"user_id": "did:d", "activity_span_ms": int64(9)},
+		{"user_id": "did:b", "activity_span_ms": int64(10)},
+		{"user_id": "did:a", "activity_span_ms": int64(10)},
+		{"user_id": "did:c", "activity_span_ms": int64(8)},
+		{"user_id": "did:e", "activity_span_ms": int64(7)},
+	} {
+		insertTopQueryRow(&q5, row, 3, lessQ5Row)
+	}
+	wantQ5 := []queryRow{
+		{"user_id": "did:a", "activity_span_ms": int64(10)},
+		{"user_id": "did:b", "activity_span_ms": int64(10)},
+		{"user_id": "did:d", "activity_span_ms": int64(9)},
+	}
+	if !reflect.DeepEqual(q5, wantQ5) {
+		t.Fatalf("q5 top rows=%v want %v", q5, wantQ5)
 	}
 }
 
