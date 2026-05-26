@@ -107,7 +107,7 @@ Column-store cells are query-shaped, so the runner loads one projection/query
 per cell:
 
 ```sh
-cd /Users/michaelseiler/dev/snissn/JSONBench/treedb
+cd treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
   STORAGE_LAYOUTS=column-store QUERY_CELLS="q1 q2 q4 q5" \
   ./run_matrix.sh
@@ -117,7 +117,7 @@ To also run the prepared physical-query path with q4/q5 aggregate metadata, add
 `column-store-prepared-metadata`:
 
 ```sh
-cd /Users/michaelseiler/dev/snissn/JSONBench/treedb
+cd treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
   STORAGE_LAYOUTS="column-store column-store-prepared-metadata" \
   QUERY_CELLS="q1 q2 q4 q5" \

@@ -268,10 +268,14 @@ func columnPhysicalRowsScanned(fallback int, result collections.ColumnPhysicalQu
 }
 
 func maxColumnPhysicalRowsScanned(fallback int, results ...collections.ColumnPhysicalQueryResult) int {
-	maxRows := fallback
+	if len(results) == 0 {
+		return fallback
+	}
+	maxRows := 0
 	for _, result := range results {
-		if result.Diagnostics.RowsScanned > maxRows {
-			maxRows = result.Diagnostics.RowsScanned
+		rows := columnPhysicalRowsScanned(fallback, result)
+		if rows > maxRows {
+			maxRows = rows
 		}
 	}
 	return maxRows

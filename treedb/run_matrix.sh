@@ -164,6 +164,10 @@ run_cell() {
 for scale in $SCALES; do
   for format in $FORMATS; do
     for storage_layout in $STORAGE_LAYOUTS; do
+      if [[ "$storage_layout" != "row" && "$format" != "json" ]]; then
+        echo "skip format=$format for storage_layout=$storage_layout (column-store supports json only)" >&2
+        continue
+      fi
       if [[ "$SUITE" == "full" || "$SUITE" == "all" ]]; then
         if [[ "$storage_layout" == "row" ]]; then
           run_cell "$scale" "$format" "$storage_layout" "full" "all"
