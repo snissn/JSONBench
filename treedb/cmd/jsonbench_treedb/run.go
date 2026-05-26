@@ -40,6 +40,7 @@ type runConfig struct {
 	Rows             int
 	MaxFiles         int
 	Format           string
+	StorageLayout    string
 	Projection       string
 	Queries          []string
 	BatchSize        int
@@ -68,6 +69,7 @@ type runResult struct {
 	DBDir          string            `json:"db_dir"`
 	Collection     string            `json:"collection"`
 	Format         string            `json:"format"`
+	StorageLayout  string            `json:"storage_layout"`
 	Projection     string            `json:"projection"`
 	RetainsJSON    bool              `json:"retains_json_structure"`
 	Profile        string            `json:"profile"`
@@ -137,6 +139,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 		DataDir:          "~/data/bluesky",
 		Scale:            "subset",
 		Format:           "json",
+		StorageLayout:    storageLayoutRow,
 		Projection:       "full",
 		BatchSize:        defaultBatchSize,
 		Profile:          "fast",
@@ -159,6 +162,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.IntVar(&cfg.Rows, "rows", 0, "Maximum rows to load; defaults from -scale")
 	fs.IntVar(&cfg.MaxFiles, "max-files", 0, "Maximum input files to read; defaults from -scale")
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "TreeDB collection format: json or template-v1")
+	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row, column-store, or column-store-prepared-metadata")
 	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q5")
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q5")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
@@ -183,6 +187,10 @@ func parseRunFlags(args []string) (runConfig, error) {
 	}
 	cfg.Queries = queries
 	cfg.Format = strings.ToLower(strings.TrimSpace(cfg.Format))
+	cfg.StorageLayout, err = normalizeStorageLayout(cfg.StorageLayout)
+	if err != nil {
+		return cfg, err
+	}
 	cfg.Projection = strings.ToLower(strings.TrimSpace(cfg.Projection))
 	cfg.Profile = strings.ToLower(strings.TrimSpace(cfg.Profile))
 	cfg.DataRoot = strings.ToLower(strings.TrimSpace(cfg.DataRoot))
@@ -215,6 +223,9 @@ func parseRunFlags(args []string) (runConfig, error) {
 		return cfg, err
 	}
 	if _, err := rootStoragePolicy(cfg.DataRoot); err != nil {
+		return cfg, err
+	}
+	if err := validateStorageLayoutConfig(cfg); err != nil {
 		return cfg, err
 	}
 	if strings.TrimSpace(cfg.Collection) == "" {
@@ -293,7 +304,7 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		SchemaVersion: schemaVersion,
 		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
 		System:        "TreeDB",
-		Engine:        "treedb-collections-direct-go",
+		Engine:        treeDBEngineName(cfg),
 		Scale:         cfg.Scale,
 		ScaleLabel:    scaleLabel(cfg.Scale, cfg.Rows, load.Rows),
 		RequestedRows: cfg.Rows,
@@ -302,14 +313,16 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		DBDir:         cfg.DBDir,
 		Collection:    cfg.Collection,
 		Format:        cfg.Format,
+		StorageLayout: cfg.StorageLayout,
 		Projection:    cfg.Projection,
-		RetainsJSON:   cfg.Projection == "full",
+		RetainsJSON:   cfg.Projection == "full" && cfg.StorageLayout == storageLayoutRow,
 		Profile:       cfg.Profile,
 		DataRoot:      cfg.DataRoot,
 		Load:          load,
 		Storage:       storage,
 		Compaction:    compaction,
 		Queries:       queryResults,
+		Notes:         runNotes(cfg),
 	}, nil
 }
 
@@ -373,6 +386,20 @@ func openBackend(cfg runConfig) (*backenddb.DB, func() error, error) {
 		opts.IndexOuterLeavesInValueLog = true
 		opts.IndexInternalBaseDelta = false
 	}
+	if isColumnStoreLayout(cfg.StorageLayout) {
+		// Current typed-column publication requires durable command-WAL mode even
+		// for benchmark-relaxed column-store metadata. Keep the selected profile's
+		// other performance knobs, but force the durability mode required by the
+		// public column-store write path.
+		opts.Durability = treedb.DurabilityDurable
+		formatDir := mainDBDirForFormatConfig(cfg.DBDir)
+		if err := os.MkdirAll(formatDir, 0o755); err != nil {
+			return nil, nil, fmt.Errorf("create main DB dir for column-store format config: %w", err)
+		}
+		if err := backenddb.SaveFormatConfig(formatDir, backenddb.FormatConfig{RequiredFeatures: []string{backenddb.RequiredFeatureCommandWALV1}}); err != nil {
+			return nil, nil, fmt.Errorf("enable command-WAL format for column-store layout: %w", err)
+		}
+	}
 	return treedb.OpenBackendWithCachedLeafLog(opts)
 }
 
@@ -385,12 +412,20 @@ func createCollection(manager *collections.CollectionManager, cfg runConfig) (*c
 	if err != nil {
 		return nil, err
 	}
+	var columnStore *collections.ColumnStoreConfig
+	if isColumnStoreLayout(cfg.StorageLayout) {
+		columnStore, err = columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout)
+		if err != nil {
+			return nil, err
+		}
+	}
 	_, err = manager.CreateCollection(&collections.CollectionMeta{
 		Name: cfg.Collection,
 		Options: collections.CollectionOptions{
 			DocumentFormat:          format,
 			DataRootStoragePolicy:   policy,
 			IndexStateStoragePolicy: policy,
+			ColumnStore:             columnStore,
 		},
 	})
 	if err != nil {
@@ -444,7 +479,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				return errStopScan
 			}
 			genStart := time.Now()
-			doc, err := buildDocument(raw, format, cfg.Projection, &encoder)
+			doc, err := buildDocument(raw, format, cfg.Projection, cfg.StorageLayout, &encoder)
 			if err != nil {
 				return err
 			}
@@ -553,7 +588,7 @@ func (r *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func buildDocument(raw []byte, format collections.DocumentFormat, projection string, encoder *collections.TemplateV1Encoder) ([]byte, error) {
+func buildDocument(raw []byte, format collections.DocumentFormat, projection, storageLayout string, encoder *collections.TemplateV1Encoder) ([]byte, error) {
 	if projection == "full" {
 		if format == collections.DocumentFormatTemplateV1 {
 			return collections.EncodeTemplateV1DocumentJSON(raw)
@@ -565,6 +600,9 @@ func buildDocument(raw []byte, format collections.DocumentFormat, projection str
 		return nil, err
 	}
 	extracted := extractFullJSONFields(raw, fields)
+	if isColumnStoreLayout(storageLayout) {
+		applyColumnStoreQueryMask(&extracted, projection)
+	}
 	if format == collections.DocumentFormatTemplateV1 {
 		if encoder == nil {
 			encoder = &collections.TemplateV1Encoder{}
@@ -780,6 +818,20 @@ func inputFiles(dir string, maxFiles int) ([]string, error) {
 		files = files[:maxFiles]
 	}
 	return files, nil
+}
+
+func mainDBDirForFormatConfig(dir string) string {
+	clean := filepath.Clean(dir)
+	if info, err := os.Stat(filepath.Join(clean, "maindb")); err == nil && info.IsDir() {
+		return filepath.Join(clean, "maindb")
+	}
+	if _, err := os.Stat(filepath.Join(clean, "index.db")); err == nil {
+		return clean
+	}
+	if filepath.Base(clean) == "maindb" {
+		return clean
+	}
+	return filepath.Join(clean, "maindb")
 }
 
 func expandPath(path string) (string, error) {

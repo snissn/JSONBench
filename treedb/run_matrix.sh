@@ -5,6 +5,7 @@ DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 OUT_DIR="${OUT_DIR:-results/run_$(date -u +%Y%m%d_%H%M%S)_$$}"
 SCALES="${SCALES:-subset}"
 FORMATS="${FORMATS:-json}"
+STORAGE_LAYOUTS="${STORAGE_LAYOUTS:-row}"
 SUITE="${SUITE:-minimal}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q5}"
 BATCH_SIZE="${BATCH_SIZE:-16000}"
@@ -17,6 +18,7 @@ DUCKDB_SCALES="${DUCKDB_SCALES:-1m,10m}"
 CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}"
 CLICKHOUSE_SCALES="${CLICKHOUSE_SCALES:-1m,10m}"
 COMPACT_AFTER_LOAD="${COMPACT_AFTER_LOAD:-0}"
+COLUMN_STORE_Q3_FALLBACK="${COLUMN_STORE_Q3_FALLBACK:-0}"
 
 usage() {
   cat <<'EOF'
@@ -27,6 +29,8 @@ Environment:
   OUT_DIR             Output directory. Defaults to results/run_<timestamp>_<pid>.
   SCALES              Space-separated scales. Defaults to "subset".
   FORMATS             Space-separated formats. Defaults to "json".
+  STORAGE_LAYOUTS     Space-separated TreeDB storage layouts: row, column-store,
+                      or column-store-prepared-metadata. Defaults to "row".
   SUITE               minimal, full, or all. Defaults to "minimal".
   QUERY_CELLS         Query-specific minimal cells for SUITE=minimal/all.
                       Defaults to "q1 q2 q3 q4 q5".
@@ -43,6 +47,10 @@ Environment:
                       Defaults to 1m,10m.
   COMPACT_AFTER_LOAD  Set to 1/true/yes/on to run full TreeDB compaction after
                       loading and before queries. Defaults to 0.
+  COLUMN_STORE_Q3_FALLBACK
+                      Set to 1/true/yes/on to run q3 for non-row storage layouts.
+                      Defaults to 0 because q3 currently uses a slow materialized
+                      fallback, not a physical column reducer.
 
 Flags:
   -h, --help          Show this help.
@@ -92,8 +100,9 @@ esac
 run_cell() {
   local scale="$1"
   local format="$2"
-  local projection="$3"
-  local queries="$4"
+  local storage_layout="$3"
+  local projection="$4"
+  local queries="$5"
   local rows_arg=()
   local cell_scale="$scale"
   local row_label="$scale"
@@ -103,7 +112,7 @@ run_cell() {
     rows_arg=(-rows "$SUBSET_ROWS")
   fi
 
-  local cell="${cell_scale}_${format}_${projection}_${queries//,/_}"
+  local cell="${cell_scale}_${storage_layout}_${format}_${projection}_${queries//,/_}"
   local compact_arg=()
   local compact_suffix=""
   case "$COMPACT_AFTER_LOAD" in
@@ -135,6 +144,7 @@ run_cell() {
   fi
   cmd+=(
     -format "$format" \
+    -storage-layout "$storage_layout" \
     -projection "$projection" \
     -queries "$queries" \
     -batch-size "$BATCH_SIZE" \
@@ -153,14 +163,34 @@ run_cell() {
 
 for scale in $SCALES; do
   for format in $FORMATS; do
-    if [[ "$SUITE" == "full" || "$SUITE" == "all" ]]; then
-      run_cell "$scale" "$format" "full" "all"
-    fi
-    if [[ "$SUITE" == "minimal" || "$SUITE" == "all" ]]; then
-      for query in $QUERY_CELLS; do
-        run_cell "$scale" "$format" "$query" "$query"
-      done
-    fi
+    for storage_layout in $STORAGE_LAYOUTS; do
+      if [[ "$storage_layout" != "row" && "$format" != "json" ]]; then
+        echo "skip format=$format for storage_layout=$storage_layout (column-store supports json only)" >&2
+        continue
+      fi
+      if [[ "$SUITE" == "full" || "$SUITE" == "all" ]]; then
+        if [[ "$storage_layout" == "row" ]]; then
+          run_cell "$scale" "$format" "$storage_layout" "full" "all"
+        else
+          echo "skip full suite for storage_layout=$storage_layout (column-store cells are query-shaped)" >&2
+        fi
+      fi
+      if [[ "$SUITE" == "minimal" || "$SUITE" == "all" ]]; then
+        for query in $QUERY_CELLS; do
+          if [[ "$storage_layout" != "row" && "$query" == "q3" ]]; then
+            case "$COLUMN_STORE_Q3_FALLBACK" in
+              1|true|TRUE|yes|YES|on|ON)
+                ;;
+              *)
+                echo "skip q3 for storage_layout=$storage_layout (slow materialized fallback; set COLUMN_STORE_Q3_FALLBACK=1 to run)" >&2
+                continue
+                ;;
+            esac
+          fi
+          run_cell "$scale" "$format" "$storage_layout" "$query" "$query"
+        done
+      fi
+    done
   done
 done
 

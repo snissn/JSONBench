@@ -37,6 +37,7 @@ type reportRow struct {
 	RequestedRows int       `json:"requested_rows,omitempty"`
 	DatasetSize   int       `json:"dataset_size"`
 	Format        string    `json:"format,omitempty"`
+	StorageLayout string    `json:"storage_layout,omitempty"`
 	Projection    string    `json:"projection,omitempty"`
 	DataRoot      string    `json:"data_root,omitempty"`
 	Query         string    `json:"query"`
@@ -210,6 +211,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				RequestedRows: result.RequestedRows,
 				DatasetSize:   result.DatasetSize,
 				Format:        result.Format,
+				StorageLayout: result.StorageLayout,
 				Projection:    result.Projection,
 				DataRoot:      result.DataRoot,
 				Query:         q.Name,
@@ -348,20 +350,23 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		return buf.Bytes()
 	}
 	fmt.Fprintf(&buf, "## Query Runtime Matrix\n\n")
-	fmt.Fprintf(&buf, "| rows/scale | system | layout | query | best | median | attempts | requested | loaded | storage | load |\n")
-	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| rows/scale | system | layout | query | best | loaded rows/s | scanned rows/s | median | attempts | requested | loaded | scanned | storage | load |\n")
+	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|\n")
 	for _, row := range doc.Rows {
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s | %s | %d | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s | %s |\n",
 			row.Scale,
 			row.System,
 			reportRowLayout(row),
 			row.Query,
 			formatSeconds(row.BestSec),
+			formatRowsPerSecond(row.DatasetSize, row.BestSec),
+			formatRowsPerSecond(row.RowsScanned, row.BestSec),
 			formatSeconds(row.MedianSec),
 			formatAttempts(row.AttemptsSec),
 			formatCount(row.RequestedRows),
+			formatCount(row.DatasetSize),
 			row.RowsScanned,
 			formatBytes(row.StorageBytes),
 			formatSeconds(row.LoadSec),
@@ -410,6 +415,9 @@ func reportRowLayout(row reportRow) string {
 	layout := row.Format
 	if row.Projection != "" {
 		layout += "/" + row.Projection
+	}
+	if row.StorageLayout != "" && row.StorageLayout != storageLayoutRow {
+		layout = row.StorageLayout + ":" + layout
 	}
 	if row.DataRoot != "" && row.DataRoot != "fast" {
 		layout += "@" + row.DataRoot
@@ -478,6 +486,9 @@ func sortReportRows(rows []reportRow) {
 		if a.Format != b.Format {
 			return a.Format < b.Format
 		}
+		if a.StorageLayout != b.StorageLayout {
+			return a.StorageLayout < b.StorageLayout
+		}
 		if a.Projection != b.Projection {
 			return a.Projection < b.Projection
 		}
@@ -529,6 +540,13 @@ func formatAttempts(values []float64) string {
 		parts = append(parts, formatSeconds(value))
 	}
 	return strings.Join(parts, ", ")
+}
+
+func formatRowsPerSecond(rows int, seconds float64) string {
+	if rows <= 0 || seconds <= 0 || math.IsNaN(seconds) || math.IsInf(seconds, 0) {
+		return ""
+	}
+	return formatCount(int(math.Round(float64(rows) / seconds)))
 }
 
 func formatCount(value int) string {

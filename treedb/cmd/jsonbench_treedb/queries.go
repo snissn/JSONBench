@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -21,16 +22,30 @@ var querySQL = map[string]string{
 func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]queryRun, error) {
 	out := make([]queryRun, 0, len(cfg.Queries))
 	for _, name := range cfg.Queries {
+		prepared, err := prepareColumnQueryIfNeeded(collection, cfg, name)
+		if err != nil {
+			return nil, fmt.Errorf("%s prepare: %w", name, err)
+		}
 		var attempts []float64
 		var final queryComputation
 		for i := 0; i < cfg.Tries; i++ {
 			start := time.Now()
-			computed, err := runQueryOnce(collection, cfg, name, rows)
+			computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
 			if err != nil {
+				if prepared != nil {
+					if closeErr := prepared.Close(); closeErr != nil {
+						err = errors.Join(err, closeErr)
+					}
+				}
 				return nil, fmt.Errorf("%s attempt %d: %w", name, i+1, err)
 			}
 			attempts = append(attempts, seconds(time.Since(start)))
 			final = computed
+		}
+		if prepared != nil {
+			if err := prepared.Close(); err != nil {
+				return nil, fmt.Errorf("%s close prepared query: %w", name, err)
+			}
 		}
 		best, median := bestMedian(attempts)
 		hash, err := hashRows(final.Rows)
@@ -57,7 +72,33 @@ type queryComputation struct {
 	Rows        []queryRow
 }
 
+func runQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, prepared *preparedColumnQuery) (queryComputation, error) {
+	if prepared != nil {
+		return prepared.Run(rows)
+	}
+	return runQueryOnce(collection, cfg, name, rows)
+}
+
 func runQueryOnce(collection *collections.Collection, cfg runConfig, name string, rows int) (queryComputation, error) {
+	if isColumnStoreLayout(cfg.StorageLayout) {
+		switch name {
+		case "q1":
+			return runColumnQ1(collection, cfg, rows)
+		case "q2":
+			return runColumnQ2(collection, cfg, rows)
+		case "q3":
+			// Current physical column reducers do not expose the JSONBench q3
+			// event+hour grouped shape, so q3 remains a materialized scan over the
+			// column-store fixture.
+			return runQ3(collection, cfg, rows)
+		case "q4":
+			return runColumnQ4(collection, cfg, rows)
+		case "q5":
+			return runColumnQ5(collection, cfg, rows)
+		default:
+			return queryComputation{}, fmt.Errorf("unknown query %q", name)
+		}
+	}
 	switch name {
 	case "q1":
 		return runQ1(collection, cfg, rows)
