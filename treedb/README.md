@@ -18,8 +18,9 @@ Relevant `snissn/gomap` trackers:
 - column-store RFC PR: `https://github.com/snissn/gomap/pull/1527`
 - command-WAL contract PR: `https://github.com/snissn/gomap/pull/1530`
 
-This harness requires Go 1.25 or newer, matching the TreeDB module version used
-by the current `github.com/snissn/gomap` dependency.
+This harness requires Go 1.25.0 or newer, matching the TreeDB module version
+used by the current `github.com/snissn/gomap` dependency. Download Go toolchains
+from https://go.dev/dl.
 
 The default TreeDB matrix is the strict minimal JSON suite:
 
@@ -36,9 +37,10 @@ Full-document and `template-v1` row-layout cells are available with environment
 overrides. A `column-store` storage layout is also available for query-shaped
 `json` projection cells. It stores declared projection fields in TreeDB
 physical column row assets with `retained_payload=none` and uses physical column
-reducers for q1, q2, q4, and q5. q3 still uses the materialized JSON scan over the
-column-store fixture because the current physical reducer API has no combined
-`event, hour` grouped shape. The harness opens TreeDB with the cached leaf-log
+reducers for q1, q2, q4, and q5. q3 still uses the materialized JSON scan over
+the column-store fixture: it reconstructs full JSON documents from column data
+before applying query logic, because the current physical reducer API has no
+combined `event, hour` grouped shape. The harness opens TreeDB with the cached leaf-log
 backend so collection data roots can store oversized documents through
 persistent value-log pointers.
 
@@ -132,12 +134,13 @@ attempts. Its q4/q5 cells declare `min_time_us` aggregate metadata and pass that
 metadata name to TreeDB, so those queries answer from aggregate metadata instead
 of scanning base rows.
 
-q2/q4/q5 use query-specific sentinel masking during load to match JSONBench
-filter semantics because the current physical column reducers do not yet expose
-separate filter predicates. The matrix runner skips q3 for non-row column-store
-layouts by default because q3 currently falls back to a slow materialized scan
-rather than a physical aggregate; set `COLUMN_STORE_Q3_FALLBACK=1` only when you
-explicitly want that fallback measurement.
+q2/q4/q5 use query-specific sentinel masking during load (replacing unneeded
+filter field values with a sentinel) to match JSONBench filter semantics because
+the current physical column reducers do not yet expose separate filter
+predicates. The matrix runner skips q3 for column-store layouts by default
+because q3 currently falls back to a slow materialized scan rather than a
+physical aggregate; set `COLUMN_STORE_Q3_FALLBACK=1` only when you explicitly
+want that fallback measurement.
 
 ## Smoke Run
 
