@@ -8,13 +8,29 @@ DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-1000000}"
 TRIES="${TRIES:-3}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q5}"
-if [[ -z "${STORAGE_LAYOUTS+x}" ]]; then
+if [[ -z "${STORAGE_LAYOUTS:-}" ]]; then
   STORAGE_LAYOUTS="column-store column-store-prepared"
   RUN_DEFAULT_METADATA_LAYOUT=1
 else
   RUN_DEFAULT_METADATA_LAYOUT=0
 fi
-METADATA_QUERY_CELLS="${METADATA_QUERY_CELLS:-q4 q5}"
+
+default_metadata_query_cells() {
+  local out=""
+  local query
+  for query in $QUERY_CELLS; do
+    case "$query" in
+      q4|q5)
+        out="${out:+$out }$query"
+        ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+if [[ -z "${METADATA_QUERY_CELLS+x}" ]]; then
+  METADATA_QUERY_CELLS="$(default_metadata_query_cells)"
+fi
 OUT_DIR="${OUT_DIR:-/tmp/jsonbench_treedb_columnstore_$(date -u +%Y%m%d_%H%M%S)}"
 GOMAP_REPLACE="${GOMAP_REPLACE:-}"
 
@@ -37,6 +53,14 @@ fi
 
 jsonbench_commit="$(git -C "$ROOT_DIR/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
 gomap_module="$(go list -m -f '{{if .Replace}}{{.Replace.Path}}{{else}}{{.Version}}{{end}}' github.com/snissn/gomap)"
+metadata_label="custom STORAGE_LAYOUTS"
+if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" ]]; then
+  if [[ -n "${METADATA_QUERY_CELLS// }" ]]; then
+    metadata_label="column-store-prepared-metadata ($METADATA_QUERY_CELLS)"
+  else
+    metadata_label="none (QUERY_CELLS has no q4/q5 metadata cells)"
+  fi
+fi
 
 cat <<EOF
 ==> TreeDB column-store JSONBench default rerun
@@ -47,7 +71,7 @@ cat <<EOF
     tries:     $TRIES
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
-    metadata:  $([[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" ]] && echo "column-store-prepared-metadata ($METADATA_QUERY_CELLS)" || echo "custom STORAGE_LAYOUTS")
+    metadata:  $metadata_label
     out:       $OUT_DIR
 EOF
 
