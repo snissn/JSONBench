@@ -479,7 +479,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				return errStopScan
 			}
 			genStart := time.Now()
-			doc, err := buildDocument(raw, format, cfg, &encoder)
+			doc, err := buildDocument(raw, format, cfg.Projection, cfg.StorageLayout, &encoder)
 			if err != nil {
 				return err
 			}
@@ -588,8 +588,7 @@ func (r *countingReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-func buildDocument(raw []byte, format collections.DocumentFormat, cfg runConfig, encoder *collections.TemplateV1Encoder) ([]byte, error) {
-	projection := cfg.Projection
+func buildDocument(raw []byte, format collections.DocumentFormat, projection, storageLayout string, encoder *collections.TemplateV1Encoder) ([]byte, error) {
 	if projection == "full" {
 		if format == collections.DocumentFormatTemplateV1 {
 			return collections.EncodeTemplateV1DocumentJSON(raw)
@@ -601,7 +600,7 @@ func buildDocument(raw []byte, format collections.DocumentFormat, cfg runConfig,
 		return nil, err
 	}
 	extracted := extractFullJSONFields(raw, fields)
-	if isColumnStoreLayout(cfg.StorageLayout) {
+	if isColumnStoreLayout(storageLayout) {
 		applyColumnStoreQueryMask(&extracted, projection)
 	}
 	if format == collections.DocumentFormatTemplateV1 {
