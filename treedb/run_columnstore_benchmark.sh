@@ -28,8 +28,10 @@ default_metadata_query_cells() {
   printf '%s' "$out"
 }
 
+METADATA_QUERY_CELLS_EXPLICIT=1
 if [[ -z "${METADATA_QUERY_CELLS+x}" ]]; then
   METADATA_QUERY_CELLS="$(default_metadata_query_cells)"
+  METADATA_QUERY_CELLS_EXPLICIT=0
 fi
 OUT_DIR="${OUT_DIR:-/tmp/jsonbench_treedb_columnstore_$(date -u +%Y%m%d_%H%M%S)}"
 GOMAP_REPLACE="${GOMAP_REPLACE:-}"
@@ -57,6 +59,8 @@ metadata_label="custom STORAGE_LAYOUTS"
 if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" ]]; then
   if [[ -n "${METADATA_QUERY_CELLS// }" ]]; then
     metadata_label="column-store-prepared-metadata ($METADATA_QUERY_CELLS)"
+  elif [[ "$METADATA_QUERY_CELLS_EXPLICIT" == "1" ]]; then
+    metadata_label="none (METADATA_QUERY_CELLS is empty)"
   else
     metadata_label="none (QUERY_CELLS has no q4/q5 metadata cells)"
   fi
