@@ -107,19 +107,33 @@ cd /Users/michaelseiler/dev/snissn/JSONBench/treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 QUERY_CELLS=q1 ./run_matrix.sh
 ```
 
-For a 1MM TreeDB column-store proof run, add `STORAGE_LAYOUTS=column-store`.
-Column-store cells are query-shaped, so the runner loads one projection/query
-per cell:
+For the default TreeDB column-store JSONBench rerun/table, use:
 
 ```sh
 cd treedb
-DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
-  STORAGE_LAYOUTS=column-store QUERY_CELLS="q1 q2 q3 q4 q5" \
-  ./run_matrix.sh
+./run_columnstore_benchmark.sh
 ```
 
-To also run the prepared physical-query path with q4/q5 aggregate metadata, add
-`column-store-prepared-metadata`:
+By default this runs 1MM rows, 3 tries, q1..q5, and both `column-store` and
+`column-store-prepared-metadata`. It writes the full matrix report plus the
+compact table used in TreeDB benchmark updates:
+
+- `report.md`
+- `report.json`
+- `columnstore_summary.md`
+
+Useful overrides:
+
+```sh
+# smoke run over the checked-in fixture
+DATA_DIR=./testdata/bluesky ROWS=6 TRIES=1 ./run_columnstore_benchmark.sh
+
+# test against a local gomap checkout without permanently editing go.mod
+GOMAP_REPLACE=/path/to/gomap ./run_columnstore_benchmark.sh
+```
+
+The lower-level matrix runner is still available for custom cells. Column-store
+cells are query-shaped, so the runner loads one projection/query per cell:
 
 ```sh
 cd treedb

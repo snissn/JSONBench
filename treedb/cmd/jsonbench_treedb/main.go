@@ -40,6 +40,12 @@ func runCLI(argv []string) error {
 			return err
 		}
 		return writeReport(cfg)
+	case "column-summary":
+		cfg, err := parseColumnSummaryFlags(argv[2:])
+		if err != nil {
+			return err
+		}
+		return writeColumnSummary(cfg)
 	case "help", "-h", "--help":
 		usage(os.Stdout)
 		return nil
@@ -53,6 +59,7 @@ func usage(out *os.File) {
 	fmt.Fprintln(out, "Usage:")
 	fmt.Fprintln(out, "  jsonbench_treedb run [flags]")
 	fmt.Fprintln(out, "  jsonbench_treedb report [flags]")
+	fmt.Fprintln(out, "  jsonbench_treedb column-summary [flags]")
 }
 
 func writeJSON(path string, value any) error {
