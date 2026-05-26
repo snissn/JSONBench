@@ -85,7 +85,9 @@ func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfi
 		}
 		distinct, err := prepare(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountDistinct, "event", "", "did"))
 		if err != nil {
-			_ = count.Close()
+			if closeErr := count.Close(); closeErr != nil {
+				return nil, errors.Join(err, closeErr)
+			}
 			return nil, err
 		}
 		return &preparedColumnQuery{name: name, count: count, distinct: distinct}, nil

@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"time"
@@ -32,7 +33,9 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 			computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
 			if err != nil {
 				if prepared != nil {
-					_ = prepared.Close()
+					if closeErr := prepared.Close(); closeErr != nil {
+						err = errors.Join(err, closeErr)
+					}
 				}
 				return nil, fmt.Errorf("%s attempt %d: %w", name, i+1, err)
 			}

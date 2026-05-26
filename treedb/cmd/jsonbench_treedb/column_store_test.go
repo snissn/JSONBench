@@ -3,6 +3,8 @@ package main
 import (
 	"reflect"
 	"testing"
+
+	"github.com/snissn/gomap/TreeDB/collections"
 )
 
 func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
@@ -18,6 +20,20 @@ func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 				t.Fatalf("column-store rows_scanned=%d want %d", got, want)
 			}
 		})
+	}
+}
+
+func TestColumnStoreQ1KeepsEmptyEventBucket(t *testing.T) {
+	computed := renderColumnQ1(3, collections.ColumnPhysicalQueryResult{Groups: []collections.ColumnPhysicalQueryGroup{
+		{Key: "app.bsky.feed.post", Count: 2},
+		{Key: "", Count: 1},
+	}})
+	want := []queryRow{
+		{"event": "app.bsky.feed.post", "count": int64(2)},
+		{"event": "", "count": int64(1)},
+	}
+	if !reflect.DeepEqual(computed.Rows, want) {
+		t.Fatalf("q1 rows=%v want %v", computed.Rows, want)
 	}
 }
 
