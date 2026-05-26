@@ -8,7 +8,13 @@ DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-1000000}"
 TRIES="${TRIES:-3}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q5}"
-STORAGE_LAYOUTS="${STORAGE_LAYOUTS:-column-store column-store-prepared-metadata}"
+if [[ -z "${STORAGE_LAYOUTS+x}" ]]; then
+  STORAGE_LAYOUTS="column-store column-store-prepared"
+  RUN_DEFAULT_METADATA_LAYOUT=1
+else
+  RUN_DEFAULT_METADATA_LAYOUT=0
+fi
+METADATA_QUERY_CELLS="${METADATA_QUERY_CELLS:-q4 q5}"
 OUT_DIR="${OUT_DIR:-/tmp/jsonbench_treedb_columnstore_$(date -u +%Y%m%d_%H%M%S)}"
 GOMAP_REPLACE="${GOMAP_REPLACE:-}"
 
@@ -41,24 +47,34 @@ cat <<EOF
     tries:     $TRIES
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
+    metadata:  $([[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" ]] && echo "column-store-prepared-metadata ($METADATA_QUERY_CELLS)" || echo "custom STORAGE_LAYOUTS")
     out:       $OUT_DIR
 EOF
 
-DATA_DIR="$DATA_DIR" \
-OUT_DIR="$OUT_DIR" \
-SCALES="subset" \
-SUBSET_ROWS="$ROWS" \
-FORMATS="json" \
-STORAGE_LAYOUTS="$STORAGE_LAYOUTS" \
-SUITE="minimal" \
-QUERY_CELLS="$QUERY_CELLS" \
-TRIES="$TRIES" \
-PROFILE="${PROFILE:-fast}" \
-DATA_ROOT="${DATA_ROOT:-fast}" \
-BATCH_SIZE="${BATCH_SIZE:-16000}" \
-DUCKDB_RESULTS_DIR="${DUCKDB_RESULTS_DIR:-}" \
-CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}" \
-./run_matrix.sh
+run_matrix_cell() {
+  local layouts="$1"
+  local queries="$2"
+  DATA_DIR="$DATA_DIR" \
+  OUT_DIR="$OUT_DIR" \
+  SCALES="subset" \
+  SUBSET_ROWS="$ROWS" \
+  FORMATS="json" \
+  STORAGE_LAYOUTS="$layouts" \
+  SUITE="minimal" \
+  QUERY_CELLS="$queries" \
+  TRIES="$TRIES" \
+  PROFILE="${PROFILE:-fast}" \
+  DATA_ROOT="${DATA_ROOT:-fast}" \
+  BATCH_SIZE="${BATCH_SIZE:-16000}" \
+  DUCKDB_RESULTS_DIR="${DUCKDB_RESULTS_DIR:-}" \
+  CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}" \
+  ./run_matrix.sh
+}
+
+run_matrix_cell "$STORAGE_LAYOUTS" "$QUERY_CELLS"
+if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" && -n "${METADATA_QUERY_CELLS// }" ]]; then
+  run_matrix_cell "column-store-prepared-metadata" "$METADATA_QUERY_CELLS"
+fi
 
 summary="$OUT_DIR/columnstore_summary.md"
 {

@@ -10,6 +10,7 @@ import (
 const (
 	storageLayoutRow                         = "row"
 	storageLayoutColumnStore                 = "column-store"
+	storageLayoutColumnStorePrepared         = "column-store-prepared"
 	storageLayoutColumnStorePreparedMetadata = "column-store-prepared-metadata"
 
 	columnStoreAggregateMetadataName = "min_time_us"
@@ -21,6 +22,8 @@ func normalizeStorageLayout(raw string) (string, error) {
 		return storageLayoutRow, nil
 	case storageLayoutColumnStore, "column", "columns", "column_store", "columnstore":
 		return storageLayoutColumnStore, nil
+	case storageLayoutColumnStorePrepared, "column_store_prepared", "column-store-prepared-scan", "column_store_prepared_scan":
+		return storageLayoutColumnStorePrepared, nil
 	// Keep the dashed constants above as canonical output names; underscore and
 	// shorter aggmeta aliases are accepted only for interactive shell convenience.
 	case storageLayoutColumnStorePreparedMetadata, "column_store_prepared_metadata", "column-store-prepared-aggmeta", "column_store_prepared_aggmeta", "column-store-aggmeta", "column_store_aggmeta":
@@ -51,7 +54,7 @@ func validateStorageLayoutConfig(cfg runConfig) error {
 
 func isColumnStoreLayout(layout string) bool {
 	switch layout {
-	case storageLayoutColumnStore, storageLayoutColumnStorePreparedMetadata:
+	case storageLayoutColumnStore, storageLayoutColumnStorePrepared, storageLayoutColumnStorePreparedMetadata:
 		return true
 	default:
 		return false
@@ -59,7 +62,7 @@ func isColumnStoreLayout(layout string) bool {
 }
 
 func isPreparedColumnStoreLayout(layout string) bool {
-	return layout == storageLayoutColumnStorePreparedMetadata
+	return layout == storageLayoutColumnStorePrepared || layout == storageLayoutColumnStorePreparedMetadata
 }
 
 func columnStoreUsesAggregateMetadata(layout, query string) bool {
@@ -78,6 +81,8 @@ func treeDBEngineName(cfg runConfig) string {
 	switch cfg.StorageLayout {
 	case storageLayoutColumnStore:
 		return "treedb-collections-column-store-direct-go"
+	case storageLayoutColumnStorePrepared:
+		return "treedb-collections-column-store-prepared-direct-go"
 	case storageLayoutColumnStorePreparedMetadata:
 		return "treedb-collections-column-store-prepared-metadata-direct-go"
 	default:
@@ -94,8 +99,11 @@ func runNotes(cfg runConfig) []string {
 		fmt.Sprintf("storage_layout=%s forces TreeDB durable command-WAL mode because current column-store publication requires it.", cfg.StorageLayout),
 		"q3/q4/q5 column-store cells use physical dictionary predicates when supported; q4/q5 aggregate-metadata cells still use load-time sentinel masking for metadata semantics; q2 remains sentinel-masked.",
 	}
-	if isPreparedColumnStoreLayout(cfg.StorageLayout) {
-		notes = append(notes, "column-store-prepared-metadata prepares physical query runners outside timed attempts; q4/q5 declare and use aggregate metadata named min_time_us.")
+	if cfg.StorageLayout == storageLayoutColumnStorePrepared {
+		notes = append(notes, "column-store-prepared prepares physical query runners outside timed attempts and scans base column rows; it does not declare aggregate metadata.")
+	}
+	if cfg.StorageLayout == storageLayoutColumnStorePreparedMetadata {
+		notes = append(notes, "column-store-prepared-metadata prepares physical query runners outside timed attempts; only q4/q5 declare and use aggregate metadata named min_time_us.")
 	}
 	for _, q := range cfg.Queries {
 		if q == "q3" {

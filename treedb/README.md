@@ -34,13 +34,10 @@ the fields needed by that query plus the TreeDB primary key. For example, `q1`
 stores only `event = commit.collection`.
 
 Full-document and `template-v1` row-layout cells are available with environment
-overrides. A `column-store` storage layout is also available for query-shaped
-`json` projection cells. It stores declared projection fields in TreeDB
-physical column row assets with `retained_payload=none` and uses physical column
-reducers for q1, q2, q4, and q5. q3 still uses the materialized JSON scan over
-the column-store fixture: it reconstructs full JSON documents from column data
-before applying query logic, because the current physical reducer API has no
-combined `event, hour` grouped shape. The harness opens TreeDB with the cached leaf-log
+overrides. Column-store storage layouts are also available for query-shaped
+`json` projection cells. They store declared projection fields in TreeDB
+physical column row assets with `retained_payload=none` and use physical column
+reducers for q1 through q5. The harness opens TreeDB with the cached leaf-log
 backend so collection data roots can store oversized documents through
 persistent value-log pointers.
 
@@ -114,9 +111,10 @@ cd treedb
 ./run_columnstore_benchmark.sh
 ```
 
-By default this runs 1MM rows, 3 tries, q1..q5, and both `column-store` and
-`column-store-prepared-metadata`. It writes the full matrix report plus the
-compact table used in TreeDB benchmark updates:
+By default this runs 1MM rows and 3 tries for q1..q5 direct and prepared-scan
+column-store layouts, plus prepared-metadata q4/q5 where aggregate metadata is
+applicable. It writes the full matrix report plus the compact table used in
+TreeDB benchmark updates:
 
 - `report.md`
 - `report.json`
@@ -138,22 +136,28 @@ cells are query-shaped, so the runner loads one projection/query per cell:
 ```sh
 cd treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
-  STORAGE_LAYOUTS="column-store column-store-prepared-metadata" \
+  STORAGE_LAYOUTS="column-store column-store-prepared column-store-prepared-metadata" \
   QUERY_CELLS="q1 q2 q3 q4 q5" \
   ./run_matrix.sh
 ```
 
-`column-store-prepared-metadata` prepares physical query runners outside timed
-attempts. Its q4/q5 cells declare `min_time_us` aggregate metadata and pass that
-metadata name to TreeDB, so those queries answer from aggregate metadata instead
-of scanning base rows.
+Column-store execution modes are explicit:
 
-q3 uses TreeDB's physical grouped-hour reducer over dictionary and int64 column
-sidecars. q4/q5 direct column-store cells use physical dictionary predicates;
-q4/q5 prepared aggregate-metadata cells still use query-specific sentinel
-masking during load so the aggregate metadata represents the filtered
-JSONBench post rows. q2 remains on the existing sentinel-masked count/distinct
-path. The matrix runner includes q3 for column-store layouts by default.
+- `column-store`: direct one-shot physical query API.
+- `column-store-prepared`: prepared physical query runners outside timed
+  attempts, with no aggregate metadata; q4/q5 scan base column rows.
+- `column-store-prepared-metadata`: prepared physical query runners; only q4/q5
+  declare `min_time_us` aggregate metadata with Top-K and answer with
+  `rows_scanned=0`.
+
+q1/q2/q3 prepared rows are scan-mode rows, not metadata rows. q3 uses TreeDB's
+physical grouped-hour reducer over dictionary and int64 column sidecars. q4/q5
+direct and prepared-scan cells use physical dictionary predicates; q4/q5
+prepared aggregate-metadata cells still use query-specific sentinel masking
+during load so the aggregate metadata represents the filtered JSONBench post
+rows. q2 remains on the existing sentinel-masked count/distinct path. The
+matrix runner includes q3 for column-store layouts by default, and the compact
+`column-summary` table includes an execution-mode column.
 
 ## Smoke Run
 
@@ -243,8 +247,8 @@ go run ./cmd/jsonbench_treedb run \
 
 This harness uses the public TreeDB collections API. The default `row` storage
 layout remains the row-store/template-v1 baseline. The `column-store` layout is
-a separate TreeDB physical-column cell for current reducer coverage. The
-`column-store-prepared-metadata` layout uses prepared physical query runners and
-q4/q5 aggregate metadata to model the optimized production column-store path.
-Both column-store layouts are intentionally documented with their q2/q4/q5
-filter-masking and q3 fallback limitations.
+a separate TreeDB physical-column direct cell, `column-store-prepared` measures
+prepared physical runners without aggregate metadata, and
+`column-store-prepared-metadata` adds q4/q5 Top-K aggregate metadata. Column-store
+layouts are intentionally documented with their q2 and q4/q5 metadata
+filter-masking behavior.

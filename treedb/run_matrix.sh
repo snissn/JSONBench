@@ -29,7 +29,8 @@ Environment:
   SCALES              Space-separated scales. Defaults to "subset".
   FORMATS             Space-separated formats. Defaults to "json".
   STORAGE_LAYOUTS     Space-separated TreeDB storage layouts: row, column-store,
-                      or column-store-prepared-metadata. Defaults to "row".
+                      column-store-prepared, or column-store-prepared-metadata.
+                      Defaults to "row".
   SUITE               minimal, full, or all. Defaults to "minimal".
   QUERY_CELLS         Query-specific minimal cells for SUITE=minimal/all.
                       Defaults to "q1 q2 q3 q4 q5".
