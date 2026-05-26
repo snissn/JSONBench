@@ -21,6 +21,8 @@ func normalizeStorageLayout(raw string) (string, error) {
 		return storageLayoutRow, nil
 	case storageLayoutColumnStore, "column", "columns", "column_store", "columnstore":
 		return storageLayoutColumnStore, nil
+	// Keep the dashed constants above as canonical output names; underscore and
+	// shorter aggmeta aliases are accepted only for interactive shell convenience.
 	case storageLayoutColumnStorePreparedMetadata, "column_store_prepared_metadata", "column-store-prepared-aggmeta", "column_store_prepared_aggmeta", "column-store-aggmeta", "column_store_aggmeta":
 		return storageLayoutColumnStorePreparedMetadata, nil
 	default:

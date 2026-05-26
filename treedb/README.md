@@ -18,6 +18,9 @@ Relevant `snissn/gomap` trackers:
 - column-store RFC PR: `https://github.com/snissn/gomap/pull/1527`
 - command-WAL contract PR: `https://github.com/snissn/gomap/pull/1530`
 
+This harness requires Go 1.25 or newer, matching the TreeDB module version used
+by the current `github.com/snissn/gomap` dependency.
+
 The default TreeDB matrix is the strict minimal JSON suite:
 
 - scale: `subset`, `1m`, `10m` (`100m`/`1000m` are accepted but intentionally

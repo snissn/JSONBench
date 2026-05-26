@@ -19,6 +19,9 @@ func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 }
 
 func TestColumnStorePreparedMetadataLayoutMatchesRowFixture(t *testing.T) {
+	// The checked-in JSONBench fixture is intentionally only six rows, so this is
+	// a semantic smoke test; the full top-N ordering path is covered by local
+	// benchmark runs over larger downloaded JSONBench datasets.
 	for _, query := range []string{"q1", "q2", "q4", "q5"} {
 		query := query
 		t.Run(query, func(t *testing.T) {

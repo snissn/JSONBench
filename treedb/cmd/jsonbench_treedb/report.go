@@ -350,7 +350,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		return buf.Bytes()
 	}
 	fmt.Fprintf(&buf, "## Query Runtime Matrix\n\n")
-	fmt.Fprintf(&buf, "| rows/scale | system | layout | query | best | rows/s | median | attempts | requested | loaded | scanned | storage | load |\n")
+	fmt.Fprintf(&buf, "| rows/scale | system | layout | query | best | loaded rows/s | median | attempts | requested | loaded | scanned | storage | load |\n")
 	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|\n")
 	for _, row := range doc.Rows {
 		fmt.Fprintf(

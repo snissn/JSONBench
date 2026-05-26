@@ -1,6 +1,8 @@
 package main
 
 import (
+	"errors"
+	"fmt"
 	"sort"
 
 	"github.com/snissn/gomap/TreeDB/collections"
@@ -108,23 +110,23 @@ func (p *preparedColumnQuery) Close() error {
 	if p == nil {
 		return nil
 	}
-	var closeErr error
+	var errs []error
 	if p.distinct != nil {
 		if err := p.distinct.Close(); err != nil {
-			closeErr = err
+			errs = append(errs, err)
 		}
 	}
 	if p.count != nil {
-		if err := p.count.Close(); err != nil && closeErr == nil {
-			closeErr = err
+		if err := p.count.Close(); err != nil {
+			errs = append(errs, err)
 		}
 	}
-	return closeErr
+	return errors.Join(errs...)
 }
 
 func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 	if p == nil || p.count == nil {
-		return queryComputation{}, nil
+		return queryComputation{}, errors.New("prepared column query is not initialized")
 	}
 	countResult, err := p.count.Run()
 	if err != nil {
@@ -135,7 +137,7 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 		return renderColumnQ1(rows, countResult), nil
 	case "q2":
 		if p.distinct == nil {
-			return queryComputation{}, nil
+			return queryComputation{}, errors.New("prepared column q2 query is missing distinct runner")
 		}
 		distinctResult, err := p.distinct.Run()
 		if err != nil {
@@ -147,11 +149,14 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 	case "q5":
 		return renderColumnQ5(rows, countResult), nil
 	default:
-		return queryComputation{}, nil
+		return queryComputation{}, fmt.Errorf("prepared column query %q is unsupported", p.name)
 	}
 }
 
 func renderColumnQ1(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
+	// JSONBench q1 groups every document by collection, including an empty event
+	// bucket when the source document has no commit.collection field. Keep that
+	// behavior aligned with the row-layout q1 implementation.
 	out := make([]queryRow, 0, len(result.Groups))
 	for _, group := range result.Groups {
 		out = append(out, queryRow{"event": group.Key, "count": int64(group.Count)})
@@ -264,6 +269,9 @@ func columnPhysicalRowsScanned(fallback int, result collections.ColumnPhysicalQu
 	if result.Diagnostics.RowsScanned > 0 {
 		return result.Diagnostics.RowsScanned
 	}
+	// Older or fallback physical reducers may not populate RowsScanned even when
+	// they reduce all loaded rows. Report the loaded-row fallback in that case so
+	// scan-shaped cells are conservatively accounted instead of undercounted.
 	return fallback
 }
 
