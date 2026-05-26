@@ -15,6 +15,8 @@ RUN_TREEDB="${RUN_TREEDB:-1}"
 RUN_CLICKHOUSE="${RUN_CLICKHOUSE:-1}"
 CLICKHOUSE_ALLOW_ERRORS="${CLICKHOUSE_ALLOW_ERRORS:-1}"
 CLICKHOUSE_MAX_FILES="${CLICKHOUSE_MAX_FILES:-}"
+TREEDB_RESULT="${TREEDB_RESULT:-}"
+CLICKHOUSE_RESULT="${CLICKHOUSE_RESULT:-}"
 
 usage() {
   cat <<'EOF'
@@ -41,6 +43,8 @@ Environment:
   CLICKHOUSE_ALLOW_ERRORS  Set 1 to match JSONBench fallback loading for rows
                            ClickHouse rejects as invalid JSON. Defaults to 1.
   CLICKHOUSE_MAX_FILES     Input file count for ClickHouse. Defaults to ROWS/1M.
+  TREEDB_RESULT            Existing TreeDB report.json to summarize.
+  CLICKHOUSE_RESULT        Existing ClickHouse result.json to summarize.
 
 Outputs:
   treedb/report.md
@@ -172,7 +176,12 @@ SQL
   echo "    files:     $CLICKHOUSE_MAX_FILES"
   echo "    out:       $CLICKHOUSE_OUT"
 
-  load_start=$(date +%s.%N)
+  if [[ ! -f "$PROJECT_DIR/clickhouse/queries.sql" ]]; then
+    echo "queries file not found: $PROJECT_DIR/clickhouse/queries.sql" >&2
+    exit 1
+  fi
+
+  load_start=$(python3 -c 'import time; print(time.time())')
   "$CLICKHOUSE_BIN" local --path "$CLICKHOUSE_PATH" --multiquery < "$CLICKHOUSE_OUT/schema.sql"
   insert_settings="min_insert_block_size_rows = 1000000, min_insert_block_size_bytes = 0"
   if [[ "$CLICKHOUSE_ALLOW_ERRORS" == "1" ]]; then
@@ -192,7 +201,7 @@ SQL
       clickhouse_insert --query "INSERT INTO bluesky SETTINGS $insert_settings FORMAT JSONAsObject" < "$file"
     fi
   done
-  load_end=$(date +%s.%N)
+  load_end=$(python3 -c 'import time; print(time.time())')
   load_seconds=$(python3 - <<PY
 print($load_end - $load_start)
 PY
@@ -210,7 +219,10 @@ PY
     while [[ "$attempt" -le "$TRIES" ]]; do
       echo "running ClickHouse q$qidx attempt $attempt"
       output="$(clickhouse_query --time --format=Null --progress 0 --query "$query" 2>&1)"
-      sec="$(printf '%s\n' "$output" | awk '/^[0-9]+([.][0-9]+)?$/ { print $1; exit }')"
+      sec="$(printf '%s\n' "$output" | awk '/^Elapsed:/ { gsub(/[^0-9.]/, "", $2); print $2; exit }')"
+      if [[ -z "$sec" ]]; then
+        sec="$(printf '%s\n' "$output" | awk '/^[0-9]+([.][0-9]+)?$/ { print $1; exit }')"
+      fi
       if [[ -z "$sec" ]]; then
         echo "could not parse ClickHouse query time for q$qidx attempt $attempt" >&2
         printf '%s\n' "$output" >&2
@@ -273,7 +285,13 @@ PY
 }
 
 write_summary() {
-  export OUT_DIR TREE_OUT CLICKHOUSE_OUT SUMMARY_OUT ROWS TRIES GOMAP_REPLACE
+  if [[ -z "$TREEDB_RESULT" ]]; then
+    TREEDB_RESULT="$TREE_OUT/report.json"
+  fi
+  if [[ -z "$CLICKHOUSE_RESULT" ]]; then
+    CLICKHOUSE_RESULT="$CLICKHOUSE_OUT/result.json"
+  fi
+  export OUT_DIR TREE_OUT CLICKHOUSE_OUT SUMMARY_OUT ROWS TRIES GOMAP_REPLACE TREEDB_RESULT CLICKHOUSE_RESULT
   python3 - <<'PY' > "$SUMMARY_OUT"
 import json
 import os
@@ -286,11 +304,16 @@ rows_requested = int(os.environ["ROWS"])
 tries = os.environ["TRIES"]
 
 def load_json(path):
+    if not os.path.exists(path):
+        raise FileNotFoundError(
+            f"result file not found: {path}; set OUT_DIR to an existing run "
+            "or pass TREEDB_RESULT/CLICKHOUSE_RESULT when reusing partial runs"
+        )
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
 
-tree_doc = load_json(os.path.join(tree_out, "report.json"))
-ch_doc = load_json(os.path.join(clickhouse_out, "result.json"))
+tree_doc = load_json(os.environ["TREEDB_RESULT"])
+ch_doc = load_json(os.environ["CLICKHOUSE_RESULT"])
 tree_rows = {row["query"]: row for row in tree_doc["rows"] if row.get("system") == "TreeDB"}
 ch_times = ch_doc["result"]
 
@@ -344,8 +367,8 @@ print("# Preferred TreeDB column-store vs ClickHouse JSONBench")
 print()
 print(f"- Rows requested: `{rows_requested}`")
 print(f"- Tries: `{tries}`")
-print(f"- TreeDB report: `{tree_out}/report.md`")
-print(f"- ClickHouse result: `{clickhouse_out}/result.json`")
+print(f"- TreeDB report JSON: `{os.environ['TREEDB_RESULT']}`")
+print(f"- ClickHouse result JSON: `{os.environ['CLICKHOUSE_RESULT']}`")
 print()
 print("## Primary preferred/server-shaped rows")
 print()
