@@ -82,7 +82,7 @@ func treeDBEngineName(cfg runConfig) string {
 	case storageLayoutColumnStore:
 		return "treedb-collections-column-store-direct-go"
 	case storageLayoutColumnStorePrepared:
-		return "treedb-collections-column-store-prepared-direct-go"
+		return "treedb-collections-column-store-prepared-scan-go"
 	case storageLayoutColumnStorePreparedMetadata:
 		return "treedb-collections-column-store-prepared-metadata-direct-go"
 	default:

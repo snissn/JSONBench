@@ -71,6 +71,9 @@ run_matrix_cell() {
   ./run_matrix.sh
 }
 
+# run_matrix.sh regenerates reports from all result.json files already present
+# in OUT_DIR. Calling it twice is intentional: default metadata rows are a
+# focused q4/q5 pass appended beside the direct and prepared-scan cells.
 run_matrix_cell "$STORAGE_LAYOUTS" "$QUERY_CELLS"
 if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" && -n "${METADATA_QUERY_CELLS// }" ]]; then
   run_matrix_cell "column-store-prepared-metadata" "$METADATA_QUERY_CELLS"

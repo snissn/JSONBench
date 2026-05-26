@@ -8,7 +8,7 @@ import (
 )
 
 func TestNormalizeColumnStorePreparedLayout(t *testing.T) {
-	for _, raw := range []string{storageLayoutColumnStorePrepared, "column_store_prepared", "column-store-prepared-scan"} {
+	for _, raw := range []string{storageLayoutColumnStorePrepared, "column_store_prepared", "column-store-prepared-scan", "column_store_prepared_scan"} {
 		got, err := normalizeStorageLayout(raw)
 		if err != nil {
 			t.Fatalf("normalizeStorageLayout(%q): %v", raw, err)
