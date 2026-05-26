@@ -18,7 +18,6 @@ DUCKDB_SCALES="${DUCKDB_SCALES:-1m,10m}"
 CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}"
 CLICKHOUSE_SCALES="${CLICKHOUSE_SCALES:-1m,10m}"
 COMPACT_AFTER_LOAD="${COMPACT_AFTER_LOAD:-0}"
-COLUMN_STORE_Q3_FALLBACK="${COLUMN_STORE_Q3_FALLBACK:-0}"
 
 usage() {
   cat <<'EOF'
@@ -47,11 +46,6 @@ Environment:
                       Defaults to 1m,10m.
   COMPACT_AFTER_LOAD  Set to 1/true/yes/on to run full TreeDB compaction after
                       loading and before queries. Defaults to 0.
-  COLUMN_STORE_Q3_FALLBACK
-                      Set to 1/true/yes/on to run q3 for non-row storage layouts.
-                      Defaults to 0 because q3 currently uses a slow materialized
-                      fallback, not a physical column reducer.
-
 Flags:
   -h, --help          Show this help.
 
@@ -177,16 +171,6 @@ for scale in $SCALES; do
       fi
       if [[ "$SUITE" == "minimal" || "$SUITE" == "all" ]]; then
         for query in $QUERY_CELLS; do
-          if [[ "$storage_layout" != "row" && "$query" == "q3" ]]; then
-            case "$COLUMN_STORE_Q3_FALLBACK" in
-              1|true|TRUE|yes|YES|on|ON)
-                ;;
-              *)
-                echo "skip q3 for storage_layout=$storage_layout (slow materialized fallback; set COLUMN_STORE_Q3_FALLBACK=1 to run)" >&2
-                continue
-                ;;
-            esac
-          fi
           run_cell "$scale" "$format" "$storage_layout" "$query" "$query"
         done
       fi

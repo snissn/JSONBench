@@ -114,7 +114,7 @@ per cell:
 ```sh
 cd treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
-  STORAGE_LAYOUTS=column-store QUERY_CELLS="q1 q2 q4 q5" \
+  STORAGE_LAYOUTS=column-store QUERY_CELLS="q1 q2 q3 q4 q5" \
   ./run_matrix.sh
 ```
 
@@ -125,7 +125,7 @@ To also run the prepared physical-query path with q4/q5 aggregate metadata, add
 cd treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
   STORAGE_LAYOUTS="column-store column-store-prepared-metadata" \
-  QUERY_CELLS="q1 q2 q4 q5" \
+  QUERY_CELLS="q1 q2 q3 q4 q5" \
   ./run_matrix.sh
 ```
 
@@ -134,13 +134,12 @@ attempts. Its q4/q5 cells declare `min_time_us` aggregate metadata and pass that
 metadata name to TreeDB, so those queries answer from aggregate metadata instead
 of scanning base rows.
 
-q2/q4/q5 use query-specific sentinel masking during load (replacing unneeded
-filter field values with a sentinel) to match JSONBench filter semantics because
-the current physical column reducers do not yet expose separate filter
-predicates. The matrix runner skips q3 for column-store layouts by default
-because q3 currently falls back to a slow materialized scan rather than a
-physical aggregate; set `COLUMN_STORE_Q3_FALLBACK=1` only when you explicitly
-want that fallback measurement.
+q3 uses TreeDB's physical grouped-hour reducer over dictionary and int64 column
+sidecars. q4/q5 direct column-store cells use physical dictionary predicates;
+q4/q5 prepared aggregate-metadata cells still use query-specific sentinel
+masking during load so the aggregate metadata represents the filtered
+JSONBench post rows. q2 remains on the existing sentinel-masked count/distinct
+path. The matrix runner includes q3 for column-store layouts by default.
 
 ## Smoke Run
 

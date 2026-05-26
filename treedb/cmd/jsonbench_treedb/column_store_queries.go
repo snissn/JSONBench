@@ -28,6 +28,14 @@ func runColumnQ2(collection *collections.Collection, cfg runConfig, rows int) (q
 	return renderColumnQ2(rows, countResult, distinctResult), nil
 }
 
+func runColumnQ3(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
+	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", ""))
+	if err != nil {
+		return queryComputation{}, err
+	}
+	return renderColumnQ3(rows, result), nil
+}
+
 func runColumnQ4(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
 	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q4", collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", ""))
 	if err != nil {
@@ -54,8 +62,38 @@ func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnP
 	}
 	if columnStoreUsesAggregateMetadata(cfg.StorageLayout, query) {
 		req.AggregateMetadataName = columnStoreAggregateMetadataName
+		switch query {
+		case "q4":
+			req.TopK = 3
+			req.TopKOrder = collections.ColumnPhysicalQueryTopKInt64Asc
+			req.SkipEmptyGroupKey = true
+		case "q5":
+			req.TopK = 3
+			req.TopKOrder = collections.ColumnPhysicalQueryTopKInt64Desc
+			req.SkipEmptyGroupKey = true
+		}
+	}
+	switch query {
+	case "q3":
+		req.Predicates = []collections.ColumnPhysicalQueryPredicate{
+			{Column: "kind", Value: "commit"},
+			{Column: "operation", Value: "create"},
+			{Column: "event", Kind: collections.ColumnPhysicalQueryPredicateInList, Values: columnStoreQ3Events()},
+		}
+	case "q4", "q5":
+		if req.AggregateMetadataName == "" {
+			req.Predicates = []collections.ColumnPhysicalQueryPredicate{
+				{Column: "kind", Value: "commit"},
+				{Column: "operation", Value: "create"},
+				{Column: "event", Value: "app.bsky.feed.post"},
+			}
+		}
 	}
 	return req
+}
+
+func columnStoreQ3Events() []string {
+	return []string{"app.bsky.feed.post", "app.bsky.feed.repost", "app.bsky.feed.like"}
 }
 
 type preparedColumnQuery struct {
@@ -65,7 +103,7 @@ type preparedColumnQuery struct {
 }
 
 func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfig, name string) (*preparedColumnQuery, error) {
-	if !isPreparedColumnStoreLayout(cfg.StorageLayout) || name == "q3" {
+	if !isPreparedColumnStoreLayout(cfg.StorageLayout) {
 		return nil, nil
 	}
 	prepare := func(req collections.ColumnPhysicalQueryRequest) (*collections.ColumnPhysicalQueryRunner, error) {
@@ -91,6 +129,12 @@ func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfi
 			return nil, err
 		}
 		return &preparedColumnQuery{name: name, count: count, distinct: distinct}, nil
+	case "q3":
+		runner, err := prepare(columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", ""))
+		if err != nil {
+			return nil, err
+		}
+		return &preparedColumnQuery{name: name, count: runner}, nil
 	case "q4":
 		runner, err := prepare(columnPhysicalRequest(cfg, "q4", collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", ""))
 		if err != nil {
@@ -146,6 +190,8 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 			return queryComputation{}, err
 		}
 		return renderColumnQ2(rows, countResult, distinctResult), nil
+	case "q3":
+		return renderColumnQ3(rows, countResult), nil
 	case "q4":
 		return renderColumnQ4(rows, countResult), nil
 	case "q5":
@@ -202,6 +248,25 @@ func renderColumnQ2(rows int, countResult, distinctResult collections.ColumnPhys
 		return out[i]["event"].(string) < out[j]["event"].(string)
 	})
 	return queryComputation{RowsScanned: maxColumnPhysicalRowsScanned(rows, countResult, distinctResult), Rows: out}
+}
+
+func renderColumnQ3(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
+	out := make([]queryRow, 0, len(result.Groups))
+	for _, group := range result.Groups {
+		if group.Key == "" {
+			continue
+		}
+		out = append(out, queryRow{"event": group.Key, "hour_of_day": int64(group.Hour), "count": int64(group.Count)})
+	}
+	sort.Slice(out, func(i, j int) bool {
+		hi := out[i]["hour_of_day"].(int64)
+		hj := out[j]["hour_of_day"].(int64)
+		if hi != hj {
+			return hi < hj
+		}
+		return out[i]["event"].(string) < out[j]["event"].(string)
+	})
+	return queryComputation{RowsScanned: columnPhysicalRowsScanned(rows, result), Rows: out}
 }
 
 func renderColumnQ4(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {

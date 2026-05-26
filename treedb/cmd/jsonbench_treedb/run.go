@@ -601,7 +601,7 @@ func buildDocument(raw []byte, format collections.DocumentFormat, projection, st
 	}
 	extracted := extractFullJSONFields(raw, fields)
 	if isColumnStoreLayout(storageLayout) {
-		applyColumnStoreQueryMask(&extracted, projection)
+		applyColumnStoreQueryMask(&extracted, projection, storageLayout)
 	}
 	if format == collections.DocumentFormatTemplateV1 {
 		if encoder == nil {

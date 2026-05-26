@@ -8,7 +8,7 @@ import (
 )
 
 func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
-	for _, query := range []string{"q1", "q2", "q4", "q5"} {
+	for _, query := range []string{"q1", "q2", "q3", "q4", "q5"} {
 		query := query
 		t.Run(query, func(t *testing.T) {
 			row := runJSONBenchFixtureCell(t, storageLayoutRow, query)
@@ -41,7 +41,7 @@ func TestColumnStorePreparedMetadataLayoutMatchesRowFixture(t *testing.T) {
 	// The checked-in JSONBench fixture is intentionally only six rows, so this is
 	// a semantic smoke test; the full top-N ordering path is covered by local
 	// benchmark runs over larger downloaded JSONBench datasets.
-	for _, query := range []string{"q1", "q2", "q4", "q5"} {
+	for _, query := range []string{"q1", "q2", "q3", "q4", "q5"} {
 		query := query
 		t.Run(query, func(t *testing.T) {
 			row := runJSONBenchFixtureCell(t, storageLayoutRow, query)
