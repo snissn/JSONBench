@@ -77,30 +77,22 @@ require_positive_int() {
   fi
 }
 
-scale_for_rows() {
-  case "$1" in
-    1000000) echo "1m" ;;
-    10000000) echo "10m" ;;
-    100000000) echo "100m" ;;
-    1000000000) echo "1000m" ;;
-    *) echo "subset" ;;
-  esac
-}
-
 require_positive_int ROWS "$ROWS"
 require_positive_int TRIES "$TRIES"
+if ! command -v python3 >/dev/null 2>&1; then
+  echo "python3 is required to measure load time and write preferred_summary.md" >&2
+  exit 1
+fi
 
 mkdir -p "$OUT_DIR"
 TREE_OUT="$OUT_DIR/treedb"
 CLICKHOUSE_OUT="$OUT_DIR/clickhouse"
 SUMMARY_OUT="$OUT_DIR/preferred_summary.md"
-SCALE="$(scale_for_rows "$ROWS")"
 
 run_treedb() {
   mkdir -p "$TREE_OUT"
   DATA_DIR="$DATA_DIR" \
   ROWS="$ROWS" \
-  SCALE="$SCALE" \
   TRIES="$TRIES" \
   GOMAP_REPLACE="$GOMAP_REPLACE" \
   STORAGE_LAYOUTS="column-store-prepared-metadata" \
@@ -189,8 +181,8 @@ SQL
   fi
 
   mapfile -t input_files < <(find "$DATA_DIR" -maxdepth 1 \( -name '*.json.gz' -o -name '*.json' \) -type f | LC_ALL=C sort | head -n "$CLICKHOUSE_MAX_FILES")
-  if [[ "${#input_files[@]}" -eq 0 ]]; then
-    echo "no input files found in $DATA_DIR" >&2
+  if [[ "${#input_files[@]}" -ne "$CLICKHOUSE_MAX_FILES" ]]; then
+    echo "requested $CLICKHOUSE_MAX_FILES input files in $DATA_DIR, found ${#input_files[@]}" >&2
     exit 1
   fi
   for file in "${input_files[@]}"; do
@@ -257,6 +249,7 @@ PY
     --arg date "$(date -u +%F)" \
     --arg machine "$machine_name" \
     --arg retains_structure "yes" \
+    --arg allow_errors "$CLICKHOUSE_ALLOW_ERRORS" \
     --argjson requested_rows "$ROWS" \
     --argjson dataset_size "$loaded_rows" \
     --argjson num_loaded_documents "$loaded_rows" \
@@ -272,7 +265,7 @@ PY
       date: $date,
       machine: $machine,
       retains_structure: $retains_structure,
-      tags: ["local", "clickhouse-local", "allow-errors"],
+      tags: (["local", "clickhouse-local"] + (if $allow_errors == "1" then ["allow-errors"] else [] end)),
       requested_rows: $requested_rows,
       dataset_size: $dataset_size,
       num_loaded_documents: $num_loaded_documents,
@@ -314,8 +307,17 @@ def load_json(path):
 
 tree_doc = load_json(os.environ["TREEDB_RESULT"])
 ch_doc = load_json(os.environ["CLICKHOUSE_RESULT"])
-tree_rows = {row["query"]: row for row in tree_doc["rows"] if row.get("system") == "TreeDB"}
+tree_rows = {
+    row["query"]: row
+    for row in tree_doc["rows"]
+    if row.get("system", "TreeDB") == "TreeDB"
+}
+missing_tree = [query for query in ["q1", "q2", "q3", "q4", "q5"] if query not in tree_rows]
+if missing_tree:
+    raise ValueError(f"TreeDB report is missing query rows: {', '.join(missing_tree)}")
 ch_times = ch_doc["result"]
+if len(ch_times) < 5:
+    raise ValueError(f"ClickHouse result has {len(ch_times)} query rows, expected 5")
 
 def best(values):
     return min(values)
@@ -379,7 +381,8 @@ for idx, query in enumerate(["q1", "q2", "q3", "q4", "q5"]):
     ch_best = best(ch_times[idx])
     label = "column-store-prepared" if query in {"q1", "q2", "q3"} else "column-store-prepared-metadata"
     scanned = tree.get("rows_scanned", 0)
-    tree_rps = rows_per_second(tree["dataset_size"], tree["best_seconds"])
+    tree_dataset_size = tree.get("dataset_size", rows_requested)
+    tree_rps = rows_per_second(tree_dataset_size, tree["best_seconds"])
     if scanned == 0:
         tree_rps += " logical"
     print(
@@ -417,5 +420,19 @@ if [[ "$RUN_TREEDB" == "1" ]]; then
 fi
 if [[ "$RUN_CLICKHOUSE" == "1" ]]; then
   run_clickhouse
+fi
+if [[ -z "$TREEDB_RESULT" ]]; then
+  TREEDB_RESULT="$TREE_OUT/report.json"
+fi
+if [[ -z "$CLICKHOUSE_RESULT" ]]; then
+  CLICKHOUSE_RESULT="$CLICKHOUSE_OUT/result.json"
+fi
+if [[ ! -f "$TREEDB_RESULT" ]]; then
+  echo "missing TreeDB result: $TREEDB_RESULT; run with RUN_TREEDB=1 or pass TREEDB_RESULT" >&2
+  exit 1
+fi
+if [[ ! -f "$CLICKHOUSE_RESULT" ]]; then
+  echo "missing ClickHouse result: $CLICKHOUSE_RESULT; run with RUN_CLICKHOUSE=1 or pass CLICKHOUSE_RESULT" >&2
+  exit 1
 fi
 write_summary

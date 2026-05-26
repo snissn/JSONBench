@@ -23,8 +23,22 @@ scale_for_rows() {
   esac
 }
 
+rows_for_scale() {
+  case "$1" in
+    1m) echo "1000000" ;;
+    10m) echo "10000000" ;;
+    100m) echo "100000000" ;;
+    1000m|1b) echo "1000000000" ;;
+    *) echo "$ROWS" ;;
+  esac
+}
+
 if [[ -z "$SCALE" ]]; then
   SCALE="$(scale_for_rows "$ROWS")"
+fi
+EFFECTIVE_ROWS="$(rows_for_scale "$SCALE")"
+if [[ "$SCALE" != "subset" ]]; then
+  ROWS="$EFFECTIVE_ROWS"
 fi
 
 backup_dir=""
@@ -52,7 +66,7 @@ cat <<EOF
     JSONBench: $jsonbench_commit
     gomap:     $gomap_module
     data:      $DATA_DIR
-    rows:      $ROWS
+    rows:      $EFFECTIVE_ROWS
     scale:     $SCALE
     tries:     $TRIES
     layouts:   $STORAGE_LAYOUTS
@@ -82,7 +96,7 @@ summary="$OUT_DIR/columnstore_summary.md"
   echo
   echo "- JSONBench commit: \`$jsonbench_commit\`"
   echo "- gomap: \`$gomap_module\`"
-  echo "- rows: \`$ROWS\`"
+  echo "- rows: \`$EFFECTIVE_ROWS\`"
   echo "- tries: \`$TRIES\`"
   echo "- report: \`$OUT_DIR/report.md\`"
   echo
