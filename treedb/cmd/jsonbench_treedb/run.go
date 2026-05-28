@@ -162,7 +162,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.IntVar(&cfg.Rows, "rows", 0, "Maximum rows to load; defaults from -scale")
 	fs.IntVar(&cfg.MaxFiles, "max-files", 0, "Maximum input files to read; defaults from -scale")
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "TreeDB collection format: json or template-v1")
-	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row, column-store, or column-store-prepared-metadata")
+	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row, column-store, column-store-prepared, or column-store-prepared-metadata")
 	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q5")
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q5")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")

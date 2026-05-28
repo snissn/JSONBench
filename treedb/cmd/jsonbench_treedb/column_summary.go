@@ -69,7 +69,7 @@ func renderColumnStoreCompactSummary(doc reportDocument) []byte {
 			continue
 		}
 		switch row.StorageLayout {
-		case storageLayoutColumnStore, storageLayoutColumnStorePreparedMetadata:
+		case storageLayoutColumnStore, storageLayoutColumnStorePrepared, storageLayoutColumnStorePreparedMetadata:
 			rows = append(rows, row)
 		}
 	}
@@ -95,13 +95,14 @@ func renderColumnStoreCompactSummary(doc reportDocument) []byte {
 		fmt.Fprintf(&buf, "No TreeDB column-store rows found.\n")
 		return buf.Bytes()
 	}
-	fmt.Fprintf(&buf, "| layout | query | best | loaded rows/s | scanned rows | storage | load |\n")
-	fmt.Fprintf(&buf, "|---|---:|---:|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| layout | mode | query | best | loaded rows/s | scanned rows | storage | load |\n")
+	fmt.Fprintf(&buf, "|---|---|---:|---:|---:|---:|---:|---:|\n")
 	for _, row := range rows {
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s |\n",
 			row.StorageLayout,
+			columnSummaryExecutionMode(row),
 			row.Query,
 			formatSeconds(row.BestSec),
 			formatColumnSummaryRowsPerSecond(row),
@@ -110,7 +111,7 @@ func renderColumnStoreCompactSummary(doc reportDocument) []byte {
 			formatSeconds(row.LoadSec),
 		)
 	}
-	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. Metadata paths with `scanned rows` = 0 answer from aggregate metadata.\n")
+	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. `prepared metadata top-k` applies only to q4/q5 and answers from aggregate metadata with `scanned rows` = 0; other prepared rows scan base columns.\n")
 	return buf.Bytes()
 }
 
@@ -118,10 +119,28 @@ func columnSummaryLayoutRank(layout string) int {
 	switch layout {
 	case storageLayoutColumnStore:
 		return 0
-	case storageLayoutColumnStorePreparedMetadata:
+	case storageLayoutColumnStorePrepared:
 		return 1
+	case storageLayoutColumnStorePreparedMetadata:
+		return 2
 	default:
 		return 100
+	}
+}
+
+func columnSummaryExecutionMode(row reportRow) string {
+	switch row.StorageLayout {
+	case storageLayoutColumnStore:
+		return "direct physical scan"
+	case storageLayoutColumnStorePrepared:
+		return "prepared physical scan"
+	case storageLayoutColumnStorePreparedMetadata:
+		if columnStoreUsesAggregateMetadata(row.StorageLayout, row.Query) {
+			return "prepared metadata top-k"
+		}
+		return "prepared physical scan"
+	default:
+		return ""
 	}
 }
 

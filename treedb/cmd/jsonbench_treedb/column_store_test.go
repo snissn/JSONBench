@@ -7,6 +7,18 @@ import (
 	"github.com/snissn/gomap/TreeDB/collections"
 )
 
+func TestNormalizeColumnStorePreparedLayout(t *testing.T) {
+	for _, raw := range []string{storageLayoutColumnStorePrepared, "column_store_prepared", "column-store-prepared-scan", "column_store_prepared_scan"} {
+		got, err := normalizeStorageLayout(raw)
+		if err != nil {
+			t.Fatalf("normalizeStorageLayout(%q): %v", raw, err)
+		}
+		if got != storageLayoutColumnStorePrepared {
+			t.Fatalf("normalizeStorageLayout(%q)=%q want %q", raw, got, storageLayoutColumnStorePrepared)
+		}
+	}
+}
+
 func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 	for _, query := range []string{"q1", "q2", "q3", "q4", "q5"} {
 		query := query
@@ -34,6 +46,25 @@ func TestColumnStoreQ1KeepsEmptyEventBucket(t *testing.T) {
 	}
 	if !reflect.DeepEqual(computed.Rows, want) {
 		t.Fatalf("q1 rows=%v want %v", computed.Rows, want)
+	}
+}
+
+func TestColumnStorePreparedLayoutMatchesRowFixture(t *testing.T) {
+	for _, query := range []string{"q1", "q2", "q3", "q4", "q5"} {
+		query := query
+		t.Run(query, func(t *testing.T) {
+			row := runJSONBenchFixtureCell(t, storageLayoutRow, query)
+			column := runJSONBenchFixtureCell(t, storageLayoutColumnStorePrepared, query)
+			if got, want := column.Queries[0].ResultHash, row.Queries[0].ResultHash; got != want {
+				t.Fatalf("column-store-prepared result hash=%s want row hash=%s", got, want)
+			}
+			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
+				t.Fatalf("column-store-prepared rows_scanned=%d want %d", got, want)
+			}
+			if (query == "q4" || query == "q5") && column.Queries[0].RowsScanned == 0 {
+				t.Fatalf("column-store-prepared %s rows_scanned=0; non-metadata prepared layout must scan base rows", query)
+			}
+		})
 	}
 }
 

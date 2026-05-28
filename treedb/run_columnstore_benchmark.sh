@@ -8,7 +8,31 @@ DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-1000000}"
 TRIES="${TRIES:-3}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q5}"
-STORAGE_LAYOUTS="${STORAGE_LAYOUTS:-column-store column-store-prepared-metadata}"
+if [[ -z "${STORAGE_LAYOUTS:-}" ]]; then
+  STORAGE_LAYOUTS="column-store column-store-prepared"
+  RUN_DEFAULT_METADATA_LAYOUT=1
+else
+  RUN_DEFAULT_METADATA_LAYOUT=0
+fi
+
+default_metadata_query_cells() {
+  local out=""
+  local query
+  for query in $QUERY_CELLS; do
+    case "$query" in
+      q4|q5)
+        out="${out:+$out }$query"
+        ;;
+    esac
+  done
+  printf '%s' "$out"
+}
+
+METADATA_QUERY_CELLS_EXPLICIT=1
+if [[ -z "${METADATA_QUERY_CELLS+x}" ]]; then
+  METADATA_QUERY_CELLS="$(default_metadata_query_cells)"
+  METADATA_QUERY_CELLS_EXPLICIT=0
+fi
 OUT_DIR="${OUT_DIR:-/tmp/jsonbench_treedb_columnstore_$(date -u +%Y%m%d_%H%M%S)}"
 GOMAP_REPLACE="${GOMAP_REPLACE:-}"
 SCALE="${SCALE:-}"
@@ -60,6 +84,16 @@ fi
 
 jsonbench_commit="$(git -C "$ROOT_DIR/.." rev-parse --short HEAD 2>/dev/null || echo unknown)"
 gomap_module="$(go list -m -f '{{if .Replace}}{{.Replace.Path}}{{else}}{{.Version}}{{end}}' github.com/snissn/gomap)"
+metadata_label="custom STORAGE_LAYOUTS"
+if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" ]]; then
+  if [[ -n "${METADATA_QUERY_CELLS// }" ]]; then
+    metadata_label="column-store-prepared-metadata ($METADATA_QUERY_CELLS)"
+  elif [[ "$METADATA_QUERY_CELLS_EXPLICIT" == "1" ]]; then
+    metadata_label="none (METADATA_QUERY_CELLS is empty)"
+  else
+    metadata_label="none (QUERY_CELLS has no q4/q5 metadata cells)"
+  fi
+fi
 
 cat <<EOF
 ==> TreeDB column-store JSONBench default rerun
@@ -71,24 +105,38 @@ cat <<EOF
     tries:     $TRIES
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
+    metadata:  $metadata_label
     out:       $OUT_DIR
 EOF
 
-DATA_DIR="$DATA_DIR" \
-OUT_DIR="$OUT_DIR" \
-SCALES="$SCALE" \
-SUBSET_ROWS="$ROWS" \
-FORMATS="json" \
-STORAGE_LAYOUTS="$STORAGE_LAYOUTS" \
-SUITE="minimal" \
-QUERY_CELLS="$QUERY_CELLS" \
-TRIES="$TRIES" \
-PROFILE="${PROFILE:-fast}" \
-DATA_ROOT="${DATA_ROOT:-fast}" \
-BATCH_SIZE="${BATCH_SIZE:-16000}" \
-DUCKDB_RESULTS_DIR="${DUCKDB_RESULTS_DIR:-}" \
-CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}" \
-./run_matrix.sh
+run_matrix_cell() {
+  local layouts="$1"
+  local queries="$2"
+  DATA_DIR="$DATA_DIR" \
+  OUT_DIR="$OUT_DIR" \
+  SCALES="$SCALE" \
+  SUBSET_ROWS="$ROWS" \
+  FORMATS="json" \
+  STORAGE_LAYOUTS="$layouts" \
+  SUITE="minimal" \
+  QUERY_CELLS="$queries" \
+  TRIES="$TRIES" \
+  PROFILE="${PROFILE:-fast}" \
+  DATA_ROOT="${DATA_ROOT:-fast}" \
+  BATCH_SIZE="${BATCH_SIZE:-16000}" \
+  DUCKDB_RESULTS_DIR="${DUCKDB_RESULTS_DIR:-}" \
+  CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}" \
+  ./run_matrix.sh
+}
+
+# run_matrix.sh regenerates reports from all result.json files already present
+# in OUT_DIR. Calling it twice is intentional: default metadata rows are a
+# focused q4/q5 pass appended beside the direct and prepared-scan cells while
+# preserving the same scale/subset row selection as the primary pass.
+run_matrix_cell "$STORAGE_LAYOUTS" "$QUERY_CELLS"
+if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" && -n "${METADATA_QUERY_CELLS// }" ]]; then
+  run_matrix_cell "column-store-prepared-metadata" "$METADATA_QUERY_CELLS"
+fi
 
 summary="$OUT_DIR/columnstore_summary.md"
 {
