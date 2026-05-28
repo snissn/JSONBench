@@ -28,7 +28,7 @@ partial data: if `ROWS=1000000`, it must load exactly 1,000,000 rows.
 
 To include the ClickHouse q4 sort-order fairness matrix, set `RUN_Q4_FAIRNESS=1`.
 This creates an additional `bluesky_q4_time` table ordered by `time_us` first,
-runs the q4 aggregate and streaming-shaped variants from
+runs built-in q4 aggregate and streaming-shaped variants that mirror
 `q4_fairness_queries.sql`, and writes a `q4_fairness` array into `result.json`.
 
 ```sh

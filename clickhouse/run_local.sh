@@ -114,6 +114,9 @@ EOF
 
 ensure_server() {
   if server_running; then
+    # clickhousectl can report the process before the TCP listener is ready.
+    # Always probe the client path so subsequent load/query calls do not race
+    # a just-started or still-warming local server.
     wait_for_server
     return
   fi
