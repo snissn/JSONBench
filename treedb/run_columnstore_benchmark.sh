@@ -35,6 +35,35 @@ if [[ -z "${METADATA_QUERY_CELLS+x}" ]]; then
 fi
 OUT_DIR="${OUT_DIR:-/tmp/jsonbench_treedb_columnstore_$(date -u +%Y%m%d_%H%M%S)}"
 GOMAP_REPLACE="${GOMAP_REPLACE:-}"
+SCALE="${SCALE:-}"
+
+scale_for_rows() {
+  case "$1" in
+    1000000) echo "1m" ;;
+    10000000) echo "10m" ;;
+    100000000) echo "100m" ;;
+    1000000000) echo "1000m" ;;
+    *) echo "subset" ;;
+  esac
+}
+
+rows_for_scale() {
+  case "$1" in
+    1m) echo "1000000" ;;
+    10m) echo "10000000" ;;
+    100m) echo "100000000" ;;
+    1000m|1b) echo "1000000000" ;;
+    *) echo "$ROWS" ;;
+  esac
+}
+
+if [[ -z "$SCALE" ]]; then
+  SCALE="$(scale_for_rows "$ROWS")"
+fi
+EFFECTIVE_ROWS="$(rows_for_scale "$SCALE")"
+if [[ "$SCALE" != "subset" ]]; then
+  ROWS="$EFFECTIVE_ROWS"
+fi
 
 backup_dir=""
 restore_go_mod() {
@@ -71,7 +100,8 @@ cat <<EOF
     JSONBench: $jsonbench_commit
     gomap:     $gomap_module
     data:      $DATA_DIR
-    rows:      $ROWS
+    rows:      $EFFECTIVE_ROWS
+    scale:     $SCALE
     tries:     $TRIES
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
@@ -84,7 +114,7 @@ run_matrix_cell() {
   local queries="$2"
   DATA_DIR="$DATA_DIR" \
   OUT_DIR="$OUT_DIR" \
-  SCALES="subset" \
+  SCALES="$SCALE" \
   SUBSET_ROWS="$ROWS" \
   FORMATS="json" \
   STORAGE_LAYOUTS="$layouts" \
@@ -101,7 +131,8 @@ run_matrix_cell() {
 
 # run_matrix.sh regenerates reports from all result.json files already present
 # in OUT_DIR. Calling it twice is intentional: default metadata rows are a
-# focused q4/q5 pass appended beside the direct and prepared-scan cells.
+# focused q4/q5 pass appended beside the direct and prepared-scan cells while
+# preserving the same scale/subset row selection as the primary pass.
 run_matrix_cell "$STORAGE_LAYOUTS" "$QUERY_CELLS"
 if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" && -n "${METADATA_QUERY_CELLS// }" ]]; then
   run_matrix_cell "column-store-prepared-metadata" "$METADATA_QUERY_CELLS"
@@ -113,7 +144,7 @@ summary="$OUT_DIR/columnstore_summary.md"
   echo
   echo "- JSONBench commit: \`$jsonbench_commit\`"
   echo "- gomap: \`$gomap_module\`"
-  echo "- rows: \`$ROWS\`"
+  echo "- rows: \`$EFFECTIVE_ROWS\`"
   echo "- tries: \`$TRIES\`"
   echo "- report: \`$OUT_DIR/report.md\`"
   echo

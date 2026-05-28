@@ -128,7 +128,25 @@ DATA_DIR=./testdata/bluesky ROWS=6 TRIES=1 ./run_columnstore_benchmark.sh
 
 # test against a local gomap checkout without permanently editing go.mod
 GOMAP_REPLACE=/path/to/gomap ./run_columnstore_benchmark.sh
+
+# 10MM column-store rerun; ROWS automatically selects the 10m scale/input files
+ROWS=10000000 GOMAP_REPLACE=/path/to/gomap ./run_columnstore_benchmark.sh
 ```
+
+For the preferred 10MM TreeDB-vs-ClickHouse experiment, use the single-entry
+comparison script:
+
+```sh
+cd treedb
+ROWS=10000000 TRIES=3 GOMAP_REPLACE=/path/to/gomap \
+  ./run_preferred_columnstore_clickhouse_compare.sh
+```
+
+This runs the server-shaped TreeDB rows (q1/q2/q3 prepared physical runners,
+q4/q5 aggregate-metadata Top-K), loads ClickHouse through `clickhouse local`,
+and writes `preferred_summary.md` alongside the TreeDB and ClickHouse result
+JSON. Set `RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a
+run.
 
 The lower-level matrix runner is still available for custom cells. Column-store
 cells are query-shaped, so the runner loads one projection/query per cell:
