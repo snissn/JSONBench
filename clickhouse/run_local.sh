@@ -324,42 +324,35 @@ run_queries() {
   ' < "$OUT_DIR/attempts.tsv" > "$OUT_DIR/result_times.json"
 }
 
+run_q4_fairness_query() {
+  local label="$1"
+  local description="$2"
+  local table="$3"
+  local sort_key="$4"
+  local query_shape="$5"
+  local query="$6"
+  local attempt=1
+  local sec=""
+  while [[ "$attempt" -le "$TRIES" ]]; do
+    echo "running $label attempt $attempt"
+    sec=$(client --database "$DB_NAME" --time --format=Null --progress 0 --query "$query" 2>&1 | awk '/^[0-9]+([.][0-9]+)?$/ { print $1; exit }')
+    if [[ -z "$sec" ]]; then
+      echo "could not parse ClickHouse query time for $label attempt $attempt" >&2
+      exit 1
+    fi
+    printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$label" "$description" "$table" "$sort_key" "$query_shape" "$attempt" "$sec" >> "$OUT_DIR/q4_fairness_attempts.tsv"
+    attempt=$((attempt + 1))
+  done
+}
+
 run_q4_fairness_queries() {
   if [[ "$RUN_Q4_FAIRNESS" != "1" ]]; then
     return
   fi
 
   local q4_time_table="${TABLE_NAME}_q4_time"
-  local attempt=0
-  local sec=""
-  local label=""
-  local description=""
-  local table=""
-  local sort_key=""
-  local query_shape=""
-  local query=""
 
   : > "$OUT_DIR/q4_fairness_attempts.tsv"
-
-  run_q4_fairness_query() {
-    label="$1"
-    description="$2"
-    table="$3"
-    sort_key="$4"
-    query_shape="$5"
-    query="$6"
-    attempt=1
-    while [[ "$attempt" -le "$TRIES" ]]; do
-      echo "running $label attempt $attempt"
-      sec=$(client --database "$DB_NAME" --time --format=Null --progress 0 --query "$query" 2>&1 | awk '/^[0-9]+([.][0-9]+)?$/ { print $1; exit }')
-      if [[ -z "$sec" ]]; then
-        echo "could not parse ClickHouse query time for $label attempt $attempt" >&2
-        exit 1
-      fi
-      printf '%s\t%s\t%s\t%s\t%s\t%s\t%s\n' "$label" "$description" "$table" "$sort_key" "$query_shape" "$attempt" "$sec" >> "$OUT_DIR/q4_fairness_attempts.tsv"
-      attempt=$((attempt + 1))
-    done
-  }
 
   run_q4_fairness_query \
     "q4a_aggregate" \
