@@ -135,6 +135,7 @@ type reconstructionResult struct {
 	SourceCanonicalJSONHash string `json:"source_canonical_json_hash,omitempty"`
 	StoredCanonicalJSONHash string `json:"stored_canonical_json_hash,omitempty"`
 	Valid                   bool   `json:"valid"`
+	Mismatch                string `json:"mismatch,omitempty"`
 }
 
 type queryRun struct {
@@ -313,6 +314,10 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		}
 		compaction = &compact
 	}
+	queryResults, err := runQueries(collection, cfg, load.Rows)
+	if err != nil {
+		return runResult{}, err
+	}
 	var reconstruction *reconstructionResult
 	if cfg.ValidateReconstruction {
 		validated, err := validateStoredReconstruction(collection, cfg, load.Rows, load.SourceCanonicalJSONHash)
@@ -322,10 +327,6 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		reconstruction = &validated
 	}
 	storage, err := directoryUsage(cfg.DBDir, load.Rows)
-	if err != nil {
-		return runResult{}, err
-	}
-	queryResults, err := runQueries(collection, cfg, load.Rows)
 	if err != nil {
 		return runResult{}, err
 	}
@@ -609,7 +610,7 @@ func validateStoredReconstruction(collection *collections.Collection, cfg runCon
 	out.StoredCanonicalJSONHash = hasher.Sum()
 	out.Valid = out.StoredCanonicalJSONHash == out.SourceCanonicalJSONHash
 	if !out.Valid {
-		return out, fmt.Errorf("reconstructed JSON canonical hash=%s want source hash=%s", out.StoredCanonicalJSONHash, out.SourceCanonicalJSONHash)
+		out.Mismatch = fmt.Sprintf("reconstructed JSON canonical hash=%s want source hash=%s", out.StoredCanonicalJSONHash, out.SourceCanonicalJSONHash)
 	}
 	return out, nil
 }
@@ -1045,7 +1046,16 @@ func (h *canonicalJSONHasher) Sum() string {
 
 func canonicalJSON(raw []byte) ([]byte, error) {
 	var value any
-	if err := json.Unmarshal(raw, &value); err != nil {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	dec.UseNumber()
+	if err := dec.Decode(&value); err != nil {
+		return nil, err
+	}
+	var trailing any
+	if err := dec.Decode(&trailing); err != io.EOF {
+		if err == nil {
+			return nil, errors.New("invalid JSON: multiple top-level values")
+		}
 		return nil, err
 	}
 	return json.Marshal(value)

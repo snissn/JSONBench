@@ -39,6 +39,17 @@ func TestNormalizeFullColumnStoreLayouts(t *testing.T) {
 	}
 }
 
+func TestCanonicalJSONPreservesJSONNumbers(t *testing.T) {
+	got, err := canonicalJSON([]byte(`{"fraction":1.0,"large":100000000000000000001}`))
+	if err != nil {
+		t.Fatalf("canonicalJSON: %v", err)
+	}
+	const want = `{"fraction":1.0,"large":100000000000000000001}`
+	if string(got) != want {
+		t.Fatalf("canonicalJSON=%s want %s", got, want)
+	}
+}
+
 func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 	for _, query := range []string{"q1", "q2", "q3", "q4", "q5"} {
 		query := query
