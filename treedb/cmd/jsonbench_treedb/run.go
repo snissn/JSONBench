@@ -15,6 +15,7 @@ import (
 	"hash"
 	"io"
 	"os"
+	"path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -105,9 +106,25 @@ type loadResult struct {
 }
 
 type storageResult struct {
-	TotalBytes  int64   `json:"total_bytes"`
+	TotalBytes              int64                                      `json:"total_bytes"`
+	GrossBytes              int64                                      `json:"gross_bytes,omitempty"`
+	ExcludedBytes           int64                                      `json:"excluded_bytes,omitempty"`
+	BytesPerRow             float64                                    `json:"bytes_per_row,omitempty"`
+	FileCount               int                                        `json:"file_count"`
+	ExcludedFileCount       int                                        `json:"excluded_file_count,omitempty"`
+	AccountingScope         string                                     `json:"accounting_scope,omitempty"`
+	MeasurementPhase        string                                     `json:"measurement_phase,omitempty"`
+	Categories              []storageCategoryResult                    `json:"categories,omitempty"`
+	ColumnStorePhysical     *collections.ColumnStorePhysicalAccounting `json:"column_store_physical,omitempty"`
+	ColumnAssetReachability *collections.ColumnAssetReachabilityPlan   `json:"column_asset_reachability,omitempty"`
+}
+
+type storageCategoryResult struct {
+	Category    string  `json:"category"`
+	Bytes       int64   `json:"bytes"`
 	BytesPerRow float64 `json:"bytes_per_row,omitempty"`
 	FileCount   int     `json:"file_count"`
+	Included    bool    `json:"included"`
 }
 
 type compactionResult struct {
@@ -326,7 +343,11 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		}
 		reconstruction = &validated
 	}
-	storage, err := directoryUsage(cfg.DBDir, load.Rows)
+	measurementPhase := "post_load"
+	if cfg.CompactAfterLoad {
+		measurementPhase = "post_maintenance"
+	}
+	storage, err := collectTreeDBStorageUsage(context.Background(), cfg.DBDir, collection, cfg, load.Rows, measurementPhase)
 	if err != nil {
 		return runResult{}, err
 	}
@@ -365,7 +386,7 @@ func compactLoadedData(ctx context.Context, collection *collections.Collection, 
 	out := compactionResult{Enabled: true}
 	wallStart := time.Now()
 
-	storageBefore, err := directoryUsage(cfg.DBDir, rows)
+	storageBefore, err := collectTreeDBStorageUsage(ctx, cfg.DBDir, collection, cfg, rows, "pre_maintenance")
 	if err != nil {
 		return out, fmt.Errorf("measure storage before compaction: %w", err)
 	}
@@ -389,7 +410,7 @@ func compactLoadedData(ctx context.Context, collection *collections.Collection, 
 	out.ValueLogGCStats = stats.Storage.ValueLogGC
 	out.LeafGenerationGCStats = stats.Storage.LeafGenerationGC
 
-	storageAfter, err := directoryUsage(cfg.DBDir, rows)
+	storageAfter, err := collectTreeDBStorageUsage(ctx, cfg.DBDir, collection, cfg, rows, "post_maintenance")
 	if err != nil {
 		return out, fmt.Errorf("measure storage after compaction: %w", err)
 	}
@@ -974,6 +995,8 @@ func expandPath(path string) (string, error) {
 
 func directoryUsage(dir string, rows int) (storageResult, error) {
 	var out storageResult
+	out.AccountingScope = "treedb_db_directory_durable_files"
+	categories := make(map[string]*storageCategoryResult)
 	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -985,8 +1008,27 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 		if err != nil {
 			return err
 		}
-		out.TotalBytes += info.Size()
-		out.FileCount++
+		size := info.Size()
+		out.GrossBytes += size
+		rel, err := filepath.Rel(dir, path)
+		if err != nil {
+			return err
+		}
+		category, included := classifyTreeDBStorageFile(rel)
+		bucket := categories[category]
+		if bucket == nil {
+			bucket = &storageCategoryResult{Category: category, Included: included}
+			categories[category] = bucket
+		}
+		bucket.Bytes += size
+		bucket.FileCount++
+		if included {
+			out.TotalBytes += size
+			out.FileCount++
+		} else {
+			out.ExcludedBytes += size
+			out.ExcludedFileCount++
+		}
 		return nil
 	})
 	if err != nil {
@@ -995,7 +1037,180 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 	if rows > 0 {
 		out.BytesPerRow = float64(out.TotalBytes) / float64(rows)
 	}
+	out.Categories = storageCategoriesForResult(categories, rows)
 	return out, nil
+}
+
+func collectTreeDBStorageUsage(ctx context.Context, dir string, collection *collections.Collection, cfg runConfig, rows int, phase string) (storageResult, error) {
+	storage, err := directoryUsage(dir, rows)
+	if err != nil {
+		return storage, err
+	}
+	storage.MeasurementPhase = phase
+	if !isColumnStoreLayout(cfg.StorageLayout) || collection == nil {
+		return storage, nil
+	}
+	physical, err := collection.ColumnStorePhysicalAccounting(ctx, collections.ColumnStorePhysicalAccountingOptions{
+		DetailedSections: true,
+		ReadIntegrity:    collections.ColumnAssetReadIntegrityVerify,
+	})
+	if err != nil {
+		return storage, fmt.Errorf("collect column-store physical accounting: %w", err)
+	}
+	storage.ColumnStorePhysical = &physical
+	reachability, err := collection.PlanColumnAssetReachability(ctx, collections.ColumnAssetReachabilityOptions{
+		SegmentDetails: true,
+	})
+	if err != nil {
+		return storage, fmt.Errorf("collect column asset reachability accounting: %w", err)
+	}
+	storage.ColumnAssetReachability = &reachability
+	return storage, nil
+}
+
+func classifyTreeDBStorageFile(rel string) (string, bool) {
+	rel = filepath.ToSlash(filepath.Clean(rel))
+	lowerRel := strings.ToLower(rel)
+	base := strings.ToLower(path.Base(lowerRel))
+	if isTreeDBStorageRuntimeLock(lowerRel, base) {
+		return "runtime_locks", false
+	}
+	if isTreeDBStorageProfileArtifact(lowerRel, base) {
+		return "profile_artifacts", false
+	}
+	if isTreeDBStorageTransientTemp(lowerRel, base) {
+		return "temp_transient", false
+	}
+	switch {
+	case rel == "index.db" || rel == "maindb/index.db":
+		return "primary_index", true
+	case rel == "dictdb/index.db":
+		return "dictionary_index", true
+	case strings.Contains(lowerRel, "/column_assets/") || strings.HasPrefix(lowerRel, "column_assets/"):
+		return classifyTreeDBColumnAssetFile(lowerRel), true
+	case strings.Contains(lowerRel, "/leaf_vlog/") || strings.HasPrefix(lowerRel, "leaf_vlog/"):
+		return "leaf_vlog", true
+	case strings.Contains(lowerRel, "/value_vlog/") || strings.HasPrefix(lowerRel, "value_vlog/"):
+		return "value_vlog", true
+	case strings.Contains(lowerRel, "/wal/") || strings.HasPrefix(lowerRel, "wal/") || strings.HasSuffix(lowerRel, ".wal"):
+		return "wal", true
+	case base == "format.json" || base == "format_config.json":
+		if strings.HasPrefix(lowerRel, "dictdb/") {
+			return "dictionary_db_metadata", true
+		}
+		return "format_metadata", true
+	case base == "vlog_ref_counts.meta":
+		return "refcount_metadata", true
+	case strings.HasPrefix(lowerRel, "dictdb/"):
+		return "dictionary_db_metadata", true
+	default:
+		return "other", true
+	}
+}
+
+func classifyTreeDBColumnAssetFile(lowerRel string) string {
+	switch {
+	case strings.Contains(lowerRel, "/assets/segments/"):
+		return "column_asset_segments"
+	case strings.Contains(lowerRel, "/assets/indexes/"):
+		return "column_asset_indexes"
+	case strings.Contains(lowerRel, "/quarantine/"):
+		return "column_asset_quarantine"
+	default:
+		return "column_asset_metadata"
+	}
+}
+
+func isTreeDBStorageRuntimeLock(lowerRel, base string) bool {
+	if base == "lock" || base == "lockfile" || strings.HasSuffix(base, ".lock") || strings.HasSuffix(base, "-owner.lock") {
+		return true
+	}
+	return strings.HasSuffix(lowerRel, "/lock")
+}
+
+func isTreeDBStorageProfileArtifact(lowerRel, base string) bool {
+	switch base {
+	case "trace.out", "benchprof_results.json", "benchprof_results.md":
+		return true
+	}
+	return strings.HasSuffix(lowerRel, ".pprof")
+}
+
+func isTreeDBStorageTransientTemp(lowerRel, base string) bool {
+	if strings.Contains(lowerRel, "/tmp/") || strings.Contains(lowerRel, "/temp/") {
+		return true
+	}
+	return strings.HasSuffix(base, ".tmp") ||
+		strings.HasSuffix(base, ".partial") ||
+		strings.HasSuffix(base, ".part") ||
+		strings.HasPrefix(base, ".tmp")
+}
+
+func storageCategoriesForResult(categories map[string]*storageCategoryResult, rows int) []storageCategoryResult {
+	if len(categories) == 0 {
+		return nil
+	}
+	out := make([]storageCategoryResult, 0, len(categories))
+	for _, category := range categories {
+		item := *category
+		if rows > 0 {
+			item.BytesPerRow = float64(item.Bytes) / float64(rows)
+		}
+		out = append(out, item)
+	}
+	sort.Slice(out, func(i, j int) bool {
+		a, b := out[i], out[j]
+		if a.Included != b.Included {
+			return a.Included
+		}
+		if rankA, rankB := storageCategoryRank(a.Category), storageCategoryRank(b.Category); rankA != rankB {
+			return rankA < rankB
+		}
+		if a.Bytes != b.Bytes {
+			return a.Bytes > b.Bytes
+		}
+		return a.Category < b.Category
+	})
+	return out
+}
+
+func storageCategoryRank(category string) int {
+	switch category {
+	case "primary_index":
+		return 10
+	case "dictionary_index":
+		return 20
+	case "column_asset_segments":
+		return 30
+	case "column_asset_indexes":
+		return 31
+	case "column_asset_metadata":
+		return 32
+	case "column_asset_quarantine":
+		return 33
+	case "leaf_vlog":
+		return 40
+	case "value_vlog":
+		return 41
+	case "wal":
+		return 50
+	case "format_metadata":
+		return 60
+	case "refcount_metadata":
+		return 61
+	case "dictionary_db_metadata":
+		return 62
+	case "other":
+		return 90
+	case "runtime_locks":
+		return 100
+	case "profile_artifacts":
+		return 101
+	case "temp_transient":
+		return 102
+	default:
+		return 200
+	}
 }
 
 func documentID(row uint64) []byte {

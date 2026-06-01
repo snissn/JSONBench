@@ -28,12 +28,8 @@ github.com/snissn/compress v1.18.2-snissn.0.0.20260506201017-87fb149e4721 h1:2XY
 github.com/snissn/compress v1.18.2-snissn.0.0.20260506201017-87fb149e4721/go.mod h1:p4xiZN07JMUF5xuybNGkG+pozT12MAblxCx36z+PIYM=
 github.com/snissn/go-crc32-asm v0.0.0-20260522204125-08945951423a h1:uqSq50AAT36ZzDiRApq8GNsbeJASPaneZ6aKfw3KShc=
 github.com/snissn/go-crc32-asm v0.0.0-20260522204125-08945951423a/go.mod h1:PDwKLbWpRDAN2IPbK9PxIgSx0YdwQaSOLWObRawQJ58=
-github.com/snissn/gomap v0.5.1-0.20260525071433-f7a191df95a1 h1:yIJlFFzrJr5kVnoYa8Ux1RROWMJPaLIc6fopkTJvCF4=
-github.com/snissn/gomap v0.5.1-0.20260525071433-f7a191df95a1/go.mod h1:QSwxtipoA9YdqEDYTU2UE6ZU4R2odrOdeLdtz6jzqtI=
-github.com/snissn/gomap v0.5.1-0.20260526104534-3ee8116c3900 h1:gAFY0jdxbiywfo8udkkd7nfrSmpvqZPXF57w/6NjciQ=
-github.com/snissn/gomap v0.5.1-0.20260526104534-3ee8116c3900/go.mod h1:QSwxtipoA9YdqEDYTU2UE6ZU4R2odrOdeLdtz6jzqtI=
-github.com/snissn/gomap v0.5.1-0.20260601060645-b483843aa782 h1:09I1vk8Oj1LH9TjU7cCA7XydwScEgKYbKg8sd5yR4Cc=
-github.com/snissn/gomap v0.5.1-0.20260601060645-b483843aa782/go.mod h1:QSwxtipoA9YdqEDYTU2UE6ZU4R2odrOdeLdtz6jzqtI=
+github.com/snissn/gomap v0.5.1-0.20260601183440-b852d9c70d3b h1:2onr1TDb6jChWzQOPXsUPnyIbM8VZ9lLZUe1TQI1rhY=
+github.com/snissn/gomap v0.5.1-0.20260601183440-b852d9c70d3b/go.mod h1:QSwxtipoA9YdqEDYTU2UE6ZU4R2odrOdeLdtz6jzqtI=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tidwall/btree v1.8.1 h1:27ehoXvm5AG/g+1VxLS1SD3vRhp/H7LuEfwNvddEdmA=
