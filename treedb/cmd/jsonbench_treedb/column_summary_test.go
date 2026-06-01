@@ -12,14 +12,17 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q3", DatasetSize: 1_000_000, BestSec: 0.010, RowsScanned: 1_000_000, StorageBytes: 1024, LoadSec: 2},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePrepared, Query: "q4", DatasetSize: 1_000_000, BestSec: 0.020, RowsScanned: 1_000_000, StorageBytes: 1024, LoadSec: 2},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStore, Query: "q3", DatasetSize: 1_000_000, BestSec: 0.025, RowsScanned: 1_000_000, StorageBytes: 2 * 1024 * 1024, LoadSec: 3},
+		{System: "TreeDB", StorageLayout: storageLayoutColumnStoreFull, DataShape: "full-retained-json", Query: "q2", DatasetSize: 1_000_000, BestSec: 0.030, RowsScanned: 1_000_000, StorageBytes: 4 * 1024 * 1024, LoadSec: 4},
 	}}
 	got := string(renderColumnStoreCompactSummary(doc))
 	for _, want := range []string{
-		"| layout | mode | query | best | loaded rows/s | scanned rows | storage | load |",
-		"| column-store | direct physical scan | q3 | 0.0250s | 40.0M | 1.0M | 2.00 MiB | 3.000s |",
-		"| column-store-prepared | prepared physical scan | q4 | 0.0200s | 50.0M | 1.0M | 1.00 KiB | 2.000s |",
-		"| column-store-prepared-metadata | prepared physical scan | q3 | 0.0100s | 100.0M | 1.0M | 1.00 KiB | 2.000s |",
-		"| column-store-prepared-metadata | prepared metadata top-k | q4 | 500.0us | 2.00B logical | 0 | 1.00 KiB | 2.000s |",
+		"| layout | shape | mode | query | best | loaded rows/s | scanned rows | storage | load |",
+		"| column-store | query-shaped-projection | direct physical scan | q3 | 0.0250s | 40.0M | 1.0M | 2.00 MiB | 3.000s |",
+		"| column-store-prepared | query-shaped-projection | prepared physical scan | q4 | 0.0200s | 50.0M | 1.0M | 1.00 KiB | 2.000s |",
+		"| column-store-prepared-metadata | query-shaped-projection | prepared physical scan | q3 | 0.0100s | 100.0M | 1.0M | 1.00 KiB | 2.000s |",
+		"| column-store-prepared-metadata | query-shaped-projection | prepared metadata top-k | q4 | 500.0us | 2.00B logical | 0 | 1.00 KiB | 2.000s |",
+		"| column-store-full | full-retained-json | direct physical scan | q2 | 0.0300s | 33.3M | 1.0M | 4.00 MiB | 4.000s |",
+		"`full-retained-json` rows store enough JSON payload",
 		"prepared metadata top-k` applies only to q4/q5",
 	} {
 		if !strings.Contains(got, want) {

@@ -31,26 +31,43 @@ type reportDocument struct {
 }
 
 type reportRow struct {
-	System        string    `json:"system"`
-	Engine        string    `json:"engine,omitempty"`
-	Scale         string    `json:"scale"`
-	RequestedRows int       `json:"requested_rows,omitempty"`
-	DatasetSize   int       `json:"dataset_size"`
-	Format        string    `json:"format,omitempty"`
-	StorageLayout string    `json:"storage_layout,omitempty"`
-	Projection    string    `json:"projection,omitempty"`
-	DataRoot      string    `json:"data_root,omitempty"`
-	Query         string    `json:"query"`
-	BestSec       float64   `json:"best_seconds"`
-	MedianSec     float64   `json:"median_seconds"`
-	AttemptsSec   []float64 `json:"attempts_seconds"`
-	RowsScanned   int       `json:"rows_scanned,omitempty"`
-	StorageBytes  int64     `json:"storage_bytes,omitempty"`
-	LoadSec       float64   `json:"load_seconds,omitempty"`
-	CompactionSec float64   `json:"compaction_seconds,omitempty"`
-	Compacted     bool      `json:"compacted,omitempty"`
-	RetainsJSON   *bool     `json:"retains_json_structure,omitempty"`
-	Source        string    `json:"source"`
+	System                         string    `json:"system"`
+	Engine                         string    `json:"engine,omitempty"`
+	Scale                          string    `json:"scale"`
+	RequestedRows                  int       `json:"requested_rows,omitempty"`
+	DatasetSize                    int       `json:"dataset_size"`
+	Format                         string    `json:"format,omitempty"`
+	StorageLayout                  string    `json:"storage_layout,omitempty"`
+	Projection                     string    `json:"projection,omitempty"`
+	DataRoot                       string    `json:"data_root,omitempty"`
+	DataShape                      string    `json:"data_shape,omitempty"`
+	RetainedPayloadPolicy          string    `json:"retained_payload_policy,omitempty"`
+	ColumnReconstructionPolicy     string    `json:"column_reconstruction_policy,omitempty"`
+	TypedColumnOwner               string    `json:"typed_column_owner,omitempty"`
+	Query                          string    `json:"query"`
+	BestSec                        float64   `json:"best_seconds"`
+	MedianSec                      float64   `json:"median_seconds"`
+	AttemptsSec                    []float64 `json:"attempts_seconds"`
+	RowsScanned                    int       `json:"rows_scanned,omitempty"`
+	StorageBytes                   int64     `json:"storage_bytes,omitempty"`
+	StorageGrossBytes              int64     `json:"storage_gross_bytes,omitempty"`
+	StorageExcludedBytes           int64     `json:"storage_excluded_bytes,omitempty"`
+	StorageColumnAssetBytes        int64     `json:"storage_column_asset_bytes,omitempty"`
+	StorageTypedColumnPartBytes    int64     `json:"storage_typed_column_part_bytes,omitempty"`
+	StorageTypedColumnSectionBytes int64     `json:"storage_typed_column_section_bytes,omitempty"`
+	StoragePrimaryIndexBytes       int64     `json:"storage_primary_index_bytes,omitempty"`
+	StorageLeafVLogBytes           int64     `json:"storage_leaf_vlog_bytes,omitempty"`
+	StorageWALBytes                int64     `json:"storage_wal_bytes,omitempty"`
+	BaselineDataBytes              int64     `json:"baseline_data_bytes,omitempty"`
+	BaselineIndexBytes             int64     `json:"baseline_index_bytes,omitempty"`
+	StorageAccountingScope         string    `json:"storage_accounting_scope,omitempty"`
+	StorageMeasurementPhase        string    `json:"storage_measurement_phase,omitempty"`
+	LoadSec                        float64   `json:"load_seconds,omitempty"`
+	CompactionSec                  float64   `json:"compaction_seconds,omitempty"`
+	Compacted                      bool      `json:"compacted,omitempty"`
+	RetainsJSON                    *bool     `json:"retains_json_structure,omitempty"`
+	ReconstructionValid            *bool     `json:"reconstruction_valid,omitempty"`
+	Source                         string    `json:"source"`
 }
 
 type jsonBenchBaselineResult struct {
@@ -58,6 +75,8 @@ type jsonBenchBaselineResult struct {
 	DatasetSize        int         `json:"dataset_size"`
 	NumLoadedDocuments int         `json:"num_loaded_documents"`
 	TotalSize          int64       `json:"total_size"`
+	DataSize           int64       `json:"data_size"`
+	IndexSize          int64       `json:"index_size"`
 	Result             [][]float64 `json:"result"`
 }
 
@@ -203,28 +222,55 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 		if result.Compaction != nil {
 			compactionSec = result.Compaction.WallSec
 		}
+		var reconstructionValid *bool
+		if result.Reconstruction != nil {
+			valid := result.Reconstruction.Valid
+			reconstructionValid = &valid
+		}
+		columnAssetBytes := storageCategoryBytes(result.Storage, "column_asset_segments", "column_asset_indexes", "column_asset_metadata", "column_asset_quarantine")
+		typedColumnPartBytes := int64(0)
+		typedColumnSectionBytes := int64(0)
+		if result.Storage.ColumnStorePhysical != nil {
+			typedColumnPartBytes = result.Storage.ColumnStorePhysical.Totals.TypedColumnPartBytes
+			typedColumnSectionBytes = result.Storage.ColumnStorePhysical.Totals.TypedColumnSections.TotalStoredBytes
+		}
 		for _, q := range result.Queries {
 			rows = append(rows, reportRow{
-				System:        result.System,
-				Engine:        result.Engine,
-				Scale:         reportScaleLabel(result),
-				RequestedRows: result.RequestedRows,
-				DatasetSize:   result.DatasetSize,
-				Format:        result.Format,
-				StorageLayout: result.StorageLayout,
-				Projection:    result.Projection,
-				DataRoot:      result.DataRoot,
-				Query:         q.Name,
-				BestSec:       q.BestSec,
-				MedianSec:     q.MedianSec,
-				AttemptsSec:   q.AttemptsSec,
-				RowsScanned:   q.RowsScanned,
-				StorageBytes:  result.Storage.TotalBytes,
-				LoadSec:       result.Load.WallSec,
-				CompactionSec: compactionSec,
-				Compacted:     compactionEnabled,
-				RetainsJSON:   &retainsJSON,
-				Source:        path,
+				System:                         result.System,
+				Engine:                         result.Engine,
+				Scale:                          reportScaleLabel(result),
+				RequestedRows:                  result.RequestedRows,
+				DatasetSize:                    result.DatasetSize,
+				Format:                         result.Format,
+				StorageLayout:                  result.StorageLayout,
+				Projection:                     result.Projection,
+				DataRoot:                       result.DataRoot,
+				DataShape:                      result.DataShape,
+				RetainedPayloadPolicy:          result.RetainedPayloadPolicy,
+				ColumnReconstructionPolicy:     result.ColumnReconstructionPolicy,
+				TypedColumnOwner:               result.TypedColumnOwner,
+				Query:                          q.Name,
+				BestSec:                        q.BestSec,
+				MedianSec:                      q.MedianSec,
+				AttemptsSec:                    q.AttemptsSec,
+				RowsScanned:                    q.RowsScanned,
+				StorageBytes:                   result.Storage.TotalBytes,
+				StorageGrossBytes:              result.Storage.GrossBytes,
+				StorageExcludedBytes:           result.Storage.ExcludedBytes,
+				StorageColumnAssetBytes:        columnAssetBytes,
+				StorageTypedColumnPartBytes:    typedColumnPartBytes,
+				StorageTypedColumnSectionBytes: typedColumnSectionBytes,
+				StoragePrimaryIndexBytes:       storageCategoryBytes(result.Storage, "primary_index"),
+				StorageLeafVLogBytes:           storageCategoryBytes(result.Storage, "leaf_vlog"),
+				StorageWALBytes:                storageCategoryBytes(result.Storage, "wal"),
+				StorageAccountingScope:         result.Storage.AccountingScope,
+				StorageMeasurementPhase:        result.Storage.MeasurementPhase,
+				LoadSec:                        result.Load.WallSec,
+				CompactionSec:                  compactionSec,
+				Compacted:                      compactionEnabled,
+				RetainsJSON:                    &retainsJSON,
+				ReconstructionValid:            reconstructionValid,
+				Source:                         path,
 			})
 		}
 		return nil
@@ -243,6 +289,23 @@ func reportScaleLabel(result runResult) string {
 		return result.ScaleLabel
 	}
 	return result.Scale
+}
+
+func storageCategoryBytes(storage storageResult, categories ...string) int64 {
+	if len(categories) == 0 || len(storage.Categories) == 0 {
+		return 0
+	}
+	wanted := make(map[string]struct{}, len(categories))
+	for _, category := range categories {
+		wanted[category] = struct{}{}
+	}
+	var total int64
+	for _, category := range storage.Categories {
+		if _, ok := wanted[category.Category]; ok && category.Included {
+			total += category.Bytes
+		}
+	}
+	return total
 }
 
 func collectBaselineRows(dir string, scales map[string]struct{}, systemName, engine string) ([]reportRow, error) {
@@ -293,21 +356,29 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 		for i, attempts := range result.Result {
 			name := "q" + strconv.Itoa(i+1)
 			best, median := bestMedian(attempts)
+			retainsJSON := true
 			rows = append(rows, reportRow{
-				System:        result.System,
-				Engine:        engine,
-				Scale:         scale,
-				RequestedRows: result.NumLoadedDocuments,
-				DatasetSize:   result.DatasetSize,
-				Format:        "json",
-				Projection:    "full",
-				Query:         name,
-				BestSec:       best,
-				MedianSec:     median,
-				AttemptsSec:   attempts,
-				RowsScanned:   result.NumLoadedDocuments,
-				StorageBytes:  result.TotalSize,
-				Source:        path,
+				System:                  result.System,
+				Engine:                  engine,
+				Scale:                   scale,
+				RequestedRows:           result.NumLoadedDocuments,
+				DatasetSize:             result.DatasetSize,
+				Format:                  "json",
+				Projection:              "full",
+				DataShape:               "full-json",
+				Query:                   name,
+				BestSec:                 best,
+				MedianSec:               median,
+				AttemptsSec:             attempts,
+				RowsScanned:             result.NumLoadedDocuments,
+				StorageBytes:            result.TotalSize,
+				StorageGrossBytes:       result.TotalSize,
+				BaselineDataBytes:       result.DataSize,
+				BaselineIndexBytes:      result.IndexSize,
+				StorageAccountingScope:  systemName + "_reported_total_size",
+				StorageMeasurementPhase: "baseline_artifact",
+				RetainsJSON:             &retainsJSON,
+				Source:                  path,
 			})
 		}
 	}
@@ -350,14 +421,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		return buf.Bytes()
 	}
 	fmt.Fprintf(&buf, "## Query Runtime Matrix\n\n")
-	fmt.Fprintf(&buf, "| rows/scale | system | layout | query | best | loaded rows/s | scanned rows/s | median | attempts | requested | loaded | scanned | storage | load |\n")
-	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| rows/scale | system | shape | layout | query | best | loaded rows/s | scanned rows/s | median | attempts | requested | loaded | scanned | storage | load |\n")
+	fmt.Fprintf(&buf, "|---|---|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|---:|\n")
 	for _, row := range doc.Rows {
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %s | %s |\n",
 			row.Scale,
 			row.System,
+			reportRowDataShape(row),
 			reportRowLayout(row),
 			row.Query,
 			formatSeconds(row.BestSec),
@@ -374,8 +446,8 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	fmt.Fprintf(&buf, "\n## Best Runtime By Query\n\n")
 	best := bestByScaleQuery(doc.Rows)
-	fmt.Fprintf(&buf, "| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | TreeDB / DuckDB |\n")
-	fmt.Fprintf(&buf, "|---|---:|---|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | ClickHouse best | TreeDB / ClickHouse |\n")
+	fmt.Fprintf(&buf, "|---|---:|---|---:|---:|---:|---:|---:|\n")
 	keys := make([]string, 0, len(best))
 	for key := range best {
 		keys = append(keys, key)
@@ -385,9 +457,10 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		group := best[key]
 		tree := group.treeBest()
 		duck := group.duckBest()
+		click := group.clickHouseBest()
 		ratio := ""
-		if tree != nil && duck != nil && duck.BestSec > 0 {
-			ratio = fmt.Sprintf("%.2fx", tree.BestSec/duck.BestSec)
+		if tree != nil && click != nil && click.BestSec > 0 {
+			ratio = fmt.Sprintf("%.2fx", tree.BestSec/click.BestSec)
 		}
 		fastest := group.fastest()
 		fastestLabel := ""
@@ -398,13 +471,14 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		}
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s |\n",
 			group.Scale,
 			group.Query,
 			fastestLabel,
 			fastestBest,
 			formatOptionalRowSeconds(tree),
 			formatOptionalRowSeconds(duck),
+			formatOptionalRowSeconds(click),
 			ratio,
 		)
 	}
@@ -426,6 +500,19 @@ func reportRowLayout(row reportRow) string {
 		layout += "+compacted"
 	}
 	return layout
+}
+
+func reportRowDataShape(row reportRow) string {
+	if strings.TrimSpace(row.DataShape) != "" {
+		return row.DataShape
+	}
+	if row.RetainsJSON != nil && *row.RetainsJSON {
+		return "full-json"
+	}
+	if isColumnStoreLayout(row.StorageLayout) {
+		return "query-shaped-projection"
+	}
+	return ""
 }
 
 type bestGroup struct {
@@ -458,6 +545,10 @@ func (g *bestGroup) treeBest() *reportRow {
 
 func (g *bestGroup) duckBest() *reportRow {
 	return bestMatchingRow(g.Rows, func(row reportRow) bool { return row.System == "DuckDB" })
+}
+
+func (g *bestGroup) clickHouseBest() *reportRow {
+	return bestMatchingRow(g.Rows, func(row reportRow) bool { return row.System == "ClickHouse" })
 }
 
 func bestMatchingRow(rows []reportRow, match func(reportRow) bool) *reportRow {
