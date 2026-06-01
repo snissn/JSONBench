@@ -12,6 +12,7 @@ import (
 	"errors"
 	"flag"
 	"fmt"
+	"hash"
 	"io"
 	"os"
 	"path/filepath"
@@ -32,26 +33,27 @@ const (
 )
 
 type runConfig struct {
-	DataDir          string
-	DBDir            string
-	Out              string
-	Reset            bool
-	Scale            string
-	Rows             int
-	MaxFiles         int
-	Format           string
-	StorageLayout    string
-	Projection       string
-	Queries          []string
-	BatchSize        int
-	Profile          string
-	DataRoot         string
-	Collection       string
-	Checkpoint       bool
-	CompactAfterLoad bool
-	CompactBatchSize int
-	Tries            int
-	Progress         bool
+	DataDir                string
+	DBDir                  string
+	Out                    string
+	Reset                  bool
+	Scale                  string
+	Rows                   int
+	MaxFiles               int
+	Format                 string
+	StorageLayout          string
+	Projection             string
+	Queries                []string
+	BatchSize              int
+	Profile                string
+	DataRoot               string
+	Collection             string
+	Checkpoint             bool
+	CompactAfterLoad       bool
+	CompactBatchSize       int
+	ValidateReconstruction bool
+	Tries                  int
+	Progress               bool
 }
 
 type runResult struct {
@@ -63,37 +65,43 @@ type runResult struct {
 	ScaleLabel    string `json:"scale_label"`
 	RequestedRows int    `json:"requested_rows"`
 	// Kept for parsing old result JSON; new runs always reject partial input.
-	AllowShortData bool              `json:"allow_short_data,omitempty"`
-	DatasetSize    int               `json:"dataset_size"`
-	DataDir        string            `json:"data_dir"`
-	DBDir          string            `json:"db_dir"`
-	Collection     string            `json:"collection"`
-	Format         string            `json:"format"`
-	StorageLayout  string            `json:"storage_layout"`
-	Projection     string            `json:"projection"`
-	RetainsJSON    bool              `json:"retains_json_structure"`
-	Profile        string            `json:"profile"`
-	DataRoot       string            `json:"data_root"`
-	Load           loadResult        `json:"load"`
-	Storage        storageResult     `json:"storage"`
-	Compaction     *compactionResult `json:"compaction,omitempty"`
-	Queries        []queryRun        `json:"queries"`
-	Command        []string          `json:"command,omitempty"`
-	Notes          []string          `json:"notes,omitempty"`
+	AllowShortData             bool                  `json:"allow_short_data,omitempty"`
+	DatasetSize                int                   `json:"dataset_size"`
+	DataDir                    string                `json:"data_dir"`
+	DBDir                      string                `json:"db_dir"`
+	Collection                 string                `json:"collection"`
+	Format                     string                `json:"format"`
+	StorageLayout              string                `json:"storage_layout"`
+	Projection                 string                `json:"projection"`
+	RetainsJSON                bool                  `json:"retains_json_structure"`
+	DataShape                  string                `json:"data_shape,omitempty"`
+	RetainedPayloadPolicy      string                `json:"retained_payload_policy,omitempty"`
+	ColumnReconstructionPolicy string                `json:"column_reconstruction_policy,omitempty"`
+	TypedColumnOwner           string                `json:"typed_column_owner,omitempty"`
+	Profile                    string                `json:"profile"`
+	DataRoot                   string                `json:"data_root"`
+	Load                       loadResult            `json:"load"`
+	Storage                    storageResult         `json:"storage"`
+	Compaction                 *compactionResult     `json:"compaction,omitempty"`
+	Reconstruction             *reconstructionResult `json:"reconstruction,omitempty"`
+	Queries                    []queryRun            `json:"queries"`
+	Command                    []string              `json:"command,omitempty"`
+	Notes                      []string              `json:"notes,omitempty"`
 }
 
 type loadResult struct {
-	Rows            int      `json:"rows"`
-	Files           []string `json:"files"`
-	Batches         int      `json:"batches"`
-	GenerationSec   float64  `json:"generation_seconds"`
-	InsertSec       float64  `json:"insert_seconds"`
-	FlushSec        float64  `json:"flush_seconds"`
-	CheckpointSec   float64  `json:"checkpoint_seconds,omitempty"`
-	WallSec         float64  `json:"wall_seconds"`
-	RowsPerSec      float64  `json:"rows_per_second"`
-	BytesRead       int64    `json:"bytes_read"`
-	CompressedBytes int64    `json:"compressed_bytes"`
+	Rows                    int      `json:"rows"`
+	Files                   []string `json:"files"`
+	Batches                 int      `json:"batches"`
+	GenerationSec           float64  `json:"generation_seconds"`
+	InsertSec               float64  `json:"insert_seconds"`
+	FlushSec                float64  `json:"flush_seconds"`
+	CheckpointSec           float64  `json:"checkpoint_seconds,omitempty"`
+	WallSec                 float64  `json:"wall_seconds"`
+	RowsPerSec              float64  `json:"rows_per_second"`
+	BytesRead               int64    `json:"bytes_read"`
+	CompressedBytes         int64    `json:"compressed_bytes"`
+	SourceCanonicalJSONHash string   `json:"source_canonical_json_hash,omitempty"`
 }
 
 type storageResult struct {
@@ -118,6 +126,15 @@ type compactionResult struct {
 	IndexVacuumSec        float64                                          `json:"index_vacuum_seconds,omitempty"`
 	LeafGenerationGCSec   float64                                          `json:"leaf_generation_gc_seconds,omitempty"`
 	LeafGenerationGCStats backenddb.LeafGenerationGCStats                  `json:"leaf_generation_gc_stats"`
+}
+
+type reconstructionResult struct {
+	Enabled                 bool   `json:"enabled"`
+	Rows                    int    `json:"rows"`
+	Mode                    string `json:"mode"`
+	SourceCanonicalJSONHash string `json:"source_canonical_json_hash,omitempty"`
+	StoredCanonicalJSONHash string `json:"stored_canonical_json_hash,omitempty"`
+	Valid                   bool   `json:"valid"`
 }
 
 type queryRun struct {
@@ -172,6 +189,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.BoolVar(&cfg.Checkpoint, "checkpoint", cfg.Checkpoint, "Checkpoint after loading")
 	fs.BoolVar(&cfg.CompactAfterLoad, "compact-after-load", false, "Run full TreeDB maintenance compaction after loading and before query timing")
 	fs.IntVar(&cfg.CompactBatchSize, "compact-batch-size", cfg.CompactBatchSize, "Value-log rewrite pointer-swap batch size for -compact-after-load")
+	fs.BoolVar(&cfg.ValidateReconstruction, "validate-reconstruction", false, "Validate full-data column-store reconstruction by hashing source JSON against materialized stored JSON")
 	fs.IntVar(&cfg.Tries, "tries", cfg.Tries, "Query attempts per query")
 	fs.BoolVar(&cfg.Progress, "progress", false, "Print load progress to stderr")
 	fs.BoolVar(&deprecatedAllowShortData, "allow-short-data", false, "removed; partial input is not accepted")
@@ -227,6 +245,9 @@ func parseRunFlags(args []string) (runConfig, error) {
 	}
 	if err := validateStorageLayoutConfig(cfg); err != nil {
 		return cfg, err
+	}
+	if cfg.ValidateReconstruction && !isFullDataColumnStoreLayout(cfg.StorageLayout) {
+		return cfg, errors.New("-validate-reconstruction requires -storage-layout column-store-full or column-store-full-prepared")
 	}
 	if strings.TrimSpace(cfg.Collection) == "" {
 		return cfg, errors.New("-collection cannot be empty")
@@ -292,6 +313,14 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		}
 		compaction = &compact
 	}
+	var reconstruction *reconstructionResult
+	if cfg.ValidateReconstruction {
+		validated, err := validateStoredReconstruction(collection, cfg, load.Rows, load.SourceCanonicalJSONHash)
+		if err != nil {
+			return runResult{}, err
+		}
+		reconstruction = &validated
+	}
 	storage, err := directoryUsage(cfg.DBDir, load.Rows)
 	if err != nil {
 		return runResult{}, err
@@ -301,28 +330,33 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		return runResult{}, err
 	}
 	return runResult{
-		SchemaVersion: schemaVersion,
-		GeneratedAt:   time.Now().UTC().Format(time.RFC3339),
-		System:        "TreeDB",
-		Engine:        treeDBEngineName(cfg),
-		Scale:         cfg.Scale,
-		ScaleLabel:    scaleLabel(cfg.Scale, cfg.Rows, load.Rows),
-		RequestedRows: cfg.Rows,
-		DatasetSize:   load.Rows,
-		DataDir:       cfg.DataDir,
-		DBDir:         cfg.DBDir,
-		Collection:    cfg.Collection,
-		Format:        cfg.Format,
-		StorageLayout: cfg.StorageLayout,
-		Projection:    cfg.Projection,
-		RetainsJSON:   cfg.Projection == "full" && cfg.StorageLayout == storageLayoutRow,
-		Profile:       cfg.Profile,
-		DataRoot:      cfg.DataRoot,
-		Load:          load,
-		Storage:       storage,
-		Compaction:    compaction,
-		Queries:       queryResults,
-		Notes:         runNotes(cfg),
+		SchemaVersion:              schemaVersion,
+		GeneratedAt:                time.Now().UTC().Format(time.RFC3339),
+		System:                     "TreeDB",
+		Engine:                     treeDBEngineName(cfg),
+		Scale:                      cfg.Scale,
+		ScaleLabel:                 scaleLabel(cfg.Scale, cfg.Rows, load.Rows),
+		RequestedRows:              cfg.Rows,
+		DatasetSize:                load.Rows,
+		DataDir:                    cfg.DataDir,
+		DBDir:                      cfg.DBDir,
+		Collection:                 cfg.Collection,
+		Format:                     cfg.Format,
+		StorageLayout:              cfg.StorageLayout,
+		Projection:                 cfg.Projection,
+		RetainsJSON:                cfg.Projection == "full" && (cfg.StorageLayout == storageLayoutRow || isFullDataColumnStoreLayout(cfg.StorageLayout)),
+		DataShape:                  treeDBDataShape(cfg),
+		RetainedPayloadPolicy:      columnStoreRetainedPayloadPolicy(cfg),
+		ColumnReconstructionPolicy: columnStoreReconstructionPolicy(cfg),
+		TypedColumnOwner:           columnStoreTypedColumnOwner(cfg),
+		Profile:                    cfg.Profile,
+		DataRoot:                   cfg.DataRoot,
+		Load:                       load,
+		Storage:                    storage,
+		Compaction:                 compaction,
+		Reconstruction:             reconstruction,
+		Queries:                    queryResults,
+		Notes:                      runNotes(cfg),
 	}, nil
 }
 
@@ -454,6 +488,10 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var checkpointElapsed time.Duration
 	wallStart := time.Now()
 	lastProgress := time.Now()
+	var sourceHasher *canonicalJSONHasher
+	if cfg.ValidateReconstruction {
+		sourceHasher = newCanonicalJSONHasher()
+	}
 
 	flushBatch := func() error {
 		if len(ids) == 0 {
@@ -477,6 +515,11 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		readBytes, compressedBytes, err := scanInputFile(path, func(raw []byte) error {
 			if out.Rows >= cfg.Rows {
 				return errStopScan
+			}
+			if sourceHasher != nil {
+				if err := sourceHasher.Add(raw); err != nil {
+					return fmt.Errorf("hash source JSON row %d: %w", out.Rows+1, err)
+				}
 			}
 			genStart := time.Now()
 			doc, err := buildDocument(raw, format, cfg.Projection, cfg.StorageLayout, &encoder)
@@ -530,6 +573,43 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	out.WallSec = wallElapsed.Seconds()
 	if out.Rows > 0 && wallElapsed > 0 {
 		out.RowsPerSec = float64(out.Rows) / wallElapsed.Seconds()
+	}
+	if sourceHasher != nil {
+		out.SourceCanonicalJSONHash = sourceHasher.Sum()
+	}
+	return out, nil
+}
+
+func validateStoredReconstruction(collection *collections.Collection, cfg runConfig, rows int, sourceHash string) (reconstructionResult, error) {
+	out := reconstructionResult{
+		Enabled: true,
+		Mode:    "canonical_json_hash",
+	}
+	if !isFullDataColumnStoreLayout(cfg.StorageLayout) || cfg.Projection != "full" {
+		return out, fmt.Errorf("reconstruction validation requires full-data column-store layout, got layout=%s projection=%s", cfg.StorageLayout, cfg.Projection)
+	}
+	if sourceHash == "" {
+		return out, errors.New("reconstruction validation missing source canonical JSON hash")
+	}
+	hasher := newCanonicalJSONHasher()
+	scanned, err := scanCollectionJSON(collection, rows+1, func(raw []byte) error {
+		if err := hasher.Add(raw); err != nil {
+			return fmt.Errorf("hash stored JSON row %d: %w", hasher.Rows()+1, err)
+		}
+		return nil
+	})
+	if err != nil {
+		return out, err
+	}
+	if scanned != rows {
+		return out, fmt.Errorf("reconstruction validation scanned %d stored rows, want %d", scanned, rows)
+	}
+	out.Rows = scanned
+	out.SourceCanonicalJSONHash = sourceHash
+	out.StoredCanonicalJSONHash = hasher.Sum()
+	out.Valid = out.StoredCanonicalJSONHash == out.SourceCanonicalJSONHash
+	if !out.Valid {
+		return out, fmt.Errorf("reconstructed JSON canonical hash=%s want source hash=%s", out.StoredCanonicalJSONHash, out.SourceCanonicalJSONHash)
 	}
 	return out, nil
 }
@@ -756,6 +836,46 @@ func rootStoragePolicy(raw string) (collections.RootStoragePolicy, error) {
 	}
 }
 
+func treeDBDataShape(cfg runConfig) string {
+	switch {
+	case isFullDataColumnStoreLayout(cfg.StorageLayout):
+		return "full-retained-json"
+	case isColumnStoreLayout(cfg.StorageLayout):
+		return "query-shaped-projection"
+	case cfg.Projection == "full":
+		return "full-json"
+	default:
+		return "projected-json"
+	}
+}
+
+func columnStoreRetainedPayloadPolicy(cfg runConfig) string {
+	if !isColumnStoreLayout(cfg.StorageLayout) {
+		return ""
+	}
+	if isFullDataColumnStoreLayout(cfg.StorageLayout) {
+		return string(collections.ColumnRetainedPayloadNonColumn)
+	}
+	return string(collections.ColumnRetainedPayloadNone)
+}
+
+func columnStoreReconstructionPolicy(cfg runConfig) string {
+	if !isColumnStoreLayout(cfg.StorageLayout) {
+		return ""
+	}
+	return string(collections.ColumnReconstructionRetainedPayloadAndColumns)
+}
+
+func columnStoreTypedColumnOwner(cfg runConfig) string {
+	if !isColumnStoreLayout(cfg.StorageLayout) {
+		return ""
+	}
+	if isFullDataColumnStoreLayout(cfg.StorageLayout) {
+		return string(collections.TypedStorageOwnerColumnPart)
+	}
+	return string(collections.TypedStorageOwnerRowAsset)
+}
+
 func parseProfile(raw string) (treedb.Profile, error) {
 	switch strings.ToLower(strings.TrimSpace(raw)) {
 	case "", "fast", "production_fast", "backend_direct_fast", "backend_direct", "cached":
@@ -881,6 +1001,54 @@ func documentID(row uint64) []byte {
 	out := make([]byte, 8)
 	binary.BigEndian.PutUint64(out, row)
 	return out
+}
+
+type canonicalJSONHasher struct {
+	h    hash.Hash
+	rows int
+}
+
+func newCanonicalJSONHasher() *canonicalJSONHasher {
+	return &canonicalJSONHasher{h: sha256.New()}
+}
+
+func (h *canonicalJSONHasher) Add(raw []byte) error {
+	canonical, err := canonicalJSON(raw)
+	if err != nil {
+		return err
+	}
+	var length [8]byte
+	binary.LittleEndian.PutUint64(length[:], uint64(len(canonical)))
+	if _, err := h.h.Write(length[:]); err != nil {
+		return err
+	}
+	if _, err := h.h.Write(canonical); err != nil {
+		return err
+	}
+	h.rows++
+	return nil
+}
+
+func (h *canonicalJSONHasher) Rows() int {
+	if h == nil {
+		return 0
+	}
+	return h.rows
+}
+
+func (h *canonicalJSONHasher) Sum() string {
+	if h == nil {
+		return ""
+	}
+	return hex.EncodeToString(h.h.Sum(nil))
+}
+
+func canonicalJSON(raw []byte) ([]byte, error) {
+	var value any
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	return json.Marshal(value)
 }
 
 func jsonInt64(value gjson.Result) int64 {

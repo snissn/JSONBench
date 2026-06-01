@@ -74,6 +74,13 @@ func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnP
 		}
 	}
 	switch query {
+	case "q2":
+		if isFullDataColumnStoreLayout(cfg.StorageLayout) {
+			req.Predicates = []collections.ColumnPhysicalQueryPredicate{
+				{Column: "kind", Value: "commit"},
+				{Column: "operation", Value: "create"},
+			}
+		}
 	case "q3":
 		req.Predicates = []collections.ColumnPhysicalQueryPredicate{
 			{Column: "kind", Value: "commit"},
