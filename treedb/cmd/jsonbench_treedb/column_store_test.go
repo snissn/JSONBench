@@ -19,6 +19,37 @@ func TestNormalizeColumnStorePreparedLayout(t *testing.T) {
 	}
 }
 
+func TestNormalizeFullColumnStoreLayouts(t *testing.T) {
+	cases := map[string]string{
+		storageLayoutColumnStoreFull:         storageLayoutColumnStoreFull,
+		"column_store_full":                  storageLayoutColumnStoreFull,
+		"column-store-retained":              storageLayoutColumnStoreFull,
+		storageLayoutColumnStoreFullPrepared: storageLayoutColumnStoreFullPrepared,
+		"column_store_full_prepared":         storageLayoutColumnStoreFullPrepared,
+		"column-store-retained-prepared":     storageLayoutColumnStoreFullPrepared,
+	}
+	for raw, want := range cases {
+		got, err := normalizeStorageLayout(raw)
+		if err != nil {
+			t.Fatalf("normalizeStorageLayout(%q): %v", raw, err)
+		}
+		if got != want {
+			t.Fatalf("normalizeStorageLayout(%q)=%q want %q", raw, got, want)
+		}
+	}
+}
+
+func TestCanonicalJSONPreservesJSONNumbers(t *testing.T) {
+	got, err := canonicalJSON([]byte(`{"fraction":1.0,"large":100000000000000000001}`))
+	if err != nil {
+		t.Fatalf("canonicalJSON: %v", err)
+	}
+	const want = `{"fraction":1.0,"large":100000000000000000001}`
+	if string(got) != want {
+		t.Fatalf("canonicalJSON=%s want %s", got, want)
+	}
+}
+
 func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 	for _, query := range []string{"q1", "q2", "q3", "q4", "q5"} {
 		query := query
@@ -30,6 +61,50 @@ func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 			}
 			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
 				t.Fatalf("column-store rows_scanned=%d want %d", got, want)
+			}
+		})
+	}
+}
+
+func TestFullColumnStoreLayoutsMatchFullRowFixture(t *testing.T) {
+	row := runJSONBenchFullFixtureCell(t, storageLayoutRow, false)
+	want := make(map[string]queryRun, len(row.Queries))
+	for _, query := range row.Queries {
+		want[query.Name] = query
+	}
+	for _, layout := range []string{storageLayoutColumnStoreFull, storageLayoutColumnStoreFullPrepared} {
+		layout := layout
+		t.Run(layout, func(t *testing.T) {
+			column := runJSONBenchFullFixtureCell(t, layout, true)
+			if !column.RetainsJSON {
+				t.Fatalf("%s RetainsJSON=false want true", layout)
+			}
+			if got, want := column.DataShape, "full-retained-json"; got != want {
+				t.Fatalf("%s data_shape=%q want %q", layout, got, want)
+			}
+			if got, want := column.RetainedPayloadPolicy, string(collections.ColumnRetainedPayloadNonColumn); got != want {
+				t.Fatalf("%s retained_payload_policy=%q want %q", layout, got, want)
+			}
+			if got, want := column.TypedColumnOwner, string(collections.TypedStorageOwnerColumnPart); got != want {
+				t.Fatalf("%s typed_column_owner=%q want %q", layout, got, want)
+			}
+			if column.Reconstruction == nil || !column.Reconstruction.Valid || column.Reconstruction.Rows != column.DatasetSize {
+				t.Fatalf("%s reconstruction=%+v want valid rows=%d", layout, column.Reconstruction, column.DatasetSize)
+			}
+			if got, want := len(column.Queries), len(row.Queries); got != want {
+				t.Fatalf("%s queries=%d want %d", layout, got, want)
+			}
+			for _, query := range column.Queries {
+				rowQuery, ok := want[query.Name]
+				if !ok {
+					t.Fatalf("%s unexpected query %q", layout, query.Name)
+				}
+				if got, want := query.ResultHash, rowQuery.ResultHash; got != want {
+					t.Fatalf("%s %s result hash=%s want row hash=%s", layout, query.Name, got, want)
+				}
+				if got, want := query.RowsScanned, rowQuery.RowsScanned; got != want {
+					t.Fatalf("%s %s rows_scanned=%d want %d", layout, query.Name, got, want)
+				}
 			}
 		})
 	}
@@ -159,6 +234,37 @@ func runJSONBenchFixtureCell(t *testing.T, layout, query string) runResult {
 	}
 	if got := len(result.Queries); got != 1 {
 		t.Fatalf("queries=%d want 1", got)
+	}
+	return result
+}
+
+func runJSONBenchFullFixtureCell(t *testing.T, layout string, validateReconstruction bool) runResult {
+	t.Helper()
+	cfg := runConfig{
+		DataDir:                "../../testdata/bluesky",
+		DBDir:                  t.TempDir(),
+		Reset:                  true,
+		Scale:                  "subset",
+		Rows:                   6,
+		MaxFiles:               1,
+		Format:                 "json",
+		StorageLayout:          layout,
+		Projection:             "full",
+		Queries:                []string{"q1", "q2", "q3", "q4", "q5"},
+		BatchSize:              defaultBatchSize,
+		Profile:                "fast",
+		DataRoot:               "fast",
+		Collection:             defaultCollectionName,
+		Checkpoint:             true,
+		ValidateReconstruction: validateReconstruction,
+		Tries:                  1,
+	}
+	result, err := runTreeDBBenchmark(cfg)
+	if err != nil {
+		t.Fatalf("runTreeDBBenchmark(%s, full): %v", layout, err)
+	}
+	if got := len(result.Queries); got != len(cfg.Queries) {
+		t.Fatalf("queries=%d want %d", got, len(cfg.Queries))
 	}
 	return result
 }
