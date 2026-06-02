@@ -110,6 +110,35 @@ func TestFullColumnStoreLayoutsMatchFullRowFixture(t *testing.T) {
 	}
 }
 
+func TestFullColumnStoreLayoutsDeclareNullableStringColumns(t *testing.T) {
+	full, err := columnStoreConfigForProjection("q1", storageLayoutColumnStoreFullPrepared)
+	if err != nil {
+		t.Fatalf("columnStoreConfigForProjection full: %v", err)
+	}
+	queryShaped, err := columnStoreConfigForProjection("q2", storageLayoutColumnStorePrepared)
+	if err != nil {
+		t.Fatalf("columnStoreConfigForProjection query-shaped: %v", err)
+	}
+
+	for _, col := range full.Columns {
+		switch col.ValueType {
+		case collections.ColumnStoreValueString:
+			if !col.Nullable {
+				t.Fatalf("full-data string column %q nullable=false", col.Name)
+			}
+		case collections.ColumnStoreValueInt64:
+			if col.Nullable {
+				t.Fatalf("full-data int64 column %q nullable=true", col.Name)
+			}
+		}
+	}
+	for _, col := range queryShaped.Columns {
+		if col.Nullable {
+			t.Fatalf("query-shaped column %q nullable=true", col.Name)
+		}
+	}
+}
+
 func TestColumnStoreQ1KeepsEmptyEventBucket(t *testing.T) {
 	computed := renderColumnQ1(3, collections.ColumnPhysicalQueryResult{Groups: []collections.ColumnPhysicalQueryGroup{
 		{Key: "app.bsky.feed.post", Count: 2},

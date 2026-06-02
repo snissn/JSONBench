@@ -15,6 +15,10 @@ RUN_TREEDB="${RUN_TREEDB:-1}"
 RUN_CLICKHOUSE="${RUN_CLICKHOUSE:-1}"
 CLICKHOUSE_ALLOW_ERRORS="${CLICKHOUSE_ALLOW_ERRORS:-1}"
 CLICKHOUSE_MAX_FILES="${CLICKHOUSE_MAX_FILES:-}"
+TREEDB_FULL_STORAGE_LAYOUTS="${TREEDB_FULL_STORAGE_LAYOUTS:-column-store-full-prepared}"
+TREEDB_QUERY_STORAGE_LAYOUTS="${TREEDB_QUERY_STORAGE_LAYOUTS:-column-store-prepared-metadata}"
+TREEDB_COMPACT_AFTER_LOAD="${TREEDB_COMPACT_AFTER_LOAD:-0}"
+TREEDB_VALIDATE_RECONSTRUCTION="${TREEDB_VALIDATE_RECONSTRUCTION:-0}"
 TREEDB_RESULT="${TREEDB_RESULT:-}"
 CLICKHOUSE_RESULT="${CLICKHOUSE_RESULT:-}"
 
@@ -43,6 +47,18 @@ Environment:
   CLICKHOUSE_ALLOW_ERRORS  Set 1 to match JSONBench fallback loading for rows
                            ClickHouse rejects as invalid JSON. Defaults to 1.
   CLICKHOUSE_MAX_FILES     Input file count for ClickHouse. Defaults to ROWS/1M.
+  TREEDB_FULL_STORAGE_LAYOUTS
+                           Full-data TreeDB layouts used for headline storage.
+                           Defaults to column-store-full-prepared.
+  TREEDB_QUERY_STORAGE_LAYOUTS
+                           Query-shaped TreeDB layouts used for attribution.
+                           Defaults to column-store-prepared-metadata.
+  TREEDB_COMPACT_AFTER_LOAD
+                           Set 1 to compact full-data TreeDB rows before
+                           measurement. Defaults to 0.
+  TREEDB_VALIDATE_RECONSTRUCTION
+                           Set 1 to validate full-data TreeDB reconstruction
+                           during the headline run. Defaults to 0.
   TREEDB_RESULT            Existing TreeDB report.json to summarize.
   CLICKHOUSE_RESULT        Existing ClickHouse result.json to summarize.
 
@@ -91,11 +107,25 @@ SUMMARY_OUT="$OUT_DIR/preferred_summary.md"
 
 run_treedb() {
   mkdir -p "$TREE_OUT"
+  echo "==> TreeDB full-data storage headline"
   DATA_DIR="$DATA_DIR" \
   ROWS="$ROWS" \
   TRIES="$TRIES" \
   GOMAP_REPLACE="$GOMAP_REPLACE" \
-  STORAGE_LAYOUTS="column-store-prepared-metadata" \
+  STORAGE_LAYOUTS="$TREEDB_FULL_STORAGE_LAYOUTS" \
+  SUITE="full" \
+  COMPACT_AFTER_LOAD="$TREEDB_COMPACT_AFTER_LOAD" \
+  VALIDATE_RECONSTRUCTION="$TREEDB_VALIDATE_RECONSTRUCTION" \
+  OUT_DIR="$TREE_OUT" \
+  ./run_columnstore_benchmark.sh
+
+  echo "==> TreeDB query-shaped attribution rows"
+  DATA_DIR="$DATA_DIR" \
+  ROWS="$ROWS" \
+  TRIES="$TRIES" \
+  GOMAP_REPLACE="$GOMAP_REPLACE" \
+  STORAGE_LAYOUTS="$TREEDB_QUERY_STORAGE_LAYOUTS" \
+  SUITE="minimal" \
   QUERY_CELLS="q1 q2 q3 q4 q5" \
   OUT_DIR="$TREE_OUT" \
   ./run_columnstore_benchmark.sh
@@ -307,17 +337,45 @@ def load_json(path):
 
 tree_doc = load_json(os.environ["TREEDB_RESULT"])
 ch_doc = load_json(os.environ["CLICKHOUSE_RESULT"])
-tree_rows = {
-    row["query"]: row
-    for row in tree_doc["rows"]
-    if row.get("system", "TreeDB") == "TreeDB"
-}
-missing_tree = [query for query in ["q1", "q2", "q3", "q4", "q5"] if query not in tree_rows]
-if missing_tree:
-    raise ValueError(f"TreeDB report is missing query rows: {', '.join(missing_tree)}")
 ch_times = ch_doc["result"]
 if len(ch_times) < 5:
     raise ValueError(f"ClickHouse result has {len(ch_times)} query rows, expected 5")
+
+queries = ["q1", "q2", "q3", "q4", "q5"]
+tree_report_rows = [
+    row for row in tree_doc["rows"]
+    if row.get("system", "TreeDB") == "TreeDB"
+]
+
+def select_rows(layouts, data_shape=None):
+    selected = {}
+    layout_rank = {layout: idx for idx, layout in enumerate(layouts)}
+    for row in tree_report_rows:
+        layout = row.get("storage_layout", "")
+        if layout not in layout_rank:
+            continue
+        if data_shape is not None and row.get("data_shape", "") != data_shape:
+            continue
+        query = row.get("query")
+        if query not in queries:
+            continue
+        current = selected.get(query)
+        if current is None or layout_rank[layout] < layout_rank.get(current.get("storage_layout", ""), len(layouts)):
+            selected[query] = row
+    return selected
+
+tree_storage_rows = select_rows(["column-store-full-prepared", "column-store-full"], "full-retained-json")
+missing_storage = [query for query in queries if query not in tree_storage_rows]
+if missing_storage:
+    raise ValueError(
+        "TreeDB report is missing full-data typed_column_part storage rows for: "
+        + ", ".join(missing_storage)
+    )
+
+tree_attribution_rows = select_rows(
+    ["column-store-prepared-metadata", "column-store-prepared", "column-store"],
+    "query-shaped-projection",
+)
 
 def best(values):
     return min(values)
@@ -372,14 +430,14 @@ print(f"- Tries: `{tries}`")
 print(f"- TreeDB report JSON: `{os.environ['TREEDB_RESULT']}`")
 print(f"- ClickHouse result JSON: `{os.environ['CLICKHOUSE_RESULT']}`")
 print()
-print("## Primary preferred/server-shaped rows")
+print("## Full-data storage headline")
 print()
-print("| system/layout | query | best | loaded rows/s | scanned rows | storage | load | TreeDB vs ClickHouse |")
-print("|---|---:|---:|---:|---:|---:|---:|---:|")
-for idx, query in enumerate(["q1", "q2", "q3", "q4", "q5"]):
-    tree = tree_rows[query]
+print("| system/layout | query | best | loaded rows/s | scanned rows | storage | typed part | WAL | load | TreeDB vs ClickHouse |")
+print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
+for idx, query in enumerate(queries):
+    tree = tree_storage_rows[query]
     ch_best = best(ch_times[idx])
-    label = "column-store-prepared" if query in {"q1", "q2", "q3"} else "column-store-prepared-metadata"
+    label = tree.get("storage_layout", "column-store-full")
     scanned = tree.get("rows_scanned", 0)
     tree_dataset_size = tree.get("dataset_size", rows_requested)
     tree_rps = rows_per_second(tree_dataset_size, tree["best_seconds"])
@@ -388,13 +446,40 @@ for idx, query in enumerate(["q1", "q2", "q3", "q4", "q5"]):
     print(
         f"| TreeDB {label} | {query} | {seconds(tree['best_seconds'])} | {tree_rps} | "
         f"{count(scanned) if scanned else '0'} | {byte_count(tree.get('storage_bytes', 0))} | "
+        f"{byte_count(tree.get('storage_typed_column_part_bytes', 0))} | "
+        f"{byte_count(tree.get('storage_wal_bytes', 0))} | "
         f"{seconds(tree.get('load_seconds', 0))} | {comparison(tree['best_seconds'], ch_best)} |"
     )
     print(
         f"| ClickHouse JSON | {query} | {seconds(ch_best)} | "
         f"{rows_per_second(ch_doc['dataset_size'], ch_best)} | {count(ch_doc['dataset_size'])} | "
-        f"{byte_count(ch_doc['total_size'])} | {seconds(ch_doc.get('load_seconds', 0))} | baseline |"
+        f"{byte_count(ch_doc['total_size'])} | n/a | n/a | {seconds(ch_doc.get('load_seconds', 0))} | baseline |"
     )
+print()
+sample_storage = tree_storage_rows[queries[0]]
+print("Full-data TreeDB storage row labels:")
+print()
+print(f"- data shape: `{sample_storage.get('data_shape', '')}`")
+print(f"- retained payload: `{sample_storage.get('retained_payload_policy', '')}`")
+print(f"- typed owner: `{sample_storage.get('typed_column_owner', '')}`")
+print(f"- reconstruction valid: `{sample_storage.get('reconstruction_valid', '')}`")
+print(f"- measurement phase: `{sample_storage.get('storage_measurement_phase', '')}`")
+print()
+if tree_attribution_rows:
+    print("## Query-shaped attribution rows")
+    print()
+    print("| layout | query | best | scanned rows | storage | typed owner | note |")
+    print("|---|---:|---:|---:|---:|---|---|")
+    for query in queries:
+        tree = tree_attribution_rows.get(query)
+        if tree is None:
+            continue
+        scanned = tree.get("rows_scanned", 0)
+        print(
+            f"| {tree.get('storage_layout', '')} | {query} | {seconds(tree['best_seconds'])} | "
+            f"{count(scanned) if scanned else '0'} | {byte_count(tree.get('storage_bytes', 0))} | "
+            f"{tree.get('typed_column_owner', '')} | attribution only |"
+        )
 print()
 print("## ClickHouse attempts")
 print()
@@ -405,9 +490,9 @@ for idx, values in enumerate(ch_times, start=1):
 print()
 print("## Caveats")
 print()
-print("- q1/q2/q3 are prepared physical-runner rows without aggregate metadata; this summary relabels current JSONBench `column-store-prepared-metadata` output as `column-store-prepared` for those rows.")
-print("- q4/q5 are aggregate-metadata Top-K rows; their loaded rows/s is logical throughput and scanned rows is 0.")
-print("- TreeDB column-store cells are query-shaped projections with retained payload disabled, while ClickHouse stores the full JSON object. Storage is therefore not apples-to-apples.")
+print("- The full-data TreeDB headline uses `column-store-full`/`column-store-full-prepared` rows with retained non-column JSON plus `typed_column_part` hot-path columns.")
+print("- Query-shaped `column-store*` rows are attribution rows only; their storage is not compared to ClickHouse as apples-to-apples storage.")
+print("- q4/q5 aggregate-metadata Top-K attribution rows may still report scanned rows as 0; the full-data headline reports the full-data scan path unless a full-data metadata layout is added.")
 print("- ClickHouse uses `JSONAsObject`; with `CLICKHOUSE_ALLOW_ERRORS=1`, rows ClickHouse rejects as invalid JSON are skipped and reflected in the ClickHouse loaded-row count.")
 print()
 print(f"Summary written to `{summary_out}`.")
