@@ -208,6 +208,7 @@ func columnStoreColumnForField(field string, fullData bool) (collections.ColumnS
 	case "event", "did", "kind", "operation":
 		col.ValueType = collections.ColumnStoreValueString
 		col.Dictionary = true
+		col.Nullable = fullData
 		return col, nil
 	case "time_us":
 		col.ValueType = collections.ColumnStoreValueInt64

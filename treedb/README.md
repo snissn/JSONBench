@@ -142,20 +142,47 @@ ROWS=10000000 TRIES=3 GOMAP_REPLACE=/path/to/gomap \
   ./run_preferred_columnstore_clickhouse_compare.sh
 ```
 
-This runs the server-shaped TreeDB rows (q1/q2/q3 prepared physical runners,
-q4/q5 aggregate-metadata Top-K), loads ClickHouse through `clickhouse local`,
+This runs a full-data TreeDB storage headline with `column-store-full-prepared`
+(`typed_column_part` hot-path columns plus retained non-column JSON), then runs
+the server-shaped query attribution rows (q1/q2/q3 prepared physical runners,
+q4/q5 aggregate-metadata Top-K). It loads ClickHouse through `clickhouse local`
 and writes `preferred_summary.md` alongside the TreeDB and ClickHouse result
 JSON. Set `RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a
 run.
 
+Useful preferred-run overrides:
+
+```sh
+# compact full-data TreeDB storage before the storage headline is measured
+TREEDB_COMPACT_AFTER_LOAD=1 ./run_preferred_columnstore_clickhouse_compare.sh
+
+# run a smoke TreeDB preferred report without ClickHouse
+DATA_DIR=./testdata/bluesky ROWS=6 TRIES=1 RUN_CLICKHOUSE=0 \
+  TREEDB_VALIDATE_RECONSTRUCTION=1 \
+  CLICKHOUSE_RESULT=/path/to/existing/clickhouse/result.json \
+  ./run_preferred_columnstore_clickhouse_compare.sh
+```
+
 The lower-level matrix runner is still available for custom cells. Column-store
-cells are query-shaped, so the runner loads one projection/query per cell:
+minimal cells are query-shaped, so the runner loads one projection/query per
+cell:
 
 ```sh
 cd treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
   STORAGE_LAYOUTS="column-store column-store-prepared column-store-prepared-metadata" \
   QUERY_CELLS="q1 q2 q3 q4 q5" \
+  ./run_matrix.sh
+```
+
+Full-data TreeDB column-store rows use the explicit full layouts:
+
+```sh
+cd treedb
+DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=100000 TRIES=1 \
+  STORAGE_LAYOUTS="column-store-full column-store-full-prepared" \
+  SUITE=full \
+  VALIDATE_RECONSTRUCTION=1 \
   ./run_matrix.sh
 ```
 
@@ -167,6 +194,10 @@ Column-store execution modes are explicit:
 - `column-store-prepared-metadata`: prepared physical query runners; only q4/q5
   declare `min_time_us` aggregate metadata with Top-K and answer with
   `rows_scanned=0`.
+- `column-store-full`: full retained JSON cell with declared hot paths owned by
+  `typed_column_part`; direct physical query API.
+- `column-store-full-prepared`: full retained JSON cell with declared hot paths
+  owned by `typed_column_part`; prepared physical query runners.
 
 q1/q2/q3 prepared rows are scan-mode rows, not metadata rows. q3 uses TreeDB's
 physical grouped-hour reducer over dictionary and int64 column sidecars. q4/q5
@@ -267,6 +298,9 @@ This harness uses the public TreeDB collections API. The default `row` storage
 layout remains the row-store/template-v1 baseline. The `column-store` layout is
 a separate TreeDB physical-column direct cell, `column-store-prepared` measures
 prepared physical runners without aggregate metadata, and
-`column-store-prepared-metadata` adds q4/q5 Top-K aggregate metadata. Column-store
-layouts are intentionally documented with their q2 and q4/q5 metadata
-filter-masking behavior.
+`column-store-prepared-metadata` adds q4/q5 Top-K aggregate metadata.
+`column-store-full` and `column-store-full-prepared` are the full-data storage
+comparison cells; they retain non-column JSON and declare hot paths in
+`typed_column_part` assets. Query-shaped column-store layouts are intentionally
+documented with their q2 and q4/q5 metadata filter-masking behavior and should
+not be used as ClickHouse storage headlines.

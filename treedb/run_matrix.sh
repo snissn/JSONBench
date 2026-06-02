@@ -18,6 +18,7 @@ DUCKDB_SCALES="${DUCKDB_SCALES:-1m,10m}"
 CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}"
 CLICKHOUSE_SCALES="${CLICKHOUSE_SCALES:-1m,10m}"
 COMPACT_AFTER_LOAD="${COMPACT_AFTER_LOAD:-0}"
+VALIDATE_RECONSTRUCTION="${VALIDATE_RECONSTRUCTION:-0}"
 
 usage() {
   cat <<'EOF'
@@ -29,7 +30,8 @@ Environment:
   SCALES              Space-separated scales. Defaults to "subset".
   FORMATS             Space-separated formats. Defaults to "json".
   STORAGE_LAYOUTS     Space-separated TreeDB storage layouts: row, column-store,
-                      column-store-prepared, or column-store-prepared-metadata.
+                      column-store-prepared, column-store-prepared-metadata,
+                      column-store-full, or column-store-full-prepared.
                       Defaults to "row".
   SUITE               minimal, full, or all. Defaults to "minimal".
   QUERY_CELLS         Query-specific minimal cells for SUITE=minimal/all.
@@ -47,6 +49,9 @@ Environment:
                       Defaults to 1m,10m.
   COMPACT_AFTER_LOAD  Set to 1/true/yes/on to run full TreeDB compaction after
                       loading and before queries. Defaults to 0.
+  VALIDATE_RECONSTRUCTION
+                      Set to 1/true/yes/on to validate full-data column-store
+                      reconstruction for column-store-full layouts. Defaults to 0.
 Flags:
   -h, --help          Show this help.
 
@@ -110,6 +115,7 @@ run_cell() {
   local cell="${cell_scale}_${storage_layout}_${format}_${projection}_${queries//,/_}"
   local compact_arg=()
   local compact_suffix=""
+  local validate_arg=()
   case "$COMPACT_AFTER_LOAD" in
     1|true|TRUE|yes|YES|on|ON)
       compact_arg=(-compact-after-load)
@@ -119,6 +125,21 @@ run_cell() {
       ;;
     *)
       echo "invalid COMPACT_AFTER_LOAD=$COMPACT_AFTER_LOAD (expected 0/1)" >&2
+      exit 2
+      ;;
+  esac
+  case "$VALIDATE_RECONSTRUCTION" in
+    1|true|TRUE|yes|YES|on|ON)
+      case "$storage_layout" in
+        column-store-full|column-store-full-prepared)
+          validate_arg=(-validate-reconstruction)
+          ;;
+      esac
+      ;;
+    0|false|FALSE|no|NO|off|OFF|"")
+      ;;
+    *)
+      echo "invalid VALIDATE_RECONSTRUCTION=$VALIDATE_RECONSTRUCTION (expected 0/1)" >&2
       exit 2
       ;;
   esac
@@ -150,6 +171,9 @@ run_cell() {
   if [[ ${#compact_arg[@]} -gt 0 ]]; then
     cmd+=("${compact_arg[@]}")
   fi
+  if [[ ${#validate_arg[@]} -gt 0 ]]; then
+    cmd+=("${validate_arg[@]}")
+  fi
   cmd+=(
     -out "$cell_dir/result.json"
   )
@@ -164,11 +188,14 @@ for scale in $SCALES; do
         continue
       fi
       if [[ "$SUITE" == "full" || "$SUITE" == "all" ]]; then
-        if [[ "$storage_layout" == "row" ]]; then
-          run_cell "$scale" "$format" "$storage_layout" "full" "all"
-        else
-          echo "skip full suite for storage_layout=$storage_layout (column-store cells are query-shaped)" >&2
-        fi
+        case "$storage_layout" in
+          row|column-store-full|column-store-full-prepared)
+            run_cell "$scale" "$format" "$storage_layout" "full" "all"
+            ;;
+          *)
+            echo "skip full suite for storage_layout=$storage_layout (use column-store-full or column-store-full-prepared for full-data column-store cells)" >&2
+            ;;
+        esac
       fi
       if [[ "$SUITE" == "minimal" || "$SUITE" == "all" ]]; then
         for query in $QUERY_CELLS; do

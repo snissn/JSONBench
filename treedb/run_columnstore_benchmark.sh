@@ -8,6 +8,8 @@ DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-1000000}"
 TRIES="${TRIES:-3}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q5}"
+SUITE="${SUITE:-minimal}"
+VALIDATE_RECONSTRUCTION="${VALIDATE_RECONSTRUCTION:-0}"
 if [[ -z "${STORAGE_LAYOUTS:-}" ]]; then
   STORAGE_LAYOUTS="column-store column-store-prepared"
   RUN_DEFAULT_METADATA_LAYOUT=1
@@ -103,8 +105,10 @@ cat <<EOF
     rows:      $EFFECTIVE_ROWS
     scale:     $SCALE
     tries:     $TRIES
+    suite:     $SUITE
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
+    validate:  $VALIDATE_RECONSTRUCTION
     metadata:  $metadata_label
     out:       $OUT_DIR
 EOF
@@ -118,8 +122,9 @@ run_matrix_cell() {
   SUBSET_ROWS="$ROWS" \
   FORMATS="json" \
   STORAGE_LAYOUTS="$layouts" \
-  SUITE="minimal" \
+  SUITE="$SUITE" \
   QUERY_CELLS="$queries" \
+  VALIDATE_RECONSTRUCTION="$VALIDATE_RECONSTRUCTION" \
   TRIES="$TRIES" \
   PROFILE="${PROFILE:-fast}" \
   DATA_ROOT="${DATA_ROOT:-fast}" \
@@ -134,7 +139,7 @@ run_matrix_cell() {
 # focused q4/q5 pass appended beside the direct and prepared-scan cells while
 # preserving the same scale/subset row selection as the primary pass.
 run_matrix_cell "$STORAGE_LAYOUTS" "$QUERY_CELLS"
-if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" && -n "${METADATA_QUERY_CELLS// }" ]]; then
+if [[ "$SUITE" != "full" && "$RUN_DEFAULT_METADATA_LAYOUT" == "1" && -n "${METADATA_QUERY_CELLS// }" ]]; then
   run_matrix_cell "column-store-prepared-metadata" "$METADATA_QUERY_CELLS"
 fi
 
@@ -146,6 +151,8 @@ summary="$OUT_DIR/columnstore_summary.md"
   echo "- gomap: \`$gomap_module\`"
   echo "- rows: \`$EFFECTIVE_ROWS\`"
   echo "- tries: \`$TRIES\`"
+  echo "- suite: \`$SUITE\`"
+  echo "- validate reconstruction: \`$VALIDATE_RECONSTRUCTION\`"
   echo "- report: \`$OUT_DIR/report.md\`"
   echo
   go run ./cmd/jsonbench_treedb column-summary -report-json "$OUT_DIR/report.json"
