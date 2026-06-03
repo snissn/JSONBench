@@ -15,7 +15,7 @@ import (
 	"hash"
 	"io"
 	"os"
-	"path"
+	stdpath "path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -1018,8 +1018,8 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 			return err
 		}
 		cleanRel := filepath.ToSlash(filepath.Clean(rel))
-		base := strings.ToLower(path.Base(cleanRel))
-		parent := strings.ToLower(path.Base(path.Dir(cleanRel)))
+		base := strings.ToLower(stdpath.Base(cleanRel))
+		parent := strings.ToLower(stdpath.Base(stdpath.Dir(cleanRel)))
 		category, included := classifyTreeDBStorageFile(rel)
 		bucket := categories[category]
 		if bucket == nil {
@@ -1108,7 +1108,7 @@ func isTreeDBCommandWALSegmentName(name string) bool {
 func classifyTreeDBStorageFile(rel string) (string, bool) {
 	rel = filepath.ToSlash(filepath.Clean(rel))
 	lowerRel := strings.ToLower(rel)
-	base := strings.ToLower(path.Base(lowerRel))
+	base := strings.ToLower(stdpath.Base(lowerRel))
 	if isTreeDBStorageRuntimeLock(lowerRel, base) {
 		return "runtime_locks", false
 	}
