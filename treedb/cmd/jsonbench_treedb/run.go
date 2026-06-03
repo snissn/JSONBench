@@ -449,15 +449,11 @@ func openBackend(cfg runConfig) (*backenddb.DB, func() error, error) {
 		// Current typed-column publication requires durable command-WAL mode even
 		// for benchmark-relaxed column-store metadata. Keep the selected profile's
 		// other performance knobs, but force the durability mode required by the
-		// public column-store write path.
+		// public column-store write path. Let TreeDB persist the full format config
+		// during open so index layout knobs (notably outer leaf-log storage) stay in
+		// sync with the selected profile instead of pre-writing a partial config.
 		opts.Durability = treedb.DurabilityDurable
-		formatDir := mainDBDirForFormatConfig(cfg.DBDir)
-		if err := os.MkdirAll(formatDir, 0o755); err != nil {
-			return nil, nil, fmt.Errorf("create main DB dir for column-store format config: %w", err)
-		}
-		if err := backenddb.SaveFormatConfig(formatDir, backenddb.FormatConfig{RequiredFeatures: []string{backenddb.RequiredFeatureCommandWALV1}}); err != nil {
-			return nil, nil, fmt.Errorf("enable command-WAL format for column-store layout: %w", err)
-		}
+		opts.CommandWAL = true
 	}
 	return treedb.OpenBackendWithCachedLeafLog(opts)
 }
@@ -963,20 +959,6 @@ func inputFiles(dir string, maxFiles int) ([]string, error) {
 		files = files[:maxFiles]
 	}
 	return files, nil
-}
-
-func mainDBDirForFormatConfig(dir string) string {
-	clean := filepath.Clean(dir)
-	if info, err := os.Stat(filepath.Join(clean, "maindb")); err == nil && info.IsDir() {
-		return filepath.Join(clean, "maindb")
-	}
-	if _, err := os.Stat(filepath.Join(clean, "index.db")); err == nil {
-		return clean
-	}
-	if filepath.Base(clean) == "maindb" {
-		return clean
-	}
-	return filepath.Join(clean, "maindb")
 }
 
 func expandPath(path string) (string, error) {
