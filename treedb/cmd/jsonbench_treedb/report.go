@@ -31,43 +31,57 @@ type reportDocument struct {
 }
 
 type reportRow struct {
-	System                         string    `json:"system"`
-	Engine                         string    `json:"engine,omitempty"`
-	Scale                          string    `json:"scale"`
-	RequestedRows                  int       `json:"requested_rows,omitempty"`
-	DatasetSize                    int       `json:"dataset_size"`
-	Format                         string    `json:"format,omitempty"`
-	StorageLayout                  string    `json:"storage_layout,omitempty"`
-	Projection                     string    `json:"projection,omitempty"`
-	DataRoot                       string    `json:"data_root,omitempty"`
-	DataShape                      string    `json:"data_shape,omitempty"`
-	RetainedPayloadPolicy          string    `json:"retained_payload_policy,omitempty"`
-	ColumnReconstructionPolicy     string    `json:"column_reconstruction_policy,omitempty"`
-	TypedColumnOwner               string    `json:"typed_column_owner,omitempty"`
-	Query                          string    `json:"query"`
-	BestSec                        float64   `json:"best_seconds"`
-	MedianSec                      float64   `json:"median_seconds"`
-	AttemptsSec                    []float64 `json:"attempts_seconds"`
-	RowsScanned                    int       `json:"rows_scanned,omitempty"`
-	StorageBytes                   int64     `json:"storage_bytes,omitempty"`
-	StorageGrossBytes              int64     `json:"storage_gross_bytes,omitempty"`
-	StorageExcludedBytes           int64     `json:"storage_excluded_bytes,omitempty"`
-	StorageColumnAssetBytes        int64     `json:"storage_column_asset_bytes,omitempty"`
-	StorageTypedColumnPartBytes    int64     `json:"storage_typed_column_part_bytes,omitempty"`
-	StorageTypedColumnSectionBytes int64     `json:"storage_typed_column_section_bytes,omitempty"`
-	StoragePrimaryIndexBytes       int64     `json:"storage_primary_index_bytes,omitempty"`
-	StorageLeafVLogBytes           int64     `json:"storage_leaf_vlog_bytes,omitempty"`
-	StorageWALBytes                int64     `json:"storage_wal_bytes,omitempty"`
-	BaselineDataBytes              int64     `json:"baseline_data_bytes,omitempty"`
-	BaselineIndexBytes             int64     `json:"baseline_index_bytes,omitempty"`
-	StorageAccountingScope         string    `json:"storage_accounting_scope,omitempty"`
-	StorageMeasurementPhase        string    `json:"storage_measurement_phase,omitempty"`
-	LoadSec                        float64   `json:"load_seconds,omitempty"`
-	CompactionSec                  float64   `json:"compaction_seconds,omitempty"`
-	Compacted                      bool      `json:"compacted,omitempty"`
-	RetainsJSON                    *bool     `json:"retains_json_structure,omitempty"`
-	ReconstructionValid            *bool     `json:"reconstruction_valid,omitempty"`
-	Source                         string    `json:"source"`
+	System                             string    `json:"system"`
+	Engine                             string    `json:"engine,omitempty"`
+	Scale                              string    `json:"scale"`
+	RequestedRows                      int       `json:"requested_rows,omitempty"`
+	DatasetSize                        int       `json:"dataset_size"`
+	RowCount                           int       `json:"row_count"`
+	Format                             string    `json:"format,omitempty"`
+	StorageLayout                      string    `json:"storage_layout,omitempty"`
+	Projection                         string    `json:"projection,omitempty"`
+	Profile                            string    `json:"profile,omitempty"`
+	DataRoot                           string    `json:"data_root,omitempty"`
+	DataShape                          string    `json:"data_shape,omitempty"`
+	ExecutionMode                      string    `json:"execution_mode,omitempty"`
+	StorageSource                      string    `json:"storage_source,omitempty"`
+	FallbackReason                     string    `json:"fallback_reason,omitempty"`
+	MetadataDataScanPath               string    `json:"metadata_data_scan_path,omitempty"`
+	SortLayout                         string    `json:"sort_layout,omitempty"`
+	CompressionMode                    string    `json:"compression_mode,omitempty"`
+	MutationMode                       string    `json:"mutation_mode,omitempty"`
+	DocumentScanFallback               bool      `json:"document_scan_fallback"`
+	RetainedPayloadPolicy              string    `json:"retained_payload_policy,omitempty"`
+	ColumnReconstructionPolicy         string    `json:"column_reconstruction_policy,omitempty"`
+	TypedColumnOwner                   string    `json:"typed_column_owner,omitempty"`
+	ReconstructionStatus               string    `json:"reconstruction_status,omitempty"`
+	Query                              string    `json:"query"`
+	BestSec                            float64   `json:"best_seconds"`
+	MedianSec                          float64   `json:"median_seconds"`
+	AttemptsSec                        []float64 `json:"attempts_seconds"`
+	RowsScanned                        int       `json:"rows_scanned,omitempty"`
+	StorageBytes                       int64     `json:"storage_bytes,omitempty"`
+	StorageGrossBytes                  int64     `json:"storage_gross_bytes,omitempty"`
+	StorageExcludedBytes               int64     `json:"storage_excluded_bytes,omitempty"`
+	StorageDurableBytesWALExcluded     int64     `json:"storage_durable_bytes_wal_excluded"`
+	StorageWALBytesExcludedFromDurable int64     `json:"storage_wal_bytes_excluded_from_durable_storage"`
+	StorageWALExcludedNote             string    `json:"storage_durable_bytes_wal_excluded_note,omitempty"`
+	StorageColumnAssetBytes            int64     `json:"storage_column_asset_bytes,omitempty"`
+	StorageTypedColumnPartBytes        int64     `json:"storage_typed_column_part_bytes,omitempty"`
+	StorageTypedColumnSectionBytes     int64     `json:"storage_typed_column_section_bytes,omitempty"`
+	StoragePrimaryIndexBytes           int64     `json:"storage_primary_index_bytes,omitempty"`
+	StorageLeafVLogBytes               int64     `json:"storage_leaf_vlog_bytes,omitempty"`
+	StorageWALBytes                    int64     `json:"storage_wal_bytes,omitempty"`
+	BaselineDataBytes                  int64     `json:"baseline_data_bytes,omitempty"`
+	BaselineIndexBytes                 int64     `json:"baseline_index_bytes,omitempty"`
+	StorageAccountingScope             string    `json:"storage_accounting_scope,omitempty"`
+	StorageMeasurementPhase            string    `json:"storage_measurement_phase,omitempty"`
+	LoadSec                            float64   `json:"load_seconds,omitempty"`
+	CompactionSec                      float64   `json:"compaction_seconds,omitempty"`
+	Compacted                          bool      `json:"compacted,omitempty"`
+	RetainsJSON                        *bool     `json:"retains_json_structure,omitempty"`
+	ReconstructionValid                *bool     `json:"reconstruction_valid,omitempty"`
+	Source                             string    `json:"source"`
 }
 
 type jsonBenchBaselineResult struct {
@@ -236,41 +250,55 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 		}
 		for _, q := range result.Queries {
 			rows = append(rows, reportRow{
-				System:                         result.System,
-				Engine:                         result.Engine,
-				Scale:                          reportScaleLabel(result),
-				RequestedRows:                  result.RequestedRows,
-				DatasetSize:                    result.DatasetSize,
-				Format:                         result.Format,
-				StorageLayout:                  result.StorageLayout,
-				Projection:                     result.Projection,
-				DataRoot:                       result.DataRoot,
-				DataShape:                      result.DataShape,
-				RetainedPayloadPolicy:          result.RetainedPayloadPolicy,
-				ColumnReconstructionPolicy:     result.ColumnReconstructionPolicy,
-				TypedColumnOwner:               result.TypedColumnOwner,
-				Query:                          q.Name,
-				BestSec:                        q.BestSec,
-				MedianSec:                      q.MedianSec,
-				AttemptsSec:                    q.AttemptsSec,
-				RowsScanned:                    q.RowsScanned,
-				StorageBytes:                   result.Storage.TotalBytes,
-				StorageGrossBytes:              result.Storage.GrossBytes,
-				StorageExcludedBytes:           result.Storage.ExcludedBytes,
-				StorageColumnAssetBytes:        columnAssetBytes,
-				StorageTypedColumnPartBytes:    typedColumnPartBytes,
-				StorageTypedColumnSectionBytes: typedColumnSectionBytes,
-				StoragePrimaryIndexBytes:       storageCategoryBytes(result.Storage, "primary_index"),
-				StorageLeafVLogBytes:           storageCategoryBytes(result.Storage, "leaf_vlog"),
-				StorageWALBytes:                storageCategoryBytes(result.Storage, "wal"),
-				StorageAccountingScope:         result.Storage.AccountingScope,
-				StorageMeasurementPhase:        result.Storage.MeasurementPhase,
-				LoadSec:                        result.Load.WallSec,
-				CompactionSec:                  compactionSec,
-				Compacted:                      compactionEnabled,
-				RetainsJSON:                    &retainsJSON,
-				ReconstructionValid:            reconstructionValid,
-				Source:                         path,
+				System:                             result.System,
+				Engine:                             result.Engine,
+				Scale:                              reportScaleLabel(result),
+				RequestedRows:                      result.RequestedRows,
+				DatasetSize:                        result.DatasetSize,
+				RowCount:                           result.DatasetSize,
+				Format:                             result.Format,
+				StorageLayout:                      result.StorageLayout,
+				Projection:                         result.Projection,
+				Profile:                            result.Profile,
+				DataRoot:                           result.DataRoot,
+				DataShape:                          result.DataShape,
+				ExecutionMode:                      reportRowExecutionMode(result.StorageLayout),
+				StorageSource:                      reportRowStorageSource(result.StorageLayout),
+				FallbackReason:                     reportRowFallbackReason(result.StorageLayout),
+				MetadataDataScanPath:               reportRowMetadataDataScanPath(result.StorageLayout, q.Name),
+				SortLayout:                         reportRowSortLayout(result.StorageLayout, result.Projection),
+				CompressionMode:                    reportRowCompressionMode(result),
+				MutationMode:                       reportRowMutationMode(result),
+				DocumentScanFallback:               false,
+				RetainedPayloadPolicy:              result.RetainedPayloadPolicy,
+				ColumnReconstructionPolicy:         result.ColumnReconstructionPolicy,
+				TypedColumnOwner:                   result.TypedColumnOwner,
+				ReconstructionStatus:               reportRowReconstructionStatus(result),
+				Query:                              q.Name,
+				BestSec:                            q.BestSec,
+				MedianSec:                          q.MedianSec,
+				AttemptsSec:                        q.AttemptsSec,
+				RowsScanned:                        q.RowsScanned,
+				StorageBytes:                       result.Storage.TotalBytes,
+				StorageGrossBytes:                  result.Storage.GrossBytes,
+				StorageExcludedBytes:               result.Storage.ExcludedBytes,
+				StorageDurableBytesWALExcluded:     result.Storage.DurableStorageBytesWALExcluded,
+				StorageWALBytesExcludedFromDurable: result.Storage.WALBytesExcludedFromDurable,
+				StorageWALExcludedNote:             result.Storage.DurableStorageBytesWALExcludedNote,
+				StorageColumnAssetBytes:            columnAssetBytes,
+				StorageTypedColumnPartBytes:        typedColumnPartBytes,
+				StorageTypedColumnSectionBytes:     typedColumnSectionBytes,
+				StoragePrimaryIndexBytes:           storageCategoryBytes(result.Storage, "primary_index"),
+				StorageLeafVLogBytes:               storageCategoryBytes(result.Storage, "leaf_vlog"),
+				StorageWALBytes:                    storageCategoryBytes(result.Storage, "wal"),
+				StorageAccountingScope:             result.Storage.AccountingScope,
+				StorageMeasurementPhase:            result.Storage.MeasurementPhase,
+				LoadSec:                            result.Load.WallSec,
+				CompactionSec:                      compactionSec,
+				Compacted:                          compactionEnabled,
+				RetainsJSON:                        &retainsJSON,
+				ReconstructionValid:                reconstructionValid,
+				Source:                             path,
 			})
 		}
 		return nil
@@ -306,6 +334,146 @@ func storageCategoryBytes(storage storageResult, categories ...string) int64 {
 		}
 	}
 	return total
+}
+
+func reportRowExecutionMode(layout string) string {
+	switch {
+	case isPreparedColumnStoreLayout(layout):
+		return "prepared"
+	case isColumnStoreLayout(layout):
+		return "direct"
+	case layout == storageLayoutRow:
+		return "row_scan"
+	default:
+		return "unknown"
+	}
+}
+
+func reportRowStorageSource(layout string) string {
+	switch {
+	case isFullDataColumnStoreLayout(layout):
+		return "typed_column_part"
+	case isColumnStoreLayout(layout):
+		return "typed_row_asset"
+	case layout == storageLayoutRow:
+		return "primary_document_btree"
+	default:
+		return "unknown"
+	}
+}
+
+func reportRowFallbackReason(layout string) string {
+	if isColumnStoreLayout(layout) {
+		return "none"
+	}
+	if layout == storageLayoutRow {
+		return "row_scan_baseline"
+	}
+	return "unknown"
+}
+
+func reportRowMetadataDataScanPath(layout, query string) string {
+	switch {
+	case columnStoreUsesAggregateMetadata(layout, query):
+		return "aggregate_metadata"
+	case isColumnStoreLayout(layout):
+		return "typed_column_data_scan"
+	case layout == storageLayoutRow:
+		return "document_row_scan"
+	default:
+		return "unknown"
+	}
+}
+
+func reportRowSortLayout(layout, projection string) string {
+	if !isColumnStoreLayout(layout) {
+		return "not_applicable"
+	}
+	if isFullDataColumnStoreLayout(layout) {
+		return "time_us"
+	}
+	switch projection {
+	case "q3", "q4", "q5", "minimal":
+		return "time_us"
+	default:
+		return "ingest_order_unsorted"
+	}
+}
+
+func reportRowCompressionMode(result runResult) string {
+	if !isColumnStoreLayout(result.StorageLayout) {
+		return "not_applicable"
+	}
+	if result.Storage.ColumnStorePhysical == nil {
+		return "not_reported"
+	}
+	details := result.Storage.ColumnStorePhysical.Totals.TypedColumnSections.CompressionDetail
+	if len(details) == 0 {
+		for _, part := range result.Storage.ColumnStorePhysical.TypedColumnParts {
+			details = append(details, part.Image.CompressionDetail...)
+		}
+	}
+	if len(details) == 0 {
+		return "not_reported"
+	}
+	requested := make(map[string]int)
+	actual := make(map[string]int)
+	fallback := make(map[string]int)
+	for _, detail := range details {
+		requested[strings.TrimSpace(detail.RequestedCompression)] += detail.Blocks
+		actual[strings.TrimSpace(detail.ActualCompression)] += detail.Blocks
+		if reason := strings.TrimSpace(detail.FallbackReason); reason != "" {
+			fallback[reason] += detail.Blocks
+		}
+	}
+	mode := "requested=" + formatStringCountMap(requested) + "; actual=" + formatStringCountMap(actual)
+	if len(fallback) > 0 {
+		mode += "; fallback=" + formatStringCountMap(fallback)
+	}
+	return mode
+}
+
+func formatStringCountMap(counts map[string]int) string {
+	if len(counts) == 0 {
+		return "none"
+	}
+	keys := make([]string, 0, len(counts))
+	for key := range counts {
+		if key == "" {
+			key = "unspecified"
+		}
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, 0, len(keys))
+	for _, key := range keys {
+		lookup := key
+		if key == "unspecified" {
+			lookup = ""
+		}
+		parts = append(parts, fmt.Sprintf("%s:%d", key, counts[lookup]))
+	}
+	return strings.Join(parts, ",")
+}
+
+func reportRowMutationMode(result runResult) string {
+	if result.Compaction != nil && result.Compaction.Enabled {
+		return "insert_only_static_snapshot_compacted"
+	}
+	return "insert_only_static_snapshot"
+}
+
+func reportRowReconstructionStatus(result runResult) string {
+	if result.Reconstruction != nil {
+		if result.Reconstruction.Valid {
+			return "valid"
+		}
+		return "invalid"
+	}
+	if isFullDataColumnStoreLayout(result.StorageLayout) {
+		return "not_validated"
+	}
+	return "not_applicable"
 }
 
 func collectBaselineRows(dir string, scales map[string]struct{}, systemName, engine string) ([]reportRow, error) {
@@ -363,9 +531,18 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 				Scale:                   scale,
 				RequestedRows:           result.NumLoadedDocuments,
 				DatasetSize:             result.DatasetSize,
+				RowCount:                result.DatasetSize,
 				Format:                  "json",
 				Projection:              "full",
 				DataShape:               "full-json",
+				ExecutionMode:           "baseline",
+				StorageSource:           "external_json_engine",
+				FallbackReason:          "not_applicable",
+				MetadataDataScanPath:    "json_sql_scan",
+				SortLayout:              "external_baseline",
+				CompressionMode:         "engine_reported",
+				MutationMode:            "external_baseline",
+				ReconstructionStatus:    "not_reported",
 				Query:                   name,
 				BestSec:                 best,
 				MedianSec:               median,
@@ -442,6 +619,35 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.RowsScanned,
 			formatBytes(row.StorageBytes),
 			formatSeconds(row.LoadSec),
+		)
+	}
+	fmt.Fprintf(&buf, "\n## TreeDB Row Attribution Labels\n\n")
+	fmt.Fprintf(&buf, "| rows/scale | layout | query | profile | mode | source | fallback | path | sort | compression | mutation | retained payload | typed owner | rows | reconstruction | WAL-excluded durable | WAL excluded |\n")
+	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---|---|---|---|---|---|---|---:|---|---:|---:|\n")
+	for _, row := range doc.Rows {
+		if row.System != "TreeDB" {
+			continue
+		}
+		fmt.Fprintf(
+			&buf,
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			row.Scale,
+			reportRowLayout(row),
+			row.Query,
+			row.Profile,
+			row.ExecutionMode,
+			row.StorageSource,
+			row.FallbackReason,
+			row.MetadataDataScanPath,
+			row.SortLayout,
+			row.CompressionMode,
+			row.MutationMode,
+			row.RetainedPayloadPolicy,
+			row.TypedColumnOwner,
+			formatCount(row.RowCount),
+			row.ReconstructionStatus,
+			formatBytes(row.StorageDurableBytesWALExcluded),
+			formatBytes(row.StorageWALBytesExcludedFromDurable),
 		)
 	}
 	fmt.Fprintf(&buf, "\n## Best Runtime By Query\n\n")
