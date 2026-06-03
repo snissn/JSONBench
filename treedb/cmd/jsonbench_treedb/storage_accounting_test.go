@@ -18,6 +18,9 @@ func TestDirectoryUsageClassifiesIncludedAndExcludedBytes(t *testing.T) {
 		"maindb/leaf_vlog/value-l255-000001.log":                              50,
 		"maindb/value_vlog/value-l0-000001.log":                               60,
 		"maindb/wal/000001.wal":                                               25,
+		"maindb/wal/commit-l0-000001.log":                                     33,
+		"maindb/wal/commit-l+1-000001.log":                                    17,
+		"maindb/wal/archive/commit-l0-000002.log":                             23,
 		"maindb/format.json":                                                  10,
 		"dictdb/format.json":                                                  11,
 		"maindb/vlog_ref_counts.meta":                                         12,
@@ -35,20 +38,26 @@ func TestDirectoryUsageClassifiesIncludedAndExcludedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("directoryUsage: %v", err)
 	}
-	if got.TotalBytes != 428 {
-		t.Fatalf("included bytes=%d want 428; categories=%+v", got.TotalBytes, got.Categories)
+	if got.TotalBytes != 501 {
+		t.Fatalf("included bytes=%d want 501; categories=%+v", got.TotalBytes, got.Categories)
 	}
-	if got.GrossBytes != 479 {
-		t.Fatalf("gross bytes=%d want 479", got.GrossBytes)
+	if got.GrossBytes != 552 {
+		t.Fatalf("gross bytes=%d want 552", got.GrossBytes)
 	}
 	if got.ExcludedBytes != 51 {
 		t.Fatalf("excluded bytes=%d want 51", got.ExcludedBytes)
 	}
-	if got.FileCount != 11 || got.ExcludedFileCount != 5 {
-		t.Fatalf("file counts included=%d excluded=%d want 11/5", got.FileCount, got.ExcludedFileCount)
+	if got.FileCount != 14 || got.ExcludedFileCount != 5 {
+		t.Fatalf("file counts included=%d excluded=%d want 14/5", got.FileCount, got.ExcludedFileCount)
 	}
-	if got.BytesPerRow != 42.8 {
-		t.Fatalf("bytes/row=%f want 42.8", got.BytesPerRow)
+	if got.WALBytesExcludedFromDurable != 33 {
+		t.Fatalf("wal excluded from durable=%d want 33", got.WALBytesExcludedFromDurable)
+	}
+	if got.DurableStorageBytesWALExcluded != 468 {
+		t.Fatalf("durable WAL-excluded bytes=%d want 468", got.DurableStorageBytesWALExcluded)
+	}
+	if got.BytesPerRow != 50.1 {
+		t.Fatalf("bytes/row=%f want 50.1", got.BytesPerRow)
 	}
 	assertStorageCategory(t, got, "primary_index", true, 100, 1)
 	assertStorageCategory(t, got, "dictionary_index", true, 40, 1)
@@ -57,7 +66,7 @@ func TestDirectoryUsageClassifiesIncludedAndExcludedBytes(t *testing.T) {
 	assertStorageCategory(t, got, "column_asset_quarantine", true, 20, 1)
 	assertStorageCategory(t, got, "leaf_vlog", true, 50, 1)
 	assertStorageCategory(t, got, "value_vlog", true, 60, 1)
-	assertStorageCategory(t, got, "wal", true, 25, 1)
+	assertStorageCategory(t, got, "wal", true, 98, 4)
 	assertStorageCategory(t, got, "format_metadata", true, 10, 1)
 	assertStorageCategory(t, got, "dictionary_db_metadata", true, 11, 1)
 	assertStorageCategory(t, got, "refcount_metadata", true, 12, 1)
@@ -65,6 +74,25 @@ func TestDirectoryUsageClassifiesIncludedAndExcludedBytes(t *testing.T) {
 	assertStorageCategory(t, got, "temp_transient", false, 9, 1)
 	assertStorageCategory(t, got, "profile_artifacts", false, 27, 2)
 	assertStorageCategoriesDoNotDoubleCount(t, got)
+}
+
+func TestTreeDBCommandWALSegmentName(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		want bool
+	}{
+		{name: "commit-l0-000001.log", want: true},
+		{name: "commit-l12-34.log", want: true},
+		{name: "commit-l0-000000.log", want: false},
+		{name: "commit-l+1-000001.log", want: false},
+		{name: "commit-l-1-000001.log", want: false},
+		{name: "commit-lane-readme.log", want: false},
+		{name: "command-000001.wal", want: false},
+	} {
+		if got := isTreeDBCommandWALSegmentName(tc.name); got != tc.want {
+			t.Fatalf("isTreeDBCommandWALSegmentName(%q)=%v want %v", tc.name, got, tc.want)
+		}
+	}
 }
 
 func TestClassifyTreeDBStorageFile(t *testing.T) {
@@ -94,20 +122,34 @@ func TestRenderMarkdownReportLabelsDataShapeAndClickHouseBest(t *testing.T) {
 	retainsJSON := true
 	doc := reportDocument{GeneratedAt: "2026-06-01T00:00:00Z", Rows: []reportRow{
 		{
-			System:        "TreeDB",
-			Scale:         "6 rows",
-			DatasetSize:   6,
-			Format:        "json",
-			StorageLayout: storageLayoutColumnStoreFull,
-			Projection:    "full",
-			DataShape:     "full-retained-json",
-			Query:         "q1",
-			BestSec:       0.004,
-			MedianSec:     0.004,
-			AttemptsSec:   []float64{0.004},
-			RowsScanned:   6,
-			StorageBytes:  4096,
-			RetainsJSON:   &retainsJSON,
+			System:                             "TreeDB",
+			Scale:                              "6 rows",
+			DatasetSize:                        6,
+			RowCount:                           6,
+			Format:                             "json",
+			StorageLayout:                      storageLayoutColumnStoreFull,
+			Projection:                         "full",
+			Profile:                            "durable",
+			DataShape:                          "full-retained-json",
+			ExecutionMode:                      "direct",
+			StorageSource:                      "typed_column_part",
+			FallbackReason:                     "none",
+			MetadataDataScanPath:               "typed_column_data_scan",
+			SortLayout:                         "time_us",
+			CompressionMode:                    "requested=none:1; actual=none:1",
+			MutationMode:                       "insert_only_static_snapshot",
+			RetainedPayloadPolicy:              "non-column",
+			TypedColumnOwner:                   "typed_column_part",
+			ReconstructionStatus:               "valid",
+			Query:                              "q1",
+			BestSec:                            0.004,
+			MedianSec:                          0.004,
+			AttemptsSec:                        []float64{0.004},
+			RowsScanned:                        6,
+			StorageBytes:                       4096,
+			StorageDurableBytesWALExcluded:     3000,
+			StorageWALBytesExcludedFromDurable: 1096,
+			RetainsJSON:                        &retainsJSON,
 		},
 		{
 			System:       "ClickHouse",
@@ -132,6 +174,8 @@ func TestRenderMarkdownReportLabelsDataShapeAndClickHouseBest(t *testing.T) {
 		"| 6 rows | ClickHouse | full-json | json/full | q1 |",
 		"| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | ClickHouse best | TreeDB / ClickHouse |",
 		"| 6 rows | q1 | ClickHouse json/full | 0.0020s | 0.0040s |  | 0.0020s | 2.00x |",
+		"## TreeDB Row Attribution Labels",
+		"| 6 rows | column-store-full:json/full | q1 | durable | direct | typed_column_part | none | typed_column_data_scan | false | time_us | requested=none:1; actual=none:1 | insert_only_static_snapshot | non-column | typed_column_part | 6 | valid | 2.93 KiB | 1.07 KiB |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("report missing %q\n%s", want, got)

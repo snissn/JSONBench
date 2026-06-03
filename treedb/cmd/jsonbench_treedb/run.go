@@ -15,7 +15,7 @@ import (
 	"hash"
 	"io"
 	"os"
-	"path"
+	stdpath "path"
 	"path/filepath"
 	"sort"
 	"strconv"
@@ -106,17 +106,20 @@ type loadResult struct {
 }
 
 type storageResult struct {
-	TotalBytes              int64                                      `json:"total_bytes"`
-	GrossBytes              int64                                      `json:"gross_bytes,omitempty"`
-	ExcludedBytes           int64                                      `json:"excluded_bytes,omitempty"`
-	BytesPerRow             float64                                    `json:"bytes_per_row,omitempty"`
-	FileCount               int                                        `json:"file_count"`
-	ExcludedFileCount       int                                        `json:"excluded_file_count,omitempty"`
-	AccountingScope         string                                     `json:"accounting_scope,omitempty"`
-	MeasurementPhase        string                                     `json:"measurement_phase,omitempty"`
-	Categories              []storageCategoryResult                    `json:"categories,omitempty"`
-	ColumnStorePhysical     *collections.ColumnStorePhysicalAccounting `json:"column_store_physical,omitempty"`
-	ColumnAssetReachability *collections.ColumnAssetReachabilityPlan   `json:"column_asset_reachability,omitempty"`
+	TotalBytes                         int64                                      `json:"total_bytes"`
+	GrossBytes                         int64                                      `json:"gross_bytes,omitempty"`
+	ExcludedBytes                      int64                                      `json:"excluded_bytes,omitempty"`
+	BytesPerRow                        float64                                    `json:"bytes_per_row,omitempty"`
+	FileCount                          int                                        `json:"file_count"`
+	ExcludedFileCount                  int                                        `json:"excluded_file_count,omitempty"`
+	WALBytesExcludedFromDurable        int64                                      `json:"wal_bytes_excluded_from_durable_storage"`
+	DurableStorageBytesWALExcluded     int64                                      `json:"durable_storage_bytes_wal_excluded"`
+	DurableStorageBytesWALExcludedNote string                                     `json:"durable_storage_bytes_wal_excluded_note,omitempty"`
+	AccountingScope                    string                                     `json:"accounting_scope,omitempty"`
+	MeasurementPhase                   string                                     `json:"measurement_phase,omitempty"`
+	Categories                         []storageCategoryResult                    `json:"categories,omitempty"`
+	ColumnStorePhysical                *collections.ColumnStorePhysicalAccounting `json:"column_store_physical,omitempty"`
+	ColumnAssetReachability            *collections.ColumnAssetReachabilityPlan   `json:"column_asset_reachability,omitempty"`
 }
 
 type storageCategoryResult struct {
@@ -997,7 +1000,7 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 	var out storageResult
 	out.AccountingScope = "treedb_db_directory_durable_files"
 	categories := make(map[string]*storageCategoryResult)
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(filePath string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -1010,10 +1013,13 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 		}
 		size := info.Size()
 		out.GrossBytes += size
-		rel, err := filepath.Rel(dir, path)
+		rel, err := filepath.Rel(dir, filePath)
 		if err != nil {
 			return err
 		}
+		cleanRel := filepath.ToSlash(filepath.Clean(rel))
+		base := strings.ToLower(stdpath.Base(cleanRel))
+		parent := strings.ToLower(stdpath.Base(stdpath.Dir(cleanRel)))
 		category, included := classifyTreeDBStorageFile(rel)
 		bucket := categories[category]
 		if bucket == nil {
@@ -1022,6 +1028,9 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 		}
 		bucket.Bytes += size
 		bucket.FileCount++
+		if included && info.Mode().IsRegular() && category == "wal" && parent == "wal" && isTreeDBCommandWALSegmentName(base) {
+			out.WALBytesExcludedFromDurable += size
+		}
 		if included {
 			out.TotalBytes += size
 			out.FileCount++
@@ -1034,6 +1043,8 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 	if err != nil {
 		return out, err
 	}
+	out.DurableStorageBytesWALExcluded = durableStorageBytesWALExcluded(out.TotalBytes, out.WALBytesExcludedFromDurable)
+	out.DurableStorageBytesWALExcludedNote = "durable_storage_bytes_wal_excluded subtracts only valid regular wal/commit-l<lane>-<seq>.log command WAL segment files; value_vlog, leaf_vlog, index.db, column assets, manifest/control bytes remain counted."
 	if rows > 0 {
 		out.BytesPerRow = float64(out.TotalBytes) / float64(rows)
 	}
@@ -1068,10 +1079,36 @@ func collectTreeDBStorageUsage(ctx context.Context, dir string, collection *coll
 	return storage, nil
 }
 
+func durableStorageBytesWALExcluded(totalBytes, walBytes int64) int64 {
+	if totalBytes <= 0 || walBytes >= totalBytes {
+		return 0
+	}
+	if walBytes <= 0 {
+		return totalBytes
+	}
+	return totalBytes - walBytes
+}
+
+func isTreeDBCommandWALSegmentName(name string) bool {
+	if !strings.HasPrefix(name, "commit-l") || !strings.HasSuffix(name, ".log") {
+		return false
+	}
+	body := strings.TrimSuffix(strings.TrimPrefix(name, "commit-l"), ".log")
+	parts := strings.SplitN(body, "-", 2)
+	if len(parts) != 2 || parts[0] == "" || parts[1] == "" {
+		return false
+	}
+	if _, err := strconv.ParseUint(parts[0], 10, 32); err != nil {
+		return false
+	}
+	seq, err := strconv.ParseUint(parts[1], 10, 64)
+	return err == nil && seq != 0
+}
+
 func classifyTreeDBStorageFile(rel string) (string, bool) {
 	rel = filepath.ToSlash(filepath.Clean(rel))
 	lowerRel := strings.ToLower(rel)
-	base := strings.ToLower(path.Base(lowerRel))
+	base := strings.ToLower(stdpath.Base(lowerRel))
 	if isTreeDBStorageRuntimeLock(lowerRel, base) {
 		return "runtime_locks", false
 	}
