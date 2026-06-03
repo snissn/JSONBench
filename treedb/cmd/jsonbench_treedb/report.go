@@ -249,6 +249,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 			typedColumnSectionBytes = result.Storage.ColumnStorePhysical.Totals.TypedColumnSections.TotalStoredBytes
 		}
 		for _, q := range result.Queries {
+			scanPath := reportRowMetadataDataScanPath(result.StorageLayout, q.Name)
 			rows = append(rows, reportRow{
 				System:                             result.System,
 				Engine:                             result.Engine,
@@ -265,11 +266,11 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				ExecutionMode:                      reportRowExecutionMode(result.StorageLayout),
 				StorageSource:                      reportRowStorageSource(result.StorageLayout),
 				FallbackReason:                     reportRowFallbackReason(result.StorageLayout),
-				MetadataDataScanPath:               reportRowMetadataDataScanPath(result.StorageLayout, q.Name),
+				MetadataDataScanPath:               scanPath,
 				SortLayout:                         reportRowSortLayout(result.StorageLayout, result.Projection),
 				CompressionMode:                    reportRowCompressionMode(result),
 				MutationMode:                       reportRowMutationMode(result),
-				DocumentScanFallback:               false,
+				DocumentScanFallback:               scanPath == "document_row_scan",
 				RetainedPayloadPolicy:              result.RetainedPayloadPolicy,
 				ColumnReconstructionPolicy:         result.ColumnReconstructionPolicy,
 				TypedColumnOwner:                   result.TypedColumnOwner,
@@ -282,7 +283,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				StorageBytes:                       result.Storage.TotalBytes,
 				StorageGrossBytes:                  result.Storage.GrossBytes,
 				StorageExcludedBytes:               result.Storage.ExcludedBytes,
-				StorageDurableBytesWALExcluded:     result.Storage.DurableStorageBytesWALExcluded,
+				StorageDurableBytesWALExcluded:     reportStorageDurableBytesWALExcluded(result.Storage),
 				StorageWALBytesExcludedFromDurable: result.Storage.WALBytesExcludedFromDurable,
 				StorageWALExcludedNote:             result.Storage.DurableStorageBytesWALExcludedNote,
 				StorageColumnAssetBytes:            columnAssetBytes,
@@ -334,6 +335,10 @@ func storageCategoryBytes(storage storageResult, categories ...string) int64 {
 		}
 	}
 	return total
+}
+
+func reportStorageDurableBytesWALExcluded(storage storageResult) int64 {
+	return durableStorageBytesWALExcluded(storage.TotalBytes, storage.WALBytesExcludedFromDurable)
 }
 
 func reportRowExecutionMode(layout string) string {
@@ -622,15 +627,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		)
 	}
 	fmt.Fprintf(&buf, "\n## TreeDB Row Attribution Labels\n\n")
-	fmt.Fprintf(&buf, "| rows/scale | layout | query | profile | mode | source | fallback | path | sort | compression | mutation | retained payload | typed owner | rows | reconstruction | WAL-excluded durable | WAL excluded |\n")
-	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---|---|---|---|---|---|---|---:|---|---:|---:|\n")
+	fmt.Fprintf(&buf, "| rows/scale | layout | query | profile | mode | source | fallback | path | doc-scan fallback | sort | compression | mutation | retained payload | typed owner | rows | reconstruction | WAL-excluded durable | WAL excluded |\n")
+	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---|---|---|---|---|---|---|---|---:|---|---:|---:|\n")
 	for _, row := range doc.Rows {
 		if row.System != "TreeDB" {
 			continue
 		}
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %t | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
 			row.Scale,
 			reportRowLayout(row),
 			row.Query,
@@ -639,6 +644,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.StorageSource,
 			row.FallbackReason,
 			row.MetadataDataScanPath,
+			row.DocumentScanFallback,
 			row.SortLayout,
 			row.CompressionMode,
 			row.MutationMode,

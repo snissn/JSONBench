@@ -1000,7 +1000,7 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 	var out storageResult
 	out.AccountingScope = "treedb_db_directory_durable_files"
 	categories := make(map[string]*storageCategoryResult)
-	err := filepath.WalkDir(dir, func(path string, d os.DirEntry, err error) error {
+	err := filepath.WalkDir(dir, func(filePath string, d os.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
@@ -1013,12 +1013,13 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 		}
 		size := info.Size()
 		out.GrossBytes += size
-		rel, err := filepath.Rel(dir, path)
+		rel, err := filepath.Rel(dir, filePath)
 		if err != nil {
 			return err
 		}
 		cleanRel := filepath.ToSlash(filepath.Clean(rel))
-		base := strings.ToLower(filepath.Base(cleanRel))
+		base := strings.ToLower(path.Base(cleanRel))
+		parent := strings.ToLower(path.Base(path.Dir(cleanRel)))
 		category, included := classifyTreeDBStorageFile(rel)
 		bucket := categories[category]
 		if bucket == nil {
@@ -1027,7 +1028,7 @@ func directoryUsage(dir string, rows int) (storageResult, error) {
 		}
 		bucket.Bytes += size
 		bucket.FileCount++
-		if included && info.Mode().IsRegular() && category == "wal" && isTreeDBCommandWALSegmentName(base) {
+		if included && info.Mode().IsRegular() && category == "wal" && parent == "wal" && isTreeDBCommandWALSegmentName(base) {
 			out.WALBytesExcludedFromDurable += size
 		}
 		if included {

@@ -20,6 +20,7 @@ func TestDirectoryUsageClassifiesIncludedAndExcludedBytes(t *testing.T) {
 		"maindb/wal/000001.wal":                                               25,
 		"maindb/wal/commit-l0-000001.log":                                     33,
 		"maindb/wal/commit-l+1-000001.log":                                    17,
+		"maindb/wal/archive/commit-l0-000002.log":                             23,
 		"maindb/format.json":                                                  10,
 		"dictdb/format.json":                                                  11,
 		"maindb/vlog_ref_counts.meta":                                         12,
@@ -37,26 +38,26 @@ func TestDirectoryUsageClassifiesIncludedAndExcludedBytes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("directoryUsage: %v", err)
 	}
-	if got.TotalBytes != 478 {
-		t.Fatalf("included bytes=%d want 478; categories=%+v", got.TotalBytes, got.Categories)
+	if got.TotalBytes != 501 {
+		t.Fatalf("included bytes=%d want 501; categories=%+v", got.TotalBytes, got.Categories)
 	}
-	if got.GrossBytes != 529 {
-		t.Fatalf("gross bytes=%d want 529", got.GrossBytes)
+	if got.GrossBytes != 552 {
+		t.Fatalf("gross bytes=%d want 552", got.GrossBytes)
 	}
 	if got.ExcludedBytes != 51 {
 		t.Fatalf("excluded bytes=%d want 51", got.ExcludedBytes)
 	}
-	if got.FileCount != 13 || got.ExcludedFileCount != 5 {
-		t.Fatalf("file counts included=%d excluded=%d want 13/5", got.FileCount, got.ExcludedFileCount)
+	if got.FileCount != 14 || got.ExcludedFileCount != 5 {
+		t.Fatalf("file counts included=%d excluded=%d want 14/5", got.FileCount, got.ExcludedFileCount)
 	}
 	if got.WALBytesExcludedFromDurable != 33 {
 		t.Fatalf("wal excluded from durable=%d want 33", got.WALBytesExcludedFromDurable)
 	}
-	if got.DurableStorageBytesWALExcluded != 445 {
-		t.Fatalf("durable WAL-excluded bytes=%d want 445", got.DurableStorageBytesWALExcluded)
+	if got.DurableStorageBytesWALExcluded != 468 {
+		t.Fatalf("durable WAL-excluded bytes=%d want 468", got.DurableStorageBytesWALExcluded)
 	}
-	if got.BytesPerRow != 47.8 {
-		t.Fatalf("bytes/row=%f want 47.8", got.BytesPerRow)
+	if got.BytesPerRow != 50.1 {
+		t.Fatalf("bytes/row=%f want 50.1", got.BytesPerRow)
 	}
 	assertStorageCategory(t, got, "primary_index", true, 100, 1)
 	assertStorageCategory(t, got, "dictionary_index", true, 40, 1)
@@ -65,7 +66,7 @@ func TestDirectoryUsageClassifiesIncludedAndExcludedBytes(t *testing.T) {
 	assertStorageCategory(t, got, "column_asset_quarantine", true, 20, 1)
 	assertStorageCategory(t, got, "leaf_vlog", true, 50, 1)
 	assertStorageCategory(t, got, "value_vlog", true, 60, 1)
-	assertStorageCategory(t, got, "wal", true, 75, 3)
+	assertStorageCategory(t, got, "wal", true, 98, 4)
 	assertStorageCategory(t, got, "format_metadata", true, 10, 1)
 	assertStorageCategory(t, got, "dictionary_db_metadata", true, 11, 1)
 	assertStorageCategory(t, got, "refcount_metadata", true, 12, 1)
@@ -174,7 +175,7 @@ func TestRenderMarkdownReportLabelsDataShapeAndClickHouseBest(t *testing.T) {
 		"| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | ClickHouse best | TreeDB / ClickHouse |",
 		"| 6 rows | q1 | ClickHouse json/full | 0.0020s | 0.0040s |  | 0.0020s | 2.00x |",
 		"## TreeDB Row Attribution Labels",
-		"| 6 rows | column-store-full:json/full | q1 | durable | direct | typed_column_part | none | typed_column_data_scan | time_us | requested=none:1; actual=none:1 | insert_only_static_snapshot | non-column | typed_column_part | 6 | valid | 2.93 KiB | 1.07 KiB |",
+		"| 6 rows | column-store-full:json/full | q1 | durable | direct | typed_column_part | none | typed_column_data_scan | false | time_us | requested=none:1; actual=none:1 | insert_only_static_snapshot | non-column | typed_column_part | 6 | valid | 2.93 KiB | 1.07 KiB |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("report missing %q\n%s", want, got)
