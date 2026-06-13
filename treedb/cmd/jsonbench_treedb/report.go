@@ -52,6 +52,8 @@ type reportRow struct {
 	MutationMode                       string    `json:"mutation_mode,omitempty"`
 	DocumentScanFallback               bool      `json:"document_scan_fallback"`
 	RetainedPayloadPolicy              string    `json:"retained_payload_policy,omitempty"`
+	RetainedPayloadEncoding            string    `json:"retained_payload_encoding,omitempty"`
+	RetainedPayloadEncodingStatus      string    `json:"retained_payload_encoding_status,omitempty"`
 	ColumnReconstructionPolicy         string    `json:"column_reconstruction_policy,omitempty"`
 	TypedColumnOwner                   string    `json:"typed_column_owner,omitempty"`
 	ReconstructionStatus               string    `json:"reconstruction_status,omitempty"`
@@ -272,6 +274,8 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				MutationMode:                       reportRowMutationMode(result),
 				DocumentScanFallback:               scanPath == "document_row_scan",
 				RetainedPayloadPolicy:              result.RetainedPayloadPolicy,
+				RetainedPayloadEncoding:            result.RetainedPayloadEncoding,
+				RetainedPayloadEncodingStatus:      result.RetainedPayloadEncodingStatus,
 				ColumnReconstructionPolicy:         result.ColumnReconstructionPolicy,
 				TypedColumnOwner:                   result.TypedColumnOwner,
 				ReconstructionStatus:               reportRowReconstructionStatus(result),
@@ -710,6 +714,9 @@ func reportRowLayout(row reportRow) string {
 	}
 	if row.Compacted {
 		layout += "+compacted"
+	}
+	if row.RetainedPayloadEncoding != "" && row.RetainedPayloadEncoding != "none" {
+		layout += "+retained=" + row.RetainedPayloadEncoding
 	}
 	return layout
 }
