@@ -31,30 +31,33 @@ import (
 const (
 	defaultCollectionName = "bluesky"
 	defaultBatchSize      = 16000
+
+	envColumnStoreRetainedPayloadEncoding = "TREEDB_COLUMN_STORE_RETAINED_PAYLOAD_ENCODING"
 )
 
 type runConfig struct {
-	DataDir                string
-	DBDir                  string
-	Out                    string
-	Reset                  bool
-	Scale                  string
-	Rows                   int
-	MaxFiles               int
-	Format                 string
-	StorageLayout          string
-	Projection             string
-	Queries                []string
-	BatchSize              int
-	Profile                string
-	DataRoot               string
-	Collection             string
-	Checkpoint             bool
-	CompactAfterLoad       bool
-	CompactBatchSize       int
-	ValidateReconstruction bool
-	Tries                  int
-	Progress               bool
+	DataDir                 string
+	DBDir                   string
+	Out                     string
+	Reset                   bool
+	Scale                   string
+	Rows                    int
+	MaxFiles                int
+	Format                  string
+	StorageLayout           string
+	RetainedPayloadEncoding string
+	Projection              string
+	Queries                 []string
+	BatchSize               int
+	Profile                 string
+	DataRoot                string
+	Collection              string
+	Checkpoint              bool
+	CompactAfterLoad        bool
+	CompactBatchSize        int
+	ValidateReconstruction  bool
+	Tries                   int
+	Progress                bool
 }
 
 type runResult struct {
@@ -66,28 +69,30 @@ type runResult struct {
 	ScaleLabel    string `json:"scale_label"`
 	RequestedRows int    `json:"requested_rows"`
 	// Kept for parsing old result JSON; new runs always reject partial input.
-	AllowShortData             bool                  `json:"allow_short_data,omitempty"`
-	DatasetSize                int                   `json:"dataset_size"`
-	DataDir                    string                `json:"data_dir"`
-	DBDir                      string                `json:"db_dir"`
-	Collection                 string                `json:"collection"`
-	Format                     string                `json:"format"`
-	StorageLayout              string                `json:"storage_layout"`
-	Projection                 string                `json:"projection"`
-	RetainsJSON                bool                  `json:"retains_json_structure"`
-	DataShape                  string                `json:"data_shape,omitempty"`
-	RetainedPayloadPolicy      string                `json:"retained_payload_policy,omitempty"`
-	ColumnReconstructionPolicy string                `json:"column_reconstruction_policy,omitempty"`
-	TypedColumnOwner           string                `json:"typed_column_owner,omitempty"`
-	Profile                    string                `json:"profile"`
-	DataRoot                   string                `json:"data_root"`
-	Load                       loadResult            `json:"load"`
-	Storage                    storageResult         `json:"storage"`
-	Compaction                 *compactionResult     `json:"compaction,omitempty"`
-	Reconstruction             *reconstructionResult `json:"reconstruction,omitempty"`
-	Queries                    []queryRun            `json:"queries"`
-	Command                    []string              `json:"command,omitempty"`
-	Notes                      []string              `json:"notes,omitempty"`
+	AllowShortData                bool                  `json:"allow_short_data,omitempty"`
+	DatasetSize                   int                   `json:"dataset_size"`
+	DataDir                       string                `json:"data_dir"`
+	DBDir                         string                `json:"db_dir"`
+	Collection                    string                `json:"collection"`
+	Format                        string                `json:"format"`
+	StorageLayout                 string                `json:"storage_layout"`
+	Projection                    string                `json:"projection"`
+	RetainsJSON                   bool                  `json:"retains_json_structure"`
+	DataShape                     string                `json:"data_shape,omitempty"`
+	RetainedPayloadPolicy         string                `json:"retained_payload_policy,omitempty"`
+	RetainedPayloadEncoding       string                `json:"retained_payload_encoding,omitempty"`
+	RetainedPayloadEncodingStatus string                `json:"retained_payload_encoding_status,omitempty"`
+	ColumnReconstructionPolicy    string                `json:"column_reconstruction_policy,omitempty"`
+	TypedColumnOwner              string                `json:"typed_column_owner,omitempty"`
+	Profile                       string                `json:"profile"`
+	DataRoot                      string                `json:"data_root"`
+	Load                          loadResult            `json:"load"`
+	Storage                       storageResult         `json:"storage"`
+	Compaction                    *compactionResult     `json:"compaction,omitempty"`
+	Reconstruction                *reconstructionResult `json:"reconstruction,omitempty"`
+	Queries                       []queryRun            `json:"queries"`
+	Command                       []string              `json:"command,omitempty"`
+	Notes                         []string              `json:"notes,omitempty"`
 }
 
 type loadResult struct {
@@ -201,6 +206,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.IntVar(&cfg.MaxFiles, "max-files", 0, "Maximum input files to read; defaults from -scale")
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "TreeDB collection format: json or template-v1")
 	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row, column-store, column-store-prepared, or column-store-prepared-metadata")
+	fs.StringVar(&cfg.RetainedPayloadEncoding, "column-store-retained-payload-encoding", os.Getenv(envColumnStoreRetainedPayloadEncoding), "Retained-payload encoding override for full-data column-store non-column retained payloads (default/template-v1,json,semantic-stream-v1). Can also be set with "+envColumnStoreRetainedPayloadEncoding)
 	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q5")
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q5")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
@@ -230,6 +236,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if err != nil {
 		return cfg, err
 	}
+	cfg.RetainedPayloadEncoding = strings.ToLower(strings.TrimSpace(cfg.RetainedPayloadEncoding))
 	cfg.Projection = strings.ToLower(strings.TrimSpace(cfg.Projection))
 	cfg.Profile = strings.ToLower(strings.TrimSpace(cfg.Profile))
 	cfg.DataRoot = strings.ToLower(strings.TrimSpace(cfg.DataRoot))
@@ -266,6 +273,11 @@ func parseRunFlags(args []string) (runConfig, error) {
 	}
 	if err := validateStorageLayoutConfig(cfg); err != nil {
 		return cfg, err
+	}
+	if isColumnStoreLayout(cfg.StorageLayout) {
+		if _, err := columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout, cfg.RetainedPayloadEncoding); err != nil {
+			return cfg, err
+		}
 	}
 	if cfg.ValidateReconstruction && !isFullDataColumnStoreLayout(cfg.StorageLayout) {
 		return cfg, errors.New("-validate-reconstruction requires -storage-layout column-store-full or column-store-full-prepared")
@@ -354,34 +366,37 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 	if err != nil {
 		return runResult{}, err
 	}
+	retainedPayloadEncoding, retainedPayloadEncodingStatus := columnStoreRetainedPayloadEncodingStatus(cfg)
 	return runResult{
-		SchemaVersion:              schemaVersion,
-		GeneratedAt:                time.Now().UTC().Format(time.RFC3339),
-		System:                     "TreeDB",
-		Engine:                     treeDBEngineName(cfg),
-		Scale:                      cfg.Scale,
-		ScaleLabel:                 scaleLabel(cfg.Scale, cfg.Rows, load.Rows),
-		RequestedRows:              cfg.Rows,
-		DatasetSize:                load.Rows,
-		DataDir:                    cfg.DataDir,
-		DBDir:                      cfg.DBDir,
-		Collection:                 cfg.Collection,
-		Format:                     cfg.Format,
-		StorageLayout:              cfg.StorageLayout,
-		Projection:                 cfg.Projection,
-		RetainsJSON:                cfg.Projection == "full" && (cfg.StorageLayout == storageLayoutRow || isFullDataColumnStoreLayout(cfg.StorageLayout)),
-		DataShape:                  treeDBDataShape(cfg),
-		RetainedPayloadPolicy:      columnStoreRetainedPayloadPolicy(cfg),
-		ColumnReconstructionPolicy: columnStoreReconstructionPolicy(cfg),
-		TypedColumnOwner:           columnStoreTypedColumnOwner(cfg),
-		Profile:                    cfg.Profile,
-		DataRoot:                   cfg.DataRoot,
-		Load:                       load,
-		Storage:                    storage,
-		Compaction:                 compaction,
-		Reconstruction:             reconstruction,
-		Queries:                    queryResults,
-		Notes:                      runNotes(cfg),
+		SchemaVersion:                 schemaVersion,
+		GeneratedAt:                   time.Now().UTC().Format(time.RFC3339),
+		System:                        "TreeDB",
+		Engine:                        treeDBEngineName(cfg),
+		Scale:                         cfg.Scale,
+		ScaleLabel:                    scaleLabel(cfg.Scale, cfg.Rows, load.Rows),
+		RequestedRows:                 cfg.Rows,
+		DatasetSize:                   load.Rows,
+		DataDir:                       cfg.DataDir,
+		DBDir:                         cfg.DBDir,
+		Collection:                    cfg.Collection,
+		Format:                        cfg.Format,
+		StorageLayout:                 cfg.StorageLayout,
+		Projection:                    cfg.Projection,
+		RetainsJSON:                   cfg.Projection == "full" && (cfg.StorageLayout == storageLayoutRow || isFullDataColumnStoreLayout(cfg.StorageLayout)),
+		DataShape:                     treeDBDataShape(cfg),
+		RetainedPayloadPolicy:         columnStoreRetainedPayloadPolicy(cfg),
+		RetainedPayloadEncoding:       retainedPayloadEncoding,
+		RetainedPayloadEncodingStatus: retainedPayloadEncodingStatus,
+		ColumnReconstructionPolicy:    columnStoreReconstructionPolicy(cfg),
+		TypedColumnOwner:              columnStoreTypedColumnOwner(cfg),
+		Profile:                       cfg.Profile,
+		DataRoot:                      cfg.DataRoot,
+		Load:                          load,
+		Storage:                       storage,
+		Compaction:                    compaction,
+		Reconstruction:                reconstruction,
+		Queries:                       queryResults,
+		Notes:                         runNotes(cfg),
 	}, nil
 }
 
@@ -469,7 +484,7 @@ func createCollection(manager *collections.CollectionManager, cfg runConfig) (*c
 	}
 	var columnStore *collections.ColumnStoreConfig
 	if isColumnStoreLayout(cfg.StorageLayout) {
-		columnStore, err = columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout)
+		columnStore, err = columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout, cfg.RetainedPayloadEncoding)
 		if err != nil {
 			return nil, err
 		}
@@ -878,6 +893,17 @@ func columnStoreRetainedPayloadPolicy(cfg runConfig) string {
 		return string(collections.ColumnRetainedPayloadNonColumn)
 	}
 	return string(collections.ColumnRetainedPayloadNone)
+}
+
+func columnStoreRetainedPayloadEncodingStatus(cfg runConfig) (string, string) {
+	if !isColumnStoreLayout(cfg.StorageLayout) {
+		return "", ""
+	}
+	columnStore, err := columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout, cfg.RetainedPayloadEncoding)
+	if err != nil {
+		return "", ""
+	}
+	return collections.ColumnRetainedPayloadEncodingStatus(columnStore)
 }
 
 func columnStoreReconstructionPolicy(cfg runConfig) string {

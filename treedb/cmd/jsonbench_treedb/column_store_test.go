@@ -111,11 +111,11 @@ func TestFullColumnStoreLayoutsMatchFullRowFixture(t *testing.T) {
 }
 
 func TestFullColumnStoreLayoutsDeclareNullableStringColumns(t *testing.T) {
-	full, err := columnStoreConfigForProjection("q1", storageLayoutColumnStoreFullPrepared)
+	full, err := columnStoreConfigForProjection("q1", storageLayoutColumnStoreFullPrepared, "")
 	if err != nil {
 		t.Fatalf("columnStoreConfigForProjection full: %v", err)
 	}
-	queryShaped, err := columnStoreConfigForProjection("q2", storageLayoutColumnStorePrepared)
+	queryShaped, err := columnStoreConfigForProjection("q2", storageLayoutColumnStorePrepared, "")
 	if err != nil {
 		t.Fatalf("columnStoreConfigForProjection query-shaped: %v", err)
 	}
@@ -136,6 +136,31 @@ func TestFullColumnStoreLayoutsDeclareNullableStringColumns(t *testing.T) {
 		if col.Nullable {
 			t.Fatalf("query-shaped column %q nullable=true", col.Name)
 		}
+	}
+}
+
+func TestFullColumnStoreRetainedPayloadEncodingOverride(t *testing.T) {
+	cfg, err := columnStoreConfigForProjection("full", storageLayoutColumnStoreFullPrepared, "semantic-stream-v1")
+	if err != nil {
+		t.Fatalf("columnStoreConfigForProjection semantic-stream-v1: %v", err)
+	}
+	if got, want := cfg.RetainedPayloadEncoding, collections.ColumnRetainedPayloadEncoding(collections.ColumnRetainedPayloadEncodingSemanticStreamV1); got != want {
+		t.Fatalf("retained payload encoding=%q want %q", got, want)
+	}
+	encoding, status := collections.ColumnRetainedPayloadEncodingStatus(cfg)
+	if got, want := encoding, string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1); got != want {
+		t.Fatalf("retained payload encoding status encoding=%q want %q", got, want)
+	}
+	if got, want := status, "active_semantic_stream_v1_non_column_retained_payload"; got != want {
+		t.Fatalf("retained payload encoding status=%q want %q", got, want)
+	}
+
+	queryShaped, err := columnStoreConfigForProjection("q2", storageLayoutColumnStorePrepared, "semantic-stream-v1")
+	if err != nil {
+		t.Fatalf("columnStoreConfigForProjection query-shaped: %v", err)
+	}
+	if queryShaped.RetainedPayloadEncoding != "" {
+		t.Fatalf("query-shaped retained payload encoding=%q want empty", queryShaped.RetainedPayloadEncoding)
 	}
 }
 
