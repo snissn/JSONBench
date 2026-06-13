@@ -82,6 +82,8 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 			row.DataShape == "full-retained-json" &&
 			row.TypedColumnOwner == "typed_column_part" &&
 			row.RetainedPayloadPolicy == "non-column" &&
+			row.RetainedPayloadEncoding == "template-v1" &&
+			row.RetainedPayloadEncodingStatus == "active_template_v1_non_column_retained_payload" &&
 			row.ReconstructionValid != nil &&
 			*row.ReconstructionValid {
 			foundFullHeadline = true

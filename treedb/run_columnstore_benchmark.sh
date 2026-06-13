@@ -38,6 +38,7 @@ fi
 OUT_DIR="${OUT_DIR:-/tmp/jsonbench_treedb_columnstore_$(date -u +%Y%m%d_%H%M%S)}"
 GOMAP_REPLACE="${GOMAP_REPLACE:-}"
 SCALE="${SCALE:-}"
+RETAINED_PAYLOAD_ENCODING="${TREEDB_COLUMN_STORE_RETAINED_PAYLOAD_ENCODING:-}"
 
 scale_for_rows() {
   case "$1" in
@@ -109,6 +110,7 @@ cat <<EOF
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
     validate:  $VALIDATE_RECONSTRUCTION
+    retained:  ${RETAINED_PAYLOAD_ENCODING:-default}
     metadata:  $metadata_label
     out:       $OUT_DIR
 EOF
@@ -153,6 +155,7 @@ summary="$OUT_DIR/columnstore_summary.md"
   echo "- tries: \`$TRIES\`"
   echo "- suite: \`$SUITE\`"
   echo "- validate reconstruction: \`$VALIDATE_RECONSTRUCTION\`"
+  echo "- retained payload encoding: \`${RETAINED_PAYLOAD_ENCODING:-default}\`"
   echo "- report: \`$OUT_DIR/report.md\`"
   echo
   go run ./cmd/jsonbench_treedb column-summary -report-json "$OUT_DIR/report.json"

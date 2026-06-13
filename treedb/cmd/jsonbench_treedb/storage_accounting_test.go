@@ -139,6 +139,8 @@ func TestRenderMarkdownReportLabelsDataShapeAndClickHouseBest(t *testing.T) {
 			CompressionMode:                    "requested=none:1; actual=none:1",
 			MutationMode:                       "insert_only_static_snapshot",
 			RetainedPayloadPolicy:              "non-column",
+			RetainedPayloadEncoding:            "template-v1",
+			RetainedPayloadEncodingStatus:      "active_template_v1_non_column_retained_payload",
 			TypedColumnOwner:                   "typed_column_part",
 			ReconstructionStatus:               "valid",
 			Query:                              "q1",
@@ -170,12 +172,12 @@ func TestRenderMarkdownReportLabelsDataShapeAndClickHouseBest(t *testing.T) {
 	got := string(renderMarkdownReport(doc))
 	for _, want := range []string{
 		"| rows/scale | system | shape | layout | query |",
-		"| 6 rows | TreeDB | full-retained-json | column-store-full:json/full | q1 |",
+		"| 6 rows | TreeDB | full-retained-json | column-store-full:json/full+retained=template-v1 | q1 |",
 		"| 6 rows | ClickHouse | full-json | json/full | q1 |",
 		"| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | ClickHouse best | TreeDB / ClickHouse |",
 		"| 6 rows | q1 | ClickHouse json/full | 0.0020s | 0.0040s |  | 0.0020s | 2.00x |",
 		"## TreeDB Row Attribution Labels",
-		"| 6 rows | column-store-full:json/full | q1 | durable | direct | typed_column_part | none | typed_column_data_scan | false | time_us | requested=none:1; actual=none:1 | insert_only_static_snapshot | non-column | typed_column_part | 6 | valid | 2.93 KiB | 1.07 KiB |",
+		"| 6 rows | column-store-full:json/full+retained=template-v1 | q1 | durable | direct | typed_column_part | none | typed_column_data_scan | false | time_us | requested=none:1; actual=none:1 | insert_only_static_snapshot | non-column | typed_column_part | 6 | valid | 2.93 KiB | 1.07 KiB |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("report missing %q\n%s", want, got)

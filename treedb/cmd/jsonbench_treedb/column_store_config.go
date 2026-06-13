@@ -146,8 +146,12 @@ func runNotes(cfg runConfig) []string {
 	return notes
 }
 
-func columnStoreConfigForProjection(projection, storageLayout string) (*collections.ColumnStoreConfig, error) {
+func columnStoreConfigForProjection(projection, storageLayout, retainedPayloadEncoding string) (*collections.ColumnStoreConfig, error) {
 	fields, err := projectionFields(projection)
+	if err != nil {
+		return nil, err
+	}
+	retainedEncoding, hasRetainedEncoding, err := columnStoreRetainedPayloadEncodingOverride(retainedPayloadEncoding)
 	if err != nil {
 		return nil, err
 	}
@@ -167,6 +171,9 @@ func columnStoreConfigForProjection(projection, storageLayout string) (*collecti
 	}
 	if fullData {
 		cfg.RetainedPayload = collections.ColumnRetainedPayloadNonColumn
+		if hasRetainedEncoding {
+			cfg.RetainedPayloadEncoding = retainedEncoding
+		}
 	}
 	for _, field := range fields {
 		col, err := columnStoreColumnForField(field, fullData)
@@ -187,6 +194,22 @@ func columnStoreConfigForProjection(projection, storageLayout string) (*collecti
 		}}
 	}
 	return cfg, nil
+}
+
+func columnStoreRetainedPayloadEncodingOverride(raw string) (collections.ColumnRetainedPayloadEncoding, bool, error) {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	switch normalized {
+	case "", "default":
+		return "", false, nil
+	case "json":
+		return collections.ColumnRetainedPayloadEncodingJSON, true, nil
+	case "template-v1", "template_v1", "templatev1":
+		return collections.ColumnRetainedPayloadEncodingTemplateV1, true, nil
+	case "semantic-stream-v1", "semantic_stream_v1", "semanticstreamv1":
+		return collections.ColumnRetainedPayloadEncodingSemanticStreamV1, true, nil
+	default:
+		return "", false, fmt.Errorf("unsupported retained payload encoding %q", raw)
+	}
 }
 
 func columnStoreColumnForField(field string, fullData bool) (collections.ColumnStoreColumn, error) {
