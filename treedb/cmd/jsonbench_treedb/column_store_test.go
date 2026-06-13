@@ -2,6 +2,7 @@ package main
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 
 	"github.com/snissn/gomap/TreeDB/collections"
@@ -161,6 +162,21 @@ func TestFullColumnStoreRetainedPayloadEncodingOverride(t *testing.T) {
 	}
 	if queryShaped.RetainedPayloadEncoding != "" {
 		t.Fatalf("query-shaped retained payload encoding=%q want empty", queryShaped.RetainedPayloadEncoding)
+	}
+}
+
+func TestColumnStoreRejectsUnknownRetainedPayloadEncodingOverride(t *testing.T) {
+	for _, layout := range []string{storageLayoutColumnStoreFullPrepared, storageLayoutColumnStorePrepared} {
+		layout := layout
+		t.Run(layout, func(t *testing.T) {
+			_, err := columnStoreConfigForProjection("q1", layout, "bogus-encoding")
+			if err == nil {
+				t.Fatalf("columnStoreConfigForProjection(%s) error=nil want unsupported encoding error", layout)
+			}
+			if !strings.Contains(err.Error(), "unsupported retained payload encoding") {
+				t.Fatalf("columnStoreConfigForProjection(%s) error=%q want unsupported retained payload encoding", layout, err)
+			}
+		})
 	}
 }
 

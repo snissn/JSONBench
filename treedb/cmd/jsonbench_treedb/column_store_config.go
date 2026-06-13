@@ -151,6 +151,10 @@ func columnStoreConfigForProjection(projection, storageLayout, retainedPayloadEn
 	if err != nil {
 		return nil, err
 	}
+	retainedEncoding, hasRetainedEncoding, err := columnStoreRetainedPayloadEncodingOverride(retainedPayloadEncoding)
+	if err != nil {
+		return nil, err
+	}
 	fullData := isFullDataColumnStoreLayout(storageLayout)
 	if fullData {
 		fields = []string{"event", "did", "kind", "operation", "time_us"}
@@ -167,8 +171,8 @@ func columnStoreConfigForProjection(projection, storageLayout, retainedPayloadEn
 	}
 	if fullData {
 		cfg.RetainedPayload = collections.ColumnRetainedPayloadNonColumn
-		if encoding, ok := columnStoreRetainedPayloadEncodingOverride(retainedPayloadEncoding); ok {
-			cfg.RetainedPayloadEncoding = encoding
+		if hasRetainedEncoding {
+			cfg.RetainedPayloadEncoding = retainedEncoding
 		}
 	}
 	for _, field := range fields {
@@ -192,18 +196,19 @@ func columnStoreConfigForProjection(projection, storageLayout, retainedPayloadEn
 	return cfg, nil
 }
 
-func columnStoreRetainedPayloadEncodingOverride(raw string) (collections.ColumnRetainedPayloadEncoding, bool) {
-	switch strings.ToLower(strings.TrimSpace(raw)) {
+func columnStoreRetainedPayloadEncodingOverride(raw string) (collections.ColumnRetainedPayloadEncoding, bool, error) {
+	normalized := strings.ToLower(strings.TrimSpace(raw))
+	switch normalized {
 	case "", "default":
-		return "", false
+		return "", false, nil
 	case "json":
-		return collections.ColumnRetainedPayloadEncodingJSON, true
+		return collections.ColumnRetainedPayloadEncodingJSON, true, nil
 	case "template-v1", "template_v1", "templatev1":
-		return collections.ColumnRetainedPayloadEncodingTemplateV1, true
+		return collections.ColumnRetainedPayloadEncodingTemplateV1, true, nil
 	case "semantic-stream-v1", "semantic_stream_v1", "semanticstreamv1":
-		return collections.ColumnRetainedPayloadEncodingSemanticStreamV1, true
+		return collections.ColumnRetainedPayloadEncodingSemanticStreamV1, true, nil
 	default:
-		return collections.ColumnRetainedPayloadEncoding(strings.ToLower(strings.TrimSpace(raw))), true
+		return "", false, fmt.Errorf("unsupported retained payload encoding %q", raw)
 	}
 }
 
