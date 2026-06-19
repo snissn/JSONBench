@@ -30,8 +30,8 @@ github.com/snissn/compress v1.18.2-snissn.0.0.20260506201017-87fb149e4721 h1:2XY
 github.com/snissn/compress v1.18.2-snissn.0.0.20260506201017-87fb149e4721/go.mod h1:p4xiZN07JMUF5xuybNGkG+pozT12MAblxCx36z+PIYM=
 github.com/snissn/go-crc32-asm v0.0.0-20260522204125-08945951423a h1:uqSq50AAT36ZzDiRApq8GNsbeJASPaneZ6aKfw3KShc=
 github.com/snissn/go-crc32-asm v0.0.0-20260522204125-08945951423a/go.mod h1:PDwKLbWpRDAN2IPbK9PxIgSx0YdwQaSOLWObRawQJ58=
-github.com/snissn/gomap v0.5.1-0.20260613060742-a62febff781a h1:kgB+ZHa+dovWN4cq3dL/y7dvJISVEZkDLtipQTYKSm4=
-github.com/snissn/gomap v0.5.1-0.20260613060742-a62febff781a/go.mod h1:WSaOg+m8hiLvRpKSqn3ylr0H4ZMKOHghhJqIg1/RO/4=
+github.com/snissn/gomap v0.5.1-0.20260619212651-4a6d31d73c25 h1:Mx51uTrKcUArAaaFJwUhkFiw7tBHn66vZ+TGCS/1sro=
+github.com/snissn/gomap v0.5.1-0.20260619212651-4a6d31d73c25/go.mod h1:WSaOg+m8hiLvRpKSqn3ylr0H4ZMKOHghhJqIg1/RO/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tidwall/btree v1.8.1 h1:27ehoXvm5AG/g+1VxLS1SD3vRhp/H7LuEfwNvddEdmA=

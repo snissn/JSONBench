@@ -63,6 +63,8 @@ func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnP
 	}
 	if columnStoreUsesAggregateMetadata(cfg.StorageLayout, query) {
 		req.AggregateMetadataName = columnStoreAggregateMetadataName
+	}
+	if columnStoreRequestsBoundedTopK(cfg.StorageLayout, query) {
 		switch query {
 		case "q4":
 			req.TopK = 3
