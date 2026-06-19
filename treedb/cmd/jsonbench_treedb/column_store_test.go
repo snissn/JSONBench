@@ -107,10 +107,61 @@ func TestFullColumnStoreLayoutsMatchFullRowFixture(t *testing.T) {
 				if got, want := query.ResultHash, rowQuery.ResultHash; got != want {
 					t.Fatalf("%s %s result hash=%s want row hash=%s", layout, query.Name, got, want)
 				}
+				if layout == storageLayoutColumnStoreFullPrepared && (query.Name == "q4" || query.Name == "q5") {
+					if query.RowsScanned <= 0 || query.RowsScanned > rowQuery.RowsScanned {
+						t.Fatalf("%s %s rows_scanned=%d want within 1..%d", layout, query.Name, query.RowsScanned, rowQuery.RowsScanned)
+					}
+					assertColumnPhysicalQueryDiagnostics(t, query, expectedPhysicalQueryCount(query.Name))
+					assertFullPreparedTopKDiagnostics(t, query)
+					continue
+				}
 				if got, want := query.RowsScanned, rowQuery.RowsScanned; got != want {
 					t.Fatalf("%s %s rows_scanned=%d want %d", layout, query.Name, got, want)
 				}
 				assertColumnPhysicalQueryDiagnostics(t, query, expectedPhysicalQueryCount(query.Name))
+			}
+		})
+	}
+}
+
+func TestColumnPhysicalRequestBoundedTopKLayouts(t *testing.T) {
+	cases := []struct {
+		name         string
+		layout       string
+		query        string
+		wantTopK     int
+		wantOrder    collections.ColumnPhysicalQueryTopKOrder
+		wantMetadata bool
+	}{
+		{name: "full prepared q4", layout: storageLayoutColumnStoreFullPrepared, query: "q4", wantTopK: 3, wantOrder: collections.ColumnPhysicalQueryTopKInt64Asc},
+		{name: "full prepared q5", layout: storageLayoutColumnStoreFullPrepared, query: "q5", wantTopK: 3, wantOrder: collections.ColumnPhysicalQueryTopKInt64Desc},
+		{name: "metadata q4", layout: storageLayoutColumnStorePreparedMetadata, query: "q4", wantTopK: 3, wantOrder: collections.ColumnPhysicalQueryTopKInt64Asc, wantMetadata: true},
+		{name: "metadata q5", layout: storageLayoutColumnStorePreparedMetadata, query: "q5", wantTopK: 3, wantOrder: collections.ColumnPhysicalQueryTopKInt64Desc, wantMetadata: true},
+		{name: "query shaped prepared q4", layout: storageLayoutColumnStorePrepared, query: "q4"},
+		{name: "full direct q5", layout: storageLayoutColumnStoreFull, query: "q5"},
+		{name: "full prepared q3", layout: storageLayoutColumnStoreFullPrepared, query: "q3"},
+	}
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			req := testColumnPhysicalRequestForQuery(tc.layout, tc.query)
+			if got := req.TopK; got != tc.wantTopK {
+				t.Fatalf("topk=%d want %d req=%+v", got, tc.wantTopK, req)
+			}
+			if got := req.TopKOrder; got != tc.wantOrder {
+				t.Fatalf("topk_order=%q want %q req=%+v", got, tc.wantOrder, req)
+			}
+			if got := req.SkipEmptyGroupKey; got != (tc.wantTopK > 0) {
+				t.Fatalf("skip_empty_group_key=%v want %v req=%+v", got, tc.wantTopK > 0, req)
+			}
+			if got := req.AggregateMetadataName != ""; got != tc.wantMetadata {
+				t.Fatalf("aggregate metadata present=%v want %v req=%+v", got, tc.wantMetadata, req)
+			}
+			if tc.query == "q4" || tc.query == "q5" {
+				wantPredicates := !tc.wantMetadata
+				if got := len(req.Predicates) > 0; got != wantPredicates {
+					t.Fatalf("predicates present=%v want %v req=%+v", got, wantPredicates, req)
+				}
 			}
 		})
 	}
@@ -410,6 +461,47 @@ func expectedPhysicalQueryCount(query string) int {
 		return 2
 	}
 	return 1
+}
+
+func testColumnPhysicalRequestForQuery(layout, query string) collections.ColumnPhysicalQueryRequest {
+	cfg := runConfig{StorageLayout: layout}
+	switch query {
+	case "q1":
+		return columnPhysicalRequest(cfg, "q1", collections.ColumnPhysicalQueryGroupCount, "event", "", "")
+	case "q2":
+		return columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountDistinct, "event", "", "did")
+	case "q3":
+		return columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", "")
+	case "q4":
+		return columnPhysicalRequest(cfg, "q4", collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", "")
+	case "q5":
+		return columnPhysicalRequest(cfg, "q5", collections.ColumnPhysicalQueryGroupInt64Span, "did", "time_us", "")
+	default:
+		return columnPhysicalRequest(cfg, query, collections.ColumnPhysicalQueryGroupCount, "event", "", "")
+	}
+}
+
+func assertFullPreparedTopKDiagnostics(t *testing.T, query queryRun) {
+	t.Helper()
+	if got := query.Diagnostics.TopKLimit; got != 3 {
+		t.Fatalf("%s topk_limit=%d want 3 diagnostics=%+v", query.Name, got, query.Diagnostics)
+	}
+	wantOrder := string(collections.ColumnPhysicalQueryTopKInt64Asc)
+	if query.Name == "q5" {
+		wantOrder = string(collections.ColumnPhysicalQueryTopKInt64Desc)
+	}
+	if got := query.Diagnostics.TopKOrder; got != wantOrder {
+		t.Fatalf("%s topk_order=%q want %q diagnostics=%+v", query.Name, got, wantOrder, query.Diagnostics)
+	}
+	if got := query.Diagnostics.TopKCandidates; got == 0 {
+		t.Fatalf("%s topk_candidates=0 diagnostics=%+v", query.Name, query.Diagnostics)
+	}
+	if query.Name == "q4" && !query.Diagnostics.TimeOrderTopKUsed {
+		t.Fatalf("q4 time_order_topk_used=false diagnostics=%+v", query.Diagnostics)
+	}
+	if query.Name == "q5" && !query.Diagnostics.BoundedTopKUsed {
+		t.Fatalf("q5 bounded_topk_used=false diagnostics=%+v", query.Diagnostics)
+	}
 }
 
 func runJSONBenchFullFixtureCell(t *testing.T, layout string, validateReconstruction bool) runResult {

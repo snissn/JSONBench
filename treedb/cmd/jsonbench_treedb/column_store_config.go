@@ -93,6 +93,15 @@ func columnStoreUsesAggregateMetadata(layout, query string) bool {
 	}
 }
 
+func columnStoreRequestsBoundedTopK(layout, query string) bool {
+	switch query {
+	case "q4", "q5":
+		return layout == storageLayoutColumnStorePreparedMetadata || layout == storageLayoutColumnStoreFullPrepared
+	default:
+		return false
+	}
+}
+
 func treeDBEngineName(cfg runConfig) string {
 	switch cfg.StorageLayout {
 	case storageLayoutColumnStore:
@@ -122,7 +131,7 @@ func runNotes(cfg runConfig) []string {
 			"full-data column-store cells do not use load-time sentinel masking; q2/q4/q5 predicates are evaluated as real physical predicates.",
 		}
 		if cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
-			notes = append(notes, "column-store-full-prepared prepares physical query runners outside timed attempts and scans typed-column part sections.")
+			notes = append(notes, "column-store-full-prepared prepares physical query runners outside timed attempts; q4/q5 request bounded physical TopK over typed-column part sections.")
 		}
 		return notes
 	}
