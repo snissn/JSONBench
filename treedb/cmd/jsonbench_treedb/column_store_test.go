@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -63,6 +65,8 @@ func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
 				t.Fatalf("column-store rows_scanned=%d want %d", got, want)
 			}
+			assertRowScanQueryDiagnostics(t, row.Queries[0])
+			assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
 		})
 	}
 }
@@ -106,6 +110,7 @@ func TestFullColumnStoreLayoutsMatchFullRowFixture(t *testing.T) {
 				if got, want := query.RowsScanned, rowQuery.RowsScanned; got != want {
 					t.Fatalf("%s %s rows_scanned=%d want %d", layout, query.Name, got, want)
 				}
+				assertColumnPhysicalQueryDiagnostics(t, query, expectedPhysicalQueryCount(query.Name))
 			}
 		})
 	}
@@ -192,6 +197,12 @@ func TestColumnStoreQ1KeepsEmptyEventBucket(t *testing.T) {
 	if !reflect.DeepEqual(computed.Rows, want) {
 		t.Fatalf("q1 rows=%v want %v", computed.Rows, want)
 	}
+	if got, want := computed.Diagnostics.QueryPath, "column_physical"; got != want {
+		t.Fatalf("q1 diagnostics query path=%q want %q", got, want)
+	}
+	if got, want := len(computed.Diagnostics.PhysicalQueries), 1; got != want {
+		t.Fatalf("q1 physical query diagnostics=%d want %d", got, want)
+	}
 }
 
 func TestColumnStorePreparedLayoutMatchesRowFixture(t *testing.T) {
@@ -206,6 +217,7 @@ func TestColumnStorePreparedLayoutMatchesRowFixture(t *testing.T) {
 			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
 				t.Fatalf("column-store-prepared rows_scanned=%d want %d", got, want)
 			}
+			assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
 			if (query == "q4" || query == "q5") && column.Queries[0].RowsScanned == 0 {
 				t.Fatalf("column-store-prepared %s rows_scanned=0; non-metadata prepared layout must scan base rows", query)
 			}
@@ -229,11 +241,19 @@ func TestColumnStorePreparedMetadataLayoutMatchesRowFixture(t *testing.T) {
 				if got := column.Queries[0].RowsScanned; got != 0 {
 					t.Fatalf("column-store-prepared-metadata rows_scanned=%d want 0 for aggregate metadata", got)
 				}
+				assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], 1)
+				if got := column.Queries[0].Diagnostics.TopKLimit; got != 3 {
+					t.Fatalf("column-store-prepared-metadata %s topk_limit=%d want 3", query, got)
+				}
+				if got := column.Queries[0].Diagnostics.TopKCandidates; got == 0 {
+					t.Fatalf("column-store-prepared-metadata %s topk_candidates=0 diagnostics=%+v", query, column.Queries[0].Diagnostics)
+				}
 				return
 			}
 			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
 				t.Fatalf("column-store-prepared-metadata rows_scanned=%d want %d", got, want)
 			}
+			assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
 		})
 	}
 }
@@ -278,11 +298,47 @@ func TestColumnStoreTopRowsTieBreak(t *testing.T) {
 	}
 }
 
-func runJSONBenchFixtureCell(t *testing.T, layout, query string) runResult {
-	t.Helper()
-	cfg := runConfig{
+func TestQueryAttemptProfilesWriteArtifacts(t *testing.T) {
+	profileDir := t.TempDir()
+	cfg := runFixtureConfig(storageLayoutRow, "q1")
+	cfg.QueryProfileDir = filepath.Join(profileDir, "profiles")
+	result, err := runTreeDBBenchmark(cfg)
+	if err != nil {
+		t.Fatalf("runTreeDBBenchmark with query profile dir: %v", err)
+	}
+	if result.QueryProfileDir == "" {
+		t.Fatalf("query_profile_dir is empty")
+	}
+	if got, want := len(result.Queries), 1; got != want {
+		t.Fatalf("queries=%d want %d", got, want)
+	}
+	query := result.Queries[0]
+	if got, want := len(query.Profiles), 1; got != want {
+		t.Fatalf("attempt profiles=%d want %d", got, want)
+	}
+	profile := query.Profiles[0]
+	for _, path := range []string{profile.CPUProfile, profile.AllocsProfile} {
+		if path == "" {
+			t.Fatalf("profile path is empty: %+v", profile)
+		}
+		info, err := os.Stat(path)
+		if err != nil {
+			t.Fatalf("stat profile %s: %v", path, err)
+		}
+		if info.Size() == 0 {
+			t.Fatalf("profile %s is empty", path)
+		}
+	}
+	if query.Diagnostics.AttemptWallNanos <= 0 {
+		t.Fatalf("attempt wall nanos=%d want >0", query.Diagnostics.AttemptWallNanos)
+	}
+	assertRowScanQueryDiagnostics(t, query)
+}
+
+func runFixtureConfig(layout, query string) runConfig {
+	return runConfig{
 		DataDir:       "../../testdata/bluesky",
-		DBDir:         t.TempDir(),
+		DBDir:         "",
 		Reset:         true,
 		Scale:         "subset",
 		Rows:          6,
@@ -298,6 +354,12 @@ func runJSONBenchFixtureCell(t *testing.T, layout, query string) runResult {
 		Checkpoint:    true,
 		Tries:         1,
 	}
+}
+
+func runJSONBenchFixtureCell(t *testing.T, layout, query string) runResult {
+	t.Helper()
+	cfg := runFixtureConfig(layout, query)
+	cfg.DBDir = t.TempDir()
 	result, err := runTreeDBBenchmark(cfg)
 	if err != nil {
 		t.Fatalf("runTreeDBBenchmark(%s, %s): %v", layout, query, err)
@@ -306,6 +368,48 @@ func runJSONBenchFixtureCell(t *testing.T, layout, query string) runResult {
 		t.Fatalf("queries=%d want 1", got)
 	}
 	return result
+}
+
+func assertRowScanQueryDiagnostics(t *testing.T, query queryRun) {
+	t.Helper()
+	if got, want := query.Diagnostics.QueryPath, "document_row_scan"; got != want {
+		t.Fatalf("%s query path=%q want %q diagnostics=%+v", query.Name, got, want, query.Diagnostics)
+	}
+	if got, want := query.Diagnostics.RowsScanned, query.RowsScanned; got != want {
+		t.Fatalf("%s diagnostic rows_scanned=%d want %d", query.Name, got, want)
+	}
+	if query.Diagnostics.RowsMatched == 0 {
+		t.Fatalf("%s diagnostic rows_matched=0 diagnostics=%+v", query.Name, query.Diagnostics)
+	}
+	if query.Diagnostics.RowMaterializations != query.RowsScanned || query.Diagnostics.DocumentMaterializations != query.RowsScanned {
+		t.Fatalf("%s materialization diagnostics=%+v rows_scanned=%d", query.Name, query.Diagnostics, query.RowsScanned)
+	}
+}
+
+func assertColumnPhysicalQueryDiagnostics(t *testing.T, query queryRun, wantPhysicalQueries int) {
+	t.Helper()
+	if got, want := query.Diagnostics.QueryPath, "column_physical"; got != want {
+		t.Fatalf("%s query path=%q want %q diagnostics=%+v", query.Name, got, want, query.Diagnostics)
+	}
+	if got, want := len(query.Diagnostics.PhysicalQueries), wantPhysicalQueries; got != want {
+		t.Fatalf("%s physical query diagnostics=%d want %d: %+v", query.Name, got, want, query.Diagnostics.PhysicalQueries)
+	}
+	if query.Diagnostics.StorageSource == "" {
+		t.Fatalf("%s storage source is empty: %+v", query.Name, query.Diagnostics)
+	}
+	if query.Diagnostics.FallbackReason == "" {
+		t.Fatalf("%s fallback reason is empty: %+v", query.Name, query.Diagnostics)
+	}
+	if query.Diagnostics.ResultRows != query.ResultRows || query.Diagnostics.ResultGroups == 0 {
+		t.Fatalf("%s result diagnostics=%+v result_rows=%d", query.Name, query.Diagnostics, query.ResultRows)
+	}
+}
+
+func expectedPhysicalQueryCount(query string) int {
+	if query == "q2" {
+		return 2
+	}
+	return 1
 }
 
 func runJSONBenchFullFixtureCell(t *testing.T, layout string, validateReconstruction bool) runResult {

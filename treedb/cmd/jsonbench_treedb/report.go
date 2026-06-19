@@ -44,6 +44,7 @@ type reportRow struct {
 	DataRoot                           string    `json:"data_root,omitempty"`
 	DataShape                          string    `json:"data_shape,omitempty"`
 	ExecutionMode                      string    `json:"execution_mode,omitempty"`
+	QueryPath                          string    `json:"query_path,omitempty"`
 	StorageSource                      string    `json:"storage_source,omitempty"`
 	FallbackReason                     string    `json:"fallback_reason,omitempty"`
 	MetadataDataScanPath               string    `json:"metadata_data_scan_path,omitempty"`
@@ -62,6 +63,38 @@ type reportRow struct {
 	MedianSec                          float64   `json:"median_seconds"`
 	AttemptsSec                        []float64 `json:"attempts_seconds"`
 	RowsScanned                        int       `json:"rows_scanned,omitempty"`
+	RowsMatched                        int       `json:"rows_matched,omitempty"`
+	ReduceRows                         int       `json:"reduce_rows,omitempty"`
+	ResultGroups                       int       `json:"result_groups,omitempty"`
+	PredicateCount                     int       `json:"predicate_count,omitempty"`
+	TopKLimit                          int       `json:"topk_limit,omitempty"`
+	TopKCandidates                     int       `json:"topk_candidates,omitempty"`
+	BoundedTopKUsed                    bool      `json:"bounded_topk_used,omitempty"`
+	TimeOrderTopKUsed                  bool      `json:"time_order_topk_used,omitempty"`
+	SortKeyMarkChecks                  int       `json:"sort_key_mark_checks,omitempty"`
+	SortKeyMarkMatches                 int       `json:"sort_key_mark_matches,omitempty"`
+	SortKeyMarkSkips                   int       `json:"sort_key_mark_skips,omitempty"`
+	SortKeyMarkFallbackReason          string    `json:"sort_key_mark_fallback_reason,omitempty"`
+	SortedGroupedDistinctReady         bool      `json:"sorted_grouped_distinct_ready,omitempty"`
+	SortedGroupedDistinctUsed          bool      `json:"sorted_grouped_distinct_used,omitempty"`
+	SortedGroupedDistinctFallback      string    `json:"sorted_grouped_distinct_fallback_reason,omitempty"`
+	DenseGroupCountUsed                bool      `json:"dense_group_count_used,omitempty"`
+	DenseGroupHourCountUsed            bool      `json:"dense_group_hour_count_used,omitempty"`
+	DenseInt64SpanUsed                 bool      `json:"dense_int64_span_used,omitempty"`
+	DictionaryCodeHits                 int       `json:"dictionary_code_hits,omitempty"`
+	PredicateDictionaryCodeHits        int       `json:"predicate_dictionary_code_hits,omitempty"`
+	Int64ValueHits                     int       `json:"int64_value_hits,omitempty"`
+	DecodedPayloadBytes                uint64    `json:"decoded_payload_bytes,omitempty"`
+	DecodedMetadataBytes               uint64    `json:"decoded_metadata_bytes,omitempty"`
+	PhysicalBytesScanned               int64     `json:"physical_bytes_scanned,omitempty"`
+	MappedBytes                        uint64    `json:"mapped_bytes,omitempty"`
+	HeapCopyBytes                      uint64    `json:"heap_copy_bytes,omitempty"`
+	RowMaterializations                int       `json:"row_materializations,omitempty"`
+	DocumentMaterializations           int       `json:"document_materializations,omitempty"`
+	FallbackReads                      int       `json:"fallback_reads,omitempty"`
+	ResultRenderNanos                  int64     `json:"result_render_nanos,omitempty"`
+	AttemptWallNanos                   int64     `json:"attempt_wall_nanos,omitempty"`
+	PhysicalQueryCount                 int       `json:"physical_query_count,omitempty"`
 	StorageBytes                       int64     `json:"storage_bytes,omitempty"`
 	StorageGrossBytes                  int64     `json:"storage_gross_bytes,omitempty"`
 	StorageExcludedBytes               int64     `json:"storage_excluded_bytes,omitempty"`
@@ -252,6 +285,23 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 		}
 		for _, q := range result.Queries {
 			scanPath := reportRowMetadataDataScanPath(result.StorageLayout, q.Name)
+			diagnostics := q.Diagnostics
+			queryPath := diagnostics.QueryPath
+			storageSource := reportRowStorageSource(result.StorageLayout)
+			if strings.TrimSpace(diagnostics.StorageSource) != "" {
+				storageSource = diagnostics.StorageSource
+			}
+			fallbackReason := reportRowFallbackReason(result.StorageLayout)
+			if strings.TrimSpace(diagnostics.FallbackReason) != "" {
+				fallbackReason = diagnostics.FallbackReason
+			}
+			if strings.TrimSpace(queryPath) != "" {
+				scanPath = queryPath
+			}
+			rowsScanned := q.RowsScanned
+			if strings.TrimSpace(queryPath) != "" || diagnostics.RowsScanned > 0 {
+				rowsScanned = diagnostics.RowsScanned
+			}
 			rows = append(rows, reportRow{
 				System:                             result.System,
 				Engine:                             result.Engine,
@@ -266,8 +316,9 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				DataRoot:                           result.DataRoot,
 				DataShape:                          result.DataShape,
 				ExecutionMode:                      reportRowExecutionMode(result.StorageLayout),
-				StorageSource:                      reportRowStorageSource(result.StorageLayout),
-				FallbackReason:                     reportRowFallbackReason(result.StorageLayout),
+				QueryPath:                          queryPath,
+				StorageSource:                      storageSource,
+				FallbackReason:                     fallbackReason,
 				MetadataDataScanPath:               scanPath,
 				SortLayout:                         reportRowSortLayout(result.StorageLayout, result.Projection),
 				CompressionMode:                    reportRowCompressionMode(result),
@@ -283,7 +334,39 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				BestSec:                            q.BestSec,
 				MedianSec:                          q.MedianSec,
 				AttemptsSec:                        q.AttemptsSec,
-				RowsScanned:                        q.RowsScanned,
+				RowsScanned:                        rowsScanned,
+				RowsMatched:                        diagnostics.RowsMatched,
+				ReduceRows:                         diagnostics.ReduceRows,
+				ResultGroups:                       diagnostics.ResultGroups,
+				PredicateCount:                     diagnostics.PredicateCount,
+				TopKLimit:                          diagnostics.TopKLimit,
+				TopKCandidates:                     diagnostics.TopKCandidates,
+				BoundedTopKUsed:                    diagnostics.BoundedTopKUsed,
+				TimeOrderTopKUsed:                  diagnostics.TimeOrderTopKUsed,
+				SortKeyMarkChecks:                  diagnostics.SortKeyMarkChecks,
+				SortKeyMarkMatches:                 diagnostics.SortKeyMarkMatches,
+				SortKeyMarkSkips:                   diagnostics.SortKeyMarkSkips,
+				SortKeyMarkFallbackReason:          diagnostics.SortKeyMarkFallbackReason,
+				SortedGroupedDistinctReady:         diagnostics.SortedGroupedDistinctReady,
+				SortedGroupedDistinctUsed:          diagnostics.SortedGroupedDistinctUsed,
+				SortedGroupedDistinctFallback:      diagnostics.SortedGroupedDistinctFallback,
+				DenseGroupCountUsed:                diagnostics.DenseGroupCountUsed,
+				DenseGroupHourCountUsed:            diagnostics.DenseGroupHourCountUsed,
+				DenseInt64SpanUsed:                 diagnostics.DenseInt64SpanUsed,
+				DictionaryCodeHits:                 diagnostics.DictionaryCodeHits,
+				PredicateDictionaryCodeHits:        diagnostics.PredicateDictionaryCodeHits,
+				Int64ValueHits:                     diagnostics.Int64ValueHits,
+				DecodedPayloadBytes:                diagnostics.DecodedPayloadBytes,
+				DecodedMetadataBytes:               diagnostics.DecodedMetadataBytes,
+				PhysicalBytesScanned:               diagnostics.PhysicalBytesScanned,
+				MappedBytes:                        diagnostics.MappedBytes,
+				HeapCopyBytes:                      diagnostics.HeapCopyBytes,
+				RowMaterializations:                diagnostics.RowMaterializations,
+				DocumentMaterializations:           diagnostics.DocumentMaterializations,
+				FallbackReads:                      diagnostics.FallbackReads,
+				ResultRenderNanos:                  diagnostics.ResultRenderNanos,
+				AttemptWallNanos:                   diagnostics.AttemptWallNanos,
+				PhysicalQueryCount:                 len(diagnostics.PhysicalQueries),
 				StorageBytes:                       result.Storage.TotalBytes,
 				StorageGrossBytes:                  result.Storage.GrossBytes,
 				StorageExcludedBytes:               result.Storage.ExcludedBytes,
@@ -660,6 +743,44 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			formatBytes(row.StorageWALBytesExcludedFromDurable),
 		)
 	}
+	fmt.Fprintf(&buf, "\n## TreeDB Query Diagnostics\n\n")
+	fmt.Fprintf(&buf, "| rows/scale | layout | query | path | source | fallback | scanned | matched | reduced | groups | predicates | topK | topK candidates | bounded topK | time-order topK | mark checks | mark skips | sorted distinct | dense path | decoded payload | decoded metadata | physical bytes | row mats | doc mats | render | attempt |\n")
+	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|\n")
+	for _, row := range doc.Rows {
+		if row.System != "TreeDB" {
+			continue
+		}
+		fmt.Fprintf(
+			&buf,
+			"| %s | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %t | %t | %d | %d | %s | %s | %d | %d | %d | %d | %d | %d | %d |\n",
+			row.Scale,
+			reportRowLayout(row),
+			row.Query,
+			nonEmpty(row.QueryPath, row.MetadataDataScanPath),
+			row.StorageSource,
+			row.FallbackReason,
+			row.RowsScanned,
+			row.RowsMatched,
+			row.ReduceRows,
+			row.ResultGroups,
+			row.PredicateCount,
+			row.TopKLimit,
+			row.TopKCandidates,
+			row.BoundedTopKUsed,
+			row.TimeOrderTopKUsed,
+			row.SortKeyMarkChecks,
+			row.SortKeyMarkSkips,
+			formatDiagnosticBool(row.SortedGroupedDistinctReady, row.SortedGroupedDistinctUsed, row.SortedGroupedDistinctFallback),
+			formatDensePath(row),
+			row.DecodedPayloadBytes,
+			row.DecodedMetadataBytes,
+			row.PhysicalBytesScanned,
+			row.RowMaterializations,
+			row.DocumentMaterializations,
+			row.ResultRenderNanos,
+			row.AttemptWallNanos,
+		)
+	}
 	fmt.Fprintf(&buf, "\n## Best Runtime By Query\n\n")
 	best := bestByScaleQuery(doc.Rows)
 	fmt.Fprintf(&buf, "| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | ClickHouse best | TreeDB / ClickHouse |\n")
@@ -732,6 +853,45 @@ func reportRowDataShape(row reportRow) string {
 		return "query-shaped-projection"
 	}
 	return ""
+}
+
+func nonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
+}
+
+func formatDiagnosticBool(ready, used bool, fallback string) string {
+	switch {
+	case used:
+		return "used"
+	case ready:
+		if strings.TrimSpace(fallback) != "" {
+			return "ready/" + fallback
+		}
+		return "ready"
+	case strings.TrimSpace(fallback) != "":
+		return fallback
+	default:
+		return ""
+	}
+}
+
+func formatDensePath(row reportRow) string {
+	var paths []string
+	if row.DenseGroupCountUsed {
+		paths = append(paths, "group_count")
+	}
+	if row.DenseGroupHourCountUsed {
+		paths = append(paths, "group_hour_count")
+	}
+	if row.DenseInt64SpanUsed {
+		paths = append(paths, "int64_span")
+	}
+	return strings.Join(paths, ",")
 }
 
 type bestGroup struct {
