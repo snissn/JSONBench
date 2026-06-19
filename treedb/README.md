@@ -284,6 +284,7 @@ cd treedb
 go run ./cmd/jsonbench_treedb run \
   -data-dir "$HOME/data/bluesky" \
   -db-dir /tmp/jsonbench_treedb_q1 \
+  -query-profile-dir /tmp/jsonbench_treedb_q1_profiles \
   -reset \
   -scale 1m \
   -format template-v1 \
@@ -291,6 +292,20 @@ go run ./cmd/jsonbench_treedb run \
   -queries q1 \
   -out /tmp/jsonbench_treedb_q1.json
 ```
+
+`-query-profile-dir` is optional. When set, `jsonbench_treedb run` writes one
+CPU profile and one allocation profile for each timed query attempt:
+
+- `cpu_<query>_attempt<N>.pprof`
+- `allocs_<query>_attempt<N>.pprof`
+
+The run JSON records the profile directory at `query_profile_dir`, each query's
+artifacts at `queries[].attempt_profiles`, and per-query execution counters at
+`queries[].diagnostics`. The diagnostics include physical storage source,
+fallback reason, rows scanned/matched/reduced, result groups, Top-K candidates,
+sort-key mark pruning counters, grouped-distinct readiness/use, dense reducer
+selection, decoded bytes, materialization counts, result-render time, and the
+timed attempt wall clock.
 
 ## Notes
 

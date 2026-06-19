@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"time"
 
 	"github.com/snissn/gomap/TreeDB/collections"
 )
@@ -209,6 +210,7 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 }
 
 func renderColumnQ1(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
+	renderStart := time.Now()
 	// JSONBench q1 groups every document by collection, including an empty event
 	// bucket when the source document has no commit.collection field. Keep that
 	// behavior aligned with the row-layout q1 implementation.
@@ -224,10 +226,20 @@ func renderColumnQ1(rows int, result collections.ColumnPhysicalQueryResult) quer
 		}
 		return out[i]["event"].(string) < out[j]["event"].(string)
 	})
-	return queryComputation{RowsScanned: columnPhysicalRowsScanned(rows, result), Rows: out}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: columnPhysicalRowsScanned(rows, result),
+		Rows:        out,
+		Diagnostics: columnQueryDiagnostics(
+			len(out),
+			renderNanos,
+			namedColumnPhysicalResult{Name: "group_count", Result: result, FallbackRows: rows},
+		),
+	}
 }
 
 func renderColumnQ2(rows int, countResult, distinctResult collections.ColumnPhysicalQueryResult) queryComputation {
+	renderStart := time.Now()
 	counts := make(map[string]int64, len(countResult.Groups))
 	for _, group := range countResult.Groups {
 		if group.Key == "" {
@@ -254,10 +266,21 @@ func renderColumnQ2(rows int, countResult, distinctResult collections.ColumnPhys
 		}
 		return out[i]["event"].(string) < out[j]["event"].(string)
 	})
-	return queryComputation{RowsScanned: maxColumnPhysicalRowsScanned(rows, countResult, distinctResult), Rows: out}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: maxColumnPhysicalRowsScanned(rows, countResult, distinctResult),
+		Rows:        out,
+		Diagnostics: columnQueryDiagnostics(
+			len(out),
+			renderNanos,
+			namedColumnPhysicalResult{Name: "count", Result: countResult, FallbackRows: rows},
+			namedColumnPhysicalResult{Name: "distinct", Result: distinctResult, FallbackRows: rows},
+		),
+	}
 }
 
 func renderColumnQ3(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
+	renderStart := time.Now()
 	out := make([]queryRow, 0, len(result.Groups))
 	for _, group := range result.Groups {
 		if group.Key == "" {
@@ -273,10 +296,20 @@ func renderColumnQ3(rows int, result collections.ColumnPhysicalQueryResult) quer
 		}
 		return out[i]["event"].(string) < out[j]["event"].(string)
 	})
-	return queryComputation{RowsScanned: columnPhysicalRowsScanned(rows, result), Rows: out}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: columnPhysicalRowsScanned(rows, result),
+		Rows:        out,
+		Diagnostics: columnQueryDiagnostics(
+			len(out),
+			renderNanos,
+			namedColumnPhysicalResult{Name: "group_hour_count", Result: result, FallbackRows: rows},
+		),
+	}
 }
 
 func renderColumnQ4(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
+	renderStart := time.Now()
 	out := make([]queryRow, 0, 3)
 	for _, group := range result.Groups {
 		if group.Key == "" {
@@ -285,10 +318,20 @@ func renderColumnQ4(rows int, result collections.ColumnPhysicalQueryResult) quer
 		row := queryRow{"user_id": group.Key, "first_post_time_us": group.Int64}
 		insertTopQueryRow(&out, row, 3, lessQ4Row)
 	}
-	return queryComputation{RowsScanned: columnPhysicalRowsScanned(rows, result), Rows: out}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: columnPhysicalRowsScanned(rows, result),
+		Rows:        out,
+		Diagnostics: columnQueryDiagnostics(
+			len(out),
+			renderNanos,
+			namedColumnPhysicalResult{Name: "group_min_int64", Result: result, FallbackRows: rows},
+		),
+	}
 }
 
 func renderColumnQ5(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
+	renderStart := time.Now()
 	out := make([]queryRow, 0, 3)
 	for _, group := range result.Groups {
 		if group.Key == "" {
@@ -297,7 +340,16 @@ func renderColumnQ5(rows int, result collections.ColumnPhysicalQueryResult) quer
 		row := queryRow{"user_id": group.Key, "activity_span_ms": group.Int64 / 1000}
 		insertTopQueryRow(&out, row, 3, lessQ5Row)
 	}
-	return queryComputation{RowsScanned: columnPhysicalRowsScanned(rows, result), Rows: out}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: columnPhysicalRowsScanned(rows, result),
+		Rows:        out,
+		Diagnostics: columnQueryDiagnostics(
+			len(out),
+			renderNanos,
+			namedColumnPhysicalResult{Name: "group_int64_span", Result: result, FallbackRows: rows},
+		),
+	}
 }
 
 func insertTopQueryRow(rows *[]queryRow, row queryRow, limit int, less func(queryRow, queryRow) bool) {

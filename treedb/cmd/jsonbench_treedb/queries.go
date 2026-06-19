@@ -27,19 +27,41 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 			return nil, fmt.Errorf("%s prepare: %w", name, err)
 		}
 		var attempts []float64
+		var profiles []queryAttemptProfile
 		var final queryComputation
 		for i := 0; i < cfg.Tries; i++ {
-			start := time.Now()
-			computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
+			attempt := i + 1
+			profile, err := startQueryAttemptProfile(cfg.QueryProfileDir, name, attempt)
 			if err != nil {
 				if prepared != nil {
 					if closeErr := prepared.Close(); closeErr != nil {
 						err = errors.Join(err, closeErr)
 					}
 				}
-				return nil, fmt.Errorf("%s attempt %d: %w", name, i+1, err)
+				return nil, fmt.Errorf("%s attempt %d profile: %w", name, attempt, err)
 			}
-			attempts = append(attempts, seconds(time.Since(start)))
+			start := time.Now()
+			computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
+			elapsed := time.Since(start)
+			if profile != nil {
+				attemptProfile, profileErr := profile.Stop(cfg.QueryProfileDir, name, attempt)
+				if attemptProfile.Attempt != 0 {
+					profiles = append(profiles, attemptProfile)
+				}
+				if profileErr != nil {
+					err = errors.Join(err, profileErr)
+				}
+			}
+			if err != nil {
+				if prepared != nil {
+					if closeErr := prepared.Close(); closeErr != nil {
+						err = errors.Join(err, closeErr)
+					}
+				}
+				return nil, fmt.Errorf("%s attempt %d: %w", name, attempt, err)
+			}
+			computed.Diagnostics.AttemptWallNanos = elapsed.Nanoseconds()
+			attempts = append(attempts, seconds(elapsed))
 			final = computed
 		}
 		if prepared != nil {
@@ -62,6 +84,8 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 			ResultRows:  len(final.Rows),
 			ResultHash:  hash,
 			Preview:     previewRows(final.Rows, 5),
+			Diagnostics: final.Diagnostics,
+			Profiles:    profiles,
 		})
 	}
 	return out, nil
@@ -70,6 +94,7 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 type queryComputation struct {
 	RowsScanned int
 	Rows        []queryRow
+	Diagnostics queryDiagnostics
 }
 
 func runQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, prepared *preparedColumnQuery) (queryComputation, error) {
@@ -122,6 +147,7 @@ func runQ1(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 	if err != nil {
 		return queryComputation{}, err
 	}
+	renderStart := time.Now()
 	out := make([]queryRow, 0, len(counts))
 	for event, count := range counts {
 		out = append(out, queryRow{"event": event, "count": count})
@@ -134,7 +160,12 @@ func runQ1(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		}
 		return out[i]["event"].(string) < out[j]["event"].(string)
 	})
-	return queryComputation{RowsScanned: scanned, Rows: out}, nil
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: scanned,
+		Rows:        out,
+		Diagnostics: rowScanQueryDiagnostics(scanned, scanned, len(out), renderNanos),
+	}, nil
 }
 
 func runQ2(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
@@ -143,10 +174,12 @@ func runQ2(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		users map[string]struct{}
 	}
 	counts := make(map[string]*aggregate)
+	matched := 0
 	scanned, err := scanCollectionJSON(collection, rows, func(raw []byte) error {
 		if jsonString(raw, cfg.Projection, "kind") != "commit" || jsonString(raw, cfg.Projection, "operation") != "create" {
 			return nil
 		}
+		matched++
 		event := jsonString(raw, cfg.Projection, "event")
 		agg := counts[event]
 		if agg == nil {
@@ -160,6 +193,7 @@ func runQ2(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 	if err != nil {
 		return queryComputation{}, err
 	}
+	renderStart := time.Now()
 	out := make([]queryRow, 0, len(counts))
 	for event, agg := range counts {
 		out = append(out, queryRow{"event": event, "count": agg.count, "users": int64(len(agg.users))})
@@ -172,7 +206,12 @@ func runQ2(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		}
 		return out[i]["event"].(string) < out[j]["event"].(string)
 	})
-	return queryComputation{RowsScanned: scanned, Rows: out}, nil
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: scanned,
+		Rows:        out,
+		Diagnostics: rowScanQueryDiagnostics(scanned, matched, len(out), renderNanos),
+	}, nil
 }
 
 func runQ3(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
@@ -186,6 +225,7 @@ func runQ3(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		"app.bsky.feed.like":   {},
 	}
 	counts := make(map[key]int64)
+	matched := 0
 	scanned, err := scanCollectionJSON(collection, rows, func(raw []byte) error {
 		if jsonString(raw, cfg.Projection, "kind") != "commit" || jsonString(raw, cfg.Projection, "operation") != "create" {
 			return nil
@@ -194,6 +234,7 @@ func runQ3(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		if _, ok := allowed[event]; !ok {
 			return nil
 		}
+		matched++
 		hour := time.UnixMicro(jsonTimeUS(raw, cfg.Projection)).UTC().Hour()
 		counts[key{event: event, hour: hour}]++
 		return nil
@@ -201,6 +242,7 @@ func runQ3(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 	if err != nil {
 		return queryComputation{}, err
 	}
+	renderStart := time.Now()
 	out := make([]queryRow, 0, len(counts))
 	for k, count := range counts {
 		out = append(out, queryRow{"event": k.event, "hour_of_day": int64(k.hour), "count": count})
@@ -213,15 +255,22 @@ func runQ3(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		}
 		return out[i]["event"].(string) < out[j]["event"].(string)
 	})
-	return queryComputation{RowsScanned: scanned, Rows: out}, nil
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: scanned,
+		Rows:        out,
+		Diagnostics: rowScanQueryDiagnostics(scanned, matched, len(out), renderNanos),
+	}, nil
 }
 
 func runQ4(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
 	first := make(map[string]int64)
+	matched := 0
 	scanned, err := scanCollectionJSON(collection, rows, func(raw []byte) error {
 		if !isCreatedPost(raw, cfg.Projection) {
 			return nil
 		}
+		matched++
 		user := jsonString(raw, cfg.Projection, "did")
 		ts := jsonTimeUS(raw, cfg.Projection)
 		if current, ok := first[user]; !ok || ts < current {
@@ -232,6 +281,7 @@ func runQ4(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 	if err != nil {
 		return queryComputation{}, err
 	}
+	renderStart := time.Now()
 	out := make([]queryRow, 0, len(first))
 	for user, ts := range first {
 		out = append(out, queryRow{"user_id": user, "first_post_time_us": ts})
@@ -247,7 +297,12 @@ func runQ4(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 	if len(out) > 3 {
 		out = out[:3]
 	}
-	return queryComputation{RowsScanned: scanned, Rows: out}, nil
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: scanned,
+		Rows:        out,
+		Diagnostics: rowScanQueryDiagnostics(scanned, matched, len(out), renderNanos),
+	}, nil
 }
 
 func runQ5(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
@@ -256,10 +311,12 @@ func runQ5(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		max int64
 	}
 	spans := make(map[string]span)
+	matched := 0
 	scanned, err := scanCollectionJSON(collection, rows, func(raw []byte) error {
 		if !isCreatedPost(raw, cfg.Projection) {
 			return nil
 		}
+		matched++
 		user := jsonString(raw, cfg.Projection, "did")
 		ts := jsonTimeUS(raw, cfg.Projection)
 		current, ok := spans[user]
@@ -279,6 +336,7 @@ func runQ5(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 	if err != nil {
 		return queryComputation{}, err
 	}
+	renderStart := time.Now()
 	out := make([]queryRow, 0, len(spans))
 	for user, span := range spans {
 		out = append(out, queryRow{"user_id": user, "activity_span_ms": (span.max - span.min) / 1000})
@@ -294,7 +352,12 @@ func runQ5(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 	if len(out) > 3 {
 		out = out[:3]
 	}
-	return queryComputation{RowsScanned: scanned, Rows: out}, nil
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: scanned,
+		Rows:        out,
+		Diagnostics: rowScanQueryDiagnostics(scanned, matched, len(out), renderNanos),
+	}, nil
 }
 
 func scanCollectionJSON(collection *collections.Collection, maxDocs int, fn func(raw []byte) error) (int, error) {

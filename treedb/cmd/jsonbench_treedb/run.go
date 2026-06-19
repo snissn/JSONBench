@@ -50,6 +50,7 @@ type runConfig struct {
 	Queries                 []string
 	BatchSize               int
 	Profile                 string
+	QueryProfileDir         string
 	DataRoot                string
 	Collection              string
 	Checkpoint              bool
@@ -85,6 +86,7 @@ type runResult struct {
 	ColumnReconstructionPolicy    string                `json:"column_reconstruction_policy,omitempty"`
 	TypedColumnOwner              string                `json:"typed_column_owner,omitempty"`
 	Profile                       string                `json:"profile"`
+	QueryProfileDir               string                `json:"query_profile_dir,omitempty"`
 	DataRoot                      string                `json:"data_root"`
 	Load                          loadResult            `json:"load"`
 	Storage                       storageResult         `json:"storage"`
@@ -164,15 +166,17 @@ type reconstructionResult struct {
 }
 
 type queryRun struct {
-	Name        string     `json:"name"`
-	SQL         string     `json:"sql"`
-	AttemptsSec []float64  `json:"attempts_seconds"`
-	BestSec     float64    `json:"best_seconds"`
-	MedianSec   float64    `json:"median_seconds"`
-	RowsScanned int        `json:"rows_scanned"`
-	ResultRows  int        `json:"result_rows"`
-	ResultHash  string     `json:"result_hash"`
-	Preview     []queryRow `json:"preview,omitempty"`
+	Name        string                `json:"name"`
+	SQL         string                `json:"sql"`
+	AttemptsSec []float64             `json:"attempts_seconds"`
+	BestSec     float64               `json:"best_seconds"`
+	MedianSec   float64               `json:"median_seconds"`
+	RowsScanned int                   `json:"rows_scanned"`
+	ResultRows  int                   `json:"result_rows"`
+	ResultHash  string                `json:"result_hash"`
+	Preview     []queryRow            `json:"preview,omitempty"`
+	Diagnostics queryDiagnostics      `json:"diagnostics,omitempty"`
+	Profiles    []queryAttemptProfile `json:"attempt_profiles,omitempty"`
 }
 
 type queryRow map[string]any
@@ -211,6 +215,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q5")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
 	fs.StringVar(&cfg.Profile, "profile", cfg.Profile, "TreeDB profile: fast, wal_on_fast, durable, bench")
+	fs.StringVar(&cfg.QueryProfileDir, "query-profile-dir", "", "Directory for per-query timed-attempt CPU and allocs pprof artifacts; disabled when empty")
 	fs.StringVar(&cfg.DataRoot, "data-root", cfg.DataRoot, "Collection data root storage: fast or compressed")
 	fs.StringVar(&cfg.Collection, "collection", cfg.Collection, "Collection name")
 	fs.BoolVar(&cfg.Checkpoint, "checkpoint", cfg.Checkpoint, "Checkpoint after loading")
@@ -239,6 +244,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	cfg.RetainedPayloadEncoding = strings.ToLower(strings.TrimSpace(cfg.RetainedPayloadEncoding))
 	cfg.Projection = strings.ToLower(strings.TrimSpace(cfg.Projection))
 	cfg.Profile = strings.ToLower(strings.TrimSpace(cfg.Profile))
+	cfg.QueryProfileDir = strings.TrimSpace(cfg.QueryProfileDir)
 	cfg.DataRoot = strings.ToLower(strings.TrimSpace(cfg.DataRoot))
 	cfg.Scale = strings.ToLower(strings.TrimSpace(cfg.Scale))
 	if cfg.Rows == 0 {
@@ -306,6 +312,16 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 			return runResult{}, err
 		}
 		cfg.DBDir = dbDir
+	}
+	if cfg.QueryProfileDir != "" {
+		queryProfileDir, err := expandPath(cfg.QueryProfileDir)
+		if err != nil {
+			return runResult{}, err
+		}
+		cfg.QueryProfileDir = queryProfileDir
+		if err := os.MkdirAll(cfg.QueryProfileDir, 0o755); err != nil {
+			return runResult{}, fmt.Errorf("create query profile dir: %w", err)
+		}
 	}
 	if cfg.Reset {
 		if err := os.RemoveAll(cfg.DBDir); err != nil {
@@ -390,6 +406,7 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		ColumnReconstructionPolicy:    columnStoreReconstructionPolicy(cfg),
 		TypedColumnOwner:              columnStoreTypedColumnOwner(cfg),
 		Profile:                       cfg.Profile,
+		QueryProfileDir:               cfg.QueryProfileDir,
 		DataRoot:                      cfg.DataRoot,
 		Load:                          load,
 		Storage:                       storage,
