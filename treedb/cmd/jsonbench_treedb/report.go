@@ -79,6 +79,7 @@ type reportRow struct {
 	SortedGroupedDistinctUsed          bool      `json:"sorted_grouped_distinct_used,omitempty"`
 	SortedGroupedDistinctFallback      string    `json:"sorted_grouped_distinct_fallback_reason,omitempty"`
 	DenseGroupCountUsed                bool      `json:"dense_group_count_used,omitempty"`
+	DenseGroupCountDistinctUsed        bool      `json:"dense_group_count_distinct_used,omitempty"`
 	DenseGroupHourCountUsed            bool      `json:"dense_group_hour_count_used,omitempty"`
 	DenseInt64SpanUsed                 bool      `json:"dense_int64_span_used,omitempty"`
 	DictionaryCodeHits                 int       `json:"dictionary_code_hits,omitempty"`
@@ -351,6 +352,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				SortedGroupedDistinctUsed:          diagnostics.SortedGroupedDistinctUsed,
 				SortedGroupedDistinctFallback:      diagnostics.SortedGroupedDistinctFallback,
 				DenseGroupCountUsed:                diagnostics.DenseGroupCountUsed,
+				DenseGroupCountDistinctUsed:        diagnostics.DenseGroupCountDistinctUsed,
 				DenseGroupHourCountUsed:            diagnostics.DenseGroupHourCountUsed,
 				DenseInt64SpanUsed:                 diagnostics.DenseInt64SpanUsed,
 				DictionaryCodeHits:                 diagnostics.DictionaryCodeHits,
@@ -884,6 +886,9 @@ func formatDensePath(row reportRow) string {
 	var paths []string
 	if row.DenseGroupCountUsed {
 		paths = append(paths, "group_count")
+	}
+	if row.DenseGroupCountDistinctUsed {
+		paths = append(paths, "group_count_distinct")
 	}
 	if row.DenseGroupHourCountUsed {
 		paths = append(paths, "group_hour_count")

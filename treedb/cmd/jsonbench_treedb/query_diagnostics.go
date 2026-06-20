@@ -31,6 +31,7 @@ type queryDiagnostics struct {
 	SortedGroupedDistinctUsed     bool                      `json:"sorted_grouped_distinct_used,omitempty"`
 	SortedGroupedDistinctFallback string                    `json:"sorted_grouped_distinct_fallback_reason,omitempty"`
 	DenseGroupCountUsed           bool                      `json:"dense_group_count_used,omitempty"`
+	DenseGroupCountDistinctUsed   bool                      `json:"dense_group_count_distinct_used,omitempty"`
 	DenseGroupHourCountUsed       bool                      `json:"dense_group_hour_count_used,omitempty"`
 	DenseInt64SpanUsed            bool                      `json:"dense_int64_span_used,omitempty"`
 	MetadataHits                  int                       `json:"metadata_hits,omitempty"`
@@ -98,6 +99,7 @@ type queryPhysicalDiagnostic struct {
 	SortedGroupedDistinctUsed     bool     `json:"sorted_grouped_distinct_used,omitempty"`
 	SortedGroupedDistinctFallback string   `json:"sorted_grouped_distinct_fallback_reason,omitempty"`
 	DenseGroupCountUsed           bool     `json:"dense_group_count_used,omitempty"`
+	DenseGroupCountDistinctUsed   bool     `json:"dense_group_count_distinct_used,omitempty"`
 	DenseGroupHourCountUsed       bool     `json:"dense_group_hour_count_used,omitempty"`
 	DenseInt64SpanUsed            bool     `json:"dense_int64_span_used,omitempty"`
 	MetadataHits                  int      `json:"metadata_hits,omitempty"`
@@ -193,6 +195,7 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.SortedGroupedDistinctUsed = out.SortedGroupedDistinctUsed || phys.SortedGroupedDistinctUsed
 		out.SortedGroupedDistinctFallback = mergeDiagnosticString(out.SortedGroupedDistinctFallback, phys.SortedGroupedDistinctFallback)
 		out.DenseGroupCountUsed = out.DenseGroupCountUsed || phys.DenseGroupCountUsed
+		out.DenseGroupCountDistinctUsed = out.DenseGroupCountDistinctUsed || phys.DenseGroupCountDistinctUsed
 		out.DenseGroupHourCountUsed = out.DenseGroupHourCountUsed || phys.DenseGroupHourCountUsed
 		out.DenseInt64SpanUsed = out.DenseInt64SpanUsed || phys.DenseInt64SpanUsed
 		out.MetadataHits += phys.MetadataHits
@@ -267,6 +270,7 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		SortedGroupedDistinctUsed:     d.SortedGroupedDistinctUsed,
 		SortedGroupedDistinctFallback: d.SortedGroupedDistinctFallbackReason,
 		DenseGroupCountUsed:           d.DenseGroupCountUsed,
+		DenseGroupCountDistinctUsed:   d.DenseGroupCountDistinctUsed,
 		DenseGroupHourCountUsed:       d.DenseGroupHourCountUsed,
 		DenseInt64SpanUsed:            d.DenseInt64SpanUsed,
 		MetadataHits:                  d.MetadataHits,

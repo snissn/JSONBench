@@ -256,6 +256,62 @@ func TestColumnStoreQ1KeepsEmptyEventBucket(t *testing.T) {
 	}
 }
 
+func TestColumnStoreQ2UsesFusedCountDistinctRequest(t *testing.T) {
+	for _, layout := range []string{
+		storageLayoutColumnStore,
+		storageLayoutColumnStorePrepared,
+		storageLayoutColumnStorePreparedMetadata,
+		storageLayoutColumnStoreFull,
+		storageLayoutColumnStoreFullPrepared,
+	} {
+		layout := layout
+		t.Run(layout, func(t *testing.T) {
+			req := testColumnPhysicalRequestForQuery(layout, "q2")
+			if got, want := req.Kind, collections.ColumnPhysicalQueryGroupCountAndDistinct; got != want {
+				t.Fatalf("q2 kind=%q want %q req=%+v", got, want, req)
+			}
+			if got, want := req.GroupColumn, "event"; got != want {
+				t.Fatalf("q2 group column=%q want %q req=%+v", got, want, req)
+			}
+			if got, want := req.DistinctColumn, "did"; got != want {
+				t.Fatalf("q2 distinct column=%q want %q req=%+v", got, want, req)
+			}
+			if req.ValueColumn != "" {
+				t.Fatalf("q2 value column=%q want empty req=%+v", req.ValueColumn, req)
+			}
+			wantPredicates := isFullDataColumnStoreLayout(layout)
+			if got := len(req.Predicates) > 0; got != wantPredicates {
+				t.Fatalf("q2 predicates present=%v want %v req=%+v", got, wantPredicates, req)
+			}
+		})
+	}
+}
+
+func TestColumnStoreQ2RendersFusedCountDistinctResult(t *testing.T) {
+	computed := renderColumnQ2(5, collections.ColumnPhysicalQueryResult{
+		Groups: []collections.ColumnPhysicalQueryGroup{
+			{Key: "event_b", Count: 2, DistinctCount: 1},
+			{Key: "", Count: 1, DistinctCount: 1},
+			{Key: "event_a", Count: 2, DistinctCount: 2},
+			{Key: "event_c", Count: 1, DistinctCount: 1},
+		},
+	})
+	want := []queryRow{
+		{"event": "event_a", "count": int64(2), "users": int64(2)},
+		{"event": "event_b", "count": int64(2), "users": int64(1)},
+		{"event": "event_c", "count": int64(1), "users": int64(1)},
+	}
+	if !reflect.DeepEqual(computed.Rows, want) {
+		t.Fatalf("q2 rows=%v want %v", computed.Rows, want)
+	}
+	if got, want := len(computed.Diagnostics.PhysicalQueries), 1; got != want {
+		t.Fatalf("q2 physical query diagnostics=%d want %d", got, want)
+	}
+	if got, want := computed.Diagnostics.PhysicalQueries[0].Name, "group_count_and_distinct"; got != want {
+		t.Fatalf("q2 physical query name=%q want %q", got, want)
+	}
+}
+
 func TestColumnStorePreparedLayoutMatchesRowFixture(t *testing.T) {
 	for _, query := range []string{"q1", "q2", "q3", "q4", "q5"} {
 		query := query
@@ -457,9 +513,6 @@ func assertColumnPhysicalQueryDiagnostics(t *testing.T, query queryRun, wantPhys
 }
 
 func expectedPhysicalQueryCount(query string) int {
-	if query == "q2" {
-		return 2
-	}
 	return 1
 }
 
@@ -469,7 +522,7 @@ func testColumnPhysicalRequestForQuery(layout, query string) collections.ColumnP
 	case "q1":
 		return columnPhysicalRequest(cfg, "q1", collections.ColumnPhysicalQueryGroupCount, "event", "", "")
 	case "q2":
-		return columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountDistinct, "event", "", "did")
+		return columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountAndDistinct, "event", "", "did")
 	case "q3":
 		return columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", "")
 	case "q4":

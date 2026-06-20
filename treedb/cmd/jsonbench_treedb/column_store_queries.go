@@ -18,15 +18,11 @@ func runColumnQ1(collection *collections.Collection, cfg runConfig, rows int) (q
 }
 
 func runColumnQ2(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
-	countResult, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCount, "event", "", ""))
+	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountAndDistinct, "event", "", "did"))
 	if err != nil {
 		return queryComputation{}, err
 	}
-	distinctResult, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountDistinct, "event", "", "did"))
-	if err != nil {
-		return queryComputation{}, err
-	}
-	return renderColumnQ2(rows, countResult, distinctResult), nil
+	return renderColumnQ2(rows, result), nil
 }
 
 func runColumnQ3(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
@@ -127,18 +123,11 @@ func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfi
 		}
 		return &preparedColumnQuery{name: name, count: runner}, nil
 	case "q2":
-		count, err := prepare(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCount, "event", "", ""))
+		runner, err := prepare(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountAndDistinct, "event", "", "did"))
 		if err != nil {
 			return nil, err
 		}
-		distinct, err := prepare(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountDistinct, "event", "", "did"))
-		if err != nil {
-			if closeErr := count.Close(); closeErr != nil {
-				return nil, errors.Join(err, closeErr)
-			}
-			return nil, err
-		}
-		return &preparedColumnQuery{name: name, count: count, distinct: distinct}, nil
+		return &preparedColumnQuery{name: name, count: runner}, nil
 	case "q3":
 		runner, err := prepare(columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", ""))
 		if err != nil {
@@ -192,14 +181,7 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 	case "q1":
 		return renderColumnQ1(rows, countResult), nil
 	case "q2":
-		if p.distinct == nil {
-			return queryComputation{}, errors.New("prepared column q2 query is missing distinct runner")
-		}
-		distinctResult, err := p.distinct.Run()
-		if err != nil {
-			return queryComputation{}, err
-		}
-		return renderColumnQ2(rows, countResult, distinctResult), nil
+		return renderColumnQ2(rows, countResult), nil
 	case "q3":
 		return renderColumnQ3(rows, countResult), nil
 	case "q4":
@@ -240,25 +222,14 @@ func renderColumnQ1(rows int, result collections.ColumnPhysicalQueryResult) quer
 	}
 }
 
-func renderColumnQ2(rows int, countResult, distinctResult collections.ColumnPhysicalQueryResult) queryComputation {
+func renderColumnQ2(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
 	renderStart := time.Now()
-	counts := make(map[string]int64, len(countResult.Groups))
-	for _, group := range countResult.Groups {
+	out := make([]queryRow, 0, len(result.Groups))
+	for _, group := range result.Groups {
 		if group.Key == "" {
 			continue
 		}
-		counts[group.Key] = int64(group.Count)
-	}
-	users := make(map[string]int64, len(distinctResult.Groups))
-	for _, group := range distinctResult.Groups {
-		if group.Key == "" {
-			continue
-		}
-		users[group.Key] = int64(group.Count)
-	}
-	out := make([]queryRow, 0, len(counts))
-	for event, count := range counts {
-		out = append(out, queryRow{"event": event, "count": count, "users": users[event]})
+		out = append(out, queryRow{"event": group.Key, "count": int64(group.Count), "users": int64(group.DistinctCount)})
 	}
 	sort.Slice(out, func(i, j int) bool {
 		ci := out[i]["count"].(int64)
@@ -270,13 +241,12 @@ func renderColumnQ2(rows int, countResult, distinctResult collections.ColumnPhys
 	})
 	renderNanos := time.Since(renderStart).Nanoseconds()
 	return queryComputation{
-		RowsScanned: maxColumnPhysicalRowsScanned(rows, countResult, distinctResult),
+		RowsScanned: columnPhysicalRowsScanned(rows, result),
 		Rows:        out,
 		Diagnostics: columnQueryDiagnostics(
 			len(out),
 			renderNanos,
-			namedColumnPhysicalResult{Name: "count", Result: countResult, FallbackRows: rows},
-			namedColumnPhysicalResult{Name: "distinct", Result: distinctResult, FallbackRows: rows},
+			namedColumnPhysicalResult{Name: "group_count_and_distinct", Result: result, FallbackRows: rows},
 		),
 	}
 }
