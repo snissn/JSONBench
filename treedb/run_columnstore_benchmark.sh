@@ -10,6 +10,7 @@ TRIES="${TRIES:-3}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5}"
 SUITE="${SUITE:-minimal}"
 VALIDATE_RECONSTRUCTION="${VALIDATE_RECONSTRUCTION:-0}"
+TREEDB_ALLOW_ERRORS="${TREEDB_ALLOW_ERRORS:-0}"
 if [[ -z "${STORAGE_LAYOUTS:-}" ]]; then
   STORAGE_LAYOUTS="column-store column-store-prepared"
   RUN_DEFAULT_METADATA_LAYOUT=1
@@ -110,6 +111,7 @@ cat <<EOF
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
     validate:  $VALIDATE_RECONSTRUCTION
+    allow errs: $TREEDB_ALLOW_ERRORS
     retained:  ${RETAINED_PAYLOAD_ENCODING:-default}
     metadata:  $metadata_label
     out:       $OUT_DIR
@@ -127,6 +129,7 @@ run_matrix_cell() {
   SUITE="$SUITE" \
   QUERY_CELLS="$queries" \
   VALIDATE_RECONSTRUCTION="$VALIDATE_RECONSTRUCTION" \
+  ALLOW_ERRORS="$TREEDB_ALLOW_ERRORS" \
   TRIES="$TRIES" \
   PROFILE="${PROFILE:-fast}" \
   DATA_ROOT="${DATA_ROOT:-fast}" \
@@ -155,6 +158,7 @@ summary="$OUT_DIR/columnstore_summary.md"
   echo "- tries: \`$TRIES\`"
   echo "- suite: \`$SUITE\`"
   echo "- validate reconstruction: \`$VALIDATE_RECONSTRUCTION\`"
+  echo "- allow errors: \`$TREEDB_ALLOW_ERRORS\`"
   echo "- retained payload encoding: \`${RETAINED_PAYLOAD_ENCODING:-default}\`"
   echo "- report: \`$OUT_DIR/report.md\`"
   echo

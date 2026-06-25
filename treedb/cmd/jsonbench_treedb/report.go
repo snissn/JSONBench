@@ -37,6 +37,8 @@ type reportRow struct {
 	RequestedRows                      int       `json:"requested_rows,omitempty"`
 	DatasetSize                        int       `json:"dataset_size"`
 	RowCount                           int       `json:"row_count"`
+	InputRows                          int       `json:"input_rows,omitempty"`
+	SkippedInvalidJSONRows             int       `json:"skipped_invalid_json_rows,omitempty"`
 	Format                             string    `json:"format,omitempty"`
 	StorageLayout                      string    `json:"storage_layout,omitempty"`
 	Projection                         string    `json:"projection,omitempty"`
@@ -310,6 +312,8 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				RequestedRows:                      result.RequestedRows,
 				DatasetSize:                        result.DatasetSize,
 				RowCount:                           result.DatasetSize,
+				InputRows:                          result.Load.InputRows,
+				SkippedInvalidJSONRows:             result.Load.SkippedInvalidJSONRows,
 				Format:                             result.Format,
 				StorageLayout:                      result.StorageLayout,
 				Projection:                         result.Projection,

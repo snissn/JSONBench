@@ -14,6 +14,7 @@ CLICKHOUSE_BIN="${CLICKHOUSE_BIN:-clickhouse}"
 RUN_TREEDB="${RUN_TREEDB:-1}"
 RUN_CLICKHOUSE="${RUN_CLICKHOUSE:-1}"
 CLICKHOUSE_ALLOW_ERRORS="${CLICKHOUSE_ALLOW_ERRORS:-1}"
+TREEDB_ALLOW_ERRORS="${TREEDB_ALLOW_ERRORS:-$CLICKHOUSE_ALLOW_ERRORS}"
 CLICKHOUSE_MAX_FILES="${CLICKHOUSE_MAX_FILES:-}"
 TREEDB_FULL_STORAGE_LAYOUTS="${TREEDB_FULL_STORAGE_LAYOUTS:-column-store-full-prepared}"
 TREEDB_QUERY_STORAGE_LAYOUTS="${TREEDB_QUERY_STORAGE_LAYOUTS:-column-store-prepared-metadata}"
@@ -46,6 +47,8 @@ Environment:
   RUN_CLICKHOUSE           Set 0 to skip ClickHouse when reusing result.json.
   CLICKHOUSE_ALLOW_ERRORS  Set 1 to match JSONBench fallback loading for rows
                            ClickHouse rejects as invalid JSON. Defaults to 1.
+  TREEDB_ALLOW_ERRORS      Set 1 to skip malformed JSON rows before TreeDB
+                           insertion. Defaults to CLICKHOUSE_ALLOW_ERRORS.
   CLICKHOUSE_MAX_FILES     Input file count for ClickHouse. Defaults to ROWS/1M.
   TREEDB_FULL_STORAGE_LAYOUTS
                            Full-data TreeDB layouts used for headline storage.
@@ -116,6 +119,7 @@ run_treedb() {
   SUITE="full" \
   COMPACT_AFTER_LOAD="$TREEDB_COMPACT_AFTER_LOAD" \
   VALIDATE_RECONSTRUCTION="$TREEDB_VALIDATE_RECONSTRUCTION" \
+  TREEDB_ALLOW_ERRORS="$TREEDB_ALLOW_ERRORS" \
   OUT_DIR="$TREE_OUT" \
   ./run_columnstore_benchmark.sh
 
@@ -127,6 +131,7 @@ run_treedb() {
   STORAGE_LAYOUTS="$TREEDB_QUERY_STORAGE_LAYOUTS" \
   SUITE="minimal" \
   QUERY_CELLS="q1 q2 q3 q4 q4a q4b q5" \
+  TREEDB_ALLOW_ERRORS="$TREEDB_ALLOW_ERRORS" \
   OUT_DIR="$TREE_OUT" \
   ./run_columnstore_benchmark.sh
 }
@@ -507,6 +512,7 @@ print("- Query-shaped `column-store*` rows are attribution rows only; their stor
 print("- q4/q4a/q4b/q5 aggregate-metadata Top-K attribution rows may still report scanned rows as 0; the full-data headline reports the full-data scan path unless a full-data metadata layout is added.")
 print("- q4a/q4b TreeDB rows use the same q4 grouped-min physical query; the preferred summary maps them to the q4 ClickHouse query unless a separate ClickHouse q4 fairness artifact is supplied.")
 print("- ClickHouse uses `JSONAsObject`; with `CLICKHOUSE_ALLOW_ERRORS=1`, rows ClickHouse rejects as invalid JSON are skipped and reflected in the ClickHouse loaded-row count.")
+print("- TreeDB uses `TREEDB_ALLOW_ERRORS=1` in this preferred comparison by default when ClickHouse allow-errors is enabled; skipped malformed JSON rows are reflected in the TreeDB loaded-row count and result JSON counters.")
 print()
 print(f"Summary written to `{summary_out}`.")
 PY
