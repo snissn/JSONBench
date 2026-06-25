@@ -624,8 +624,8 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 			requestedRows = result.RequestedRows
 		}
 		scaleRows := result.DatasetSize
-		if requestedRows > 0 {
-			scaleRows = requestedRows
+		if result.RequestedRows > 0 {
+			scaleRows = result.RequestedRows
 		}
 		scale := scaleFromDatasetSize(scaleRows)
 		if !scaleAllowed(scales, scale) {
