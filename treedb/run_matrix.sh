@@ -19,6 +19,7 @@ CLICKHOUSE_RESULTS_DIR="${CLICKHOUSE_RESULTS_DIR:-}"
 CLICKHOUSE_SCALES="${CLICKHOUSE_SCALES:-1m,10m}"
 COMPACT_AFTER_LOAD="${COMPACT_AFTER_LOAD:-0}"
 VALIDATE_RECONSTRUCTION="${VALIDATE_RECONSTRUCTION:-0}"
+ALLOW_ERRORS="${ALLOW_ERRORS:-0}"
 
 usage() {
   cat <<'EOF'
@@ -52,12 +53,16 @@ Environment:
   VALIDATE_RECONSTRUCTION
                       Set to 1/true/yes/on to validate full-data column-store
                       reconstruction for column-store-full layouts. Defaults to 0.
+  ALLOW_ERRORS        Set to 1/true/yes/on to skip malformed JSON input rows
+                      before TreeDB insertion. Defaults to 0.
 Flags:
   -h, --help          Show this help.
 
-The matrix runner never accepts partial data. If DATA_DIR has fewer rows than
-requested, the run fails. Use SUBSET_ROWS=6 only for the checked-in smoke
-fixture, or DATA_DIR="$HOME/data/bluesky" for downloaded JSONBench data.
+The matrix runner never accepts partial input. If DATA_DIR has fewer input rows
+than requested, the run fails. With ALLOW_ERRORS=1, malformed JSON rows may be
+skipped and reflected in the loaded-row count. Use SUBSET_ROWS=6 only for the
+checked-in smoke fixture, or DATA_DIR="$HOME/data/bluesky" for downloaded
+JSONBench data.
 
 The default suite is intentionally strict minimal JSON: q1..q5 each load only
 the fields needed for that query. Full-document cells are available with
@@ -116,6 +121,7 @@ run_cell() {
   local compact_arg=()
   local compact_suffix=""
   local validate_arg=()
+  local allow_errors_arg=()
   case "$COMPACT_AFTER_LOAD" in
     1|true|TRUE|yes|YES|on|ON)
       compact_arg=(-compact-after-load)
@@ -140,6 +146,17 @@ run_cell() {
       ;;
     *)
       echo "invalid VALIDATE_RECONSTRUCTION=$VALIDATE_RECONSTRUCTION (expected 0/1)" >&2
+      exit 2
+      ;;
+  esac
+  case "$ALLOW_ERRORS" in
+    1|true|TRUE|yes|YES|on|ON)
+      allow_errors_arg=(-allow-errors)
+      ;;
+    0|false|FALSE|no|NO|off|OFF|"")
+      ;;
+    *)
+      echo "invalid ALLOW_ERRORS=$ALLOW_ERRORS (expected 0/1)" >&2
       exit 2
       ;;
   esac
@@ -173,6 +190,9 @@ run_cell() {
   fi
   if [[ ${#validate_arg[@]} -gt 0 ]]; then
     cmd+=("${validate_arg[@]}")
+  fi
+  if [[ ${#allow_errors_arg[@]} -gt 0 ]]; then
+    cmd+=("${allow_errors_arg[@]}")
   fi
   cmd+=(
     -out "$cell_dir/result.json"

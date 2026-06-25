@@ -57,6 +57,7 @@ type runConfig struct {
 	CompactAfterLoad        bool
 	CompactBatchSize        int
 	ValidateReconstruction  bool
+	AllowErrors             bool
 	Tries                   int
 	Progress                bool
 }
@@ -99,6 +100,8 @@ type runResult struct {
 
 type loadResult struct {
 	Rows                    int      `json:"rows"`
+	InputRows               int      `json:"input_rows,omitempty"`
+	SkippedInvalidJSONRows  int      `json:"skipped_invalid_json_rows,omitempty"`
 	Files                   []string `json:"files"`
 	Batches                 int      `json:"batches"`
 	GenerationSec           float64  `json:"generation_seconds"`
@@ -222,6 +225,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.BoolVar(&cfg.CompactAfterLoad, "compact-after-load", false, "Run full TreeDB maintenance compaction after loading and before query timing")
 	fs.IntVar(&cfg.CompactBatchSize, "compact-batch-size", cfg.CompactBatchSize, "Value-log rewrite pointer-swap batch size for -compact-after-load")
 	fs.BoolVar(&cfg.ValidateReconstruction, "validate-reconstruction", false, "Validate full-data column-store reconstruction by hashing source JSON against materialized stored JSON")
+	fs.BoolVar(&cfg.AllowErrors, "allow-errors", false, "Skip malformed JSON input rows; intended for apples-to-apples comparison with ClickHouse allow-errors loads")
 	fs.IntVar(&cfg.Tries, "tries", cfg.Tries, "Query attempts per query")
 	fs.BoolVar(&cfg.Progress, "progress", false, "Print load progress to stderr")
 	fs.BoolVar(&deprecatedAllowShortData, "allow-short-data", false, "removed; partial input is not accepted")
@@ -351,7 +355,11 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 	if err != nil {
 		return runResult{}, err
 	}
-	if load.Rows != cfg.Rows {
+	if cfg.AllowErrors {
+		if load.InputRows != cfg.Rows {
+			return runResult{}, fmt.Errorf("processed %d input rows and loaded %d valid rows, requested %d from %s; point -data-dir at enough data or lower -rows", load.InputRows, load.Rows, cfg.Rows, cfg.DataDir)
+		}
+	} else if load.Rows != cfg.Rows {
 		return runResult{}, fmt.Errorf("loaded %d rows, requested %d from %s; point -data-dir at enough data or lower -rows", load.Rows, cfg.Rows, cfg.DataDir)
 	}
 	var compaction *compactionResult
@@ -545,6 +553,12 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	if cfg.ValidateReconstruction {
 		sourceHasher = newCanonicalJSONHasher()
 	}
+	targetReached := func() bool {
+		if cfg.AllowErrors {
+			return out.InputRows >= cfg.Rows
+		}
+		return out.Rows >= cfg.Rows
+	}
 
 	flushBatch := func() error {
 		if len(ids) == 0 {
@@ -562,22 +576,30 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	}
 
 	for _, path := range files {
-		if out.Rows >= cfg.Rows {
+		if targetReached() {
 			break
 		}
 		readBytes, compressedBytes, err := scanInputFile(path, func(raw []byte) error {
-			if out.Rows >= cfg.Rows {
+			if targetReached() {
 				return errStopScan
+			}
+			out.InputRows++
+			if !json.Valid(raw) {
+				if cfg.AllowErrors {
+					out.SkippedInvalidJSONRows++
+					return nil
+				}
+				return fmt.Errorf("invalid source JSON input row %d", out.InputRows)
 			}
 			if sourceHasher != nil {
 				if err := sourceHasher.Add(raw); err != nil {
-					return fmt.Errorf("hash source JSON row %d: %w", out.Rows+1, err)
+					return fmt.Errorf("hash source JSON input row %d: %w", out.InputRows, err)
 				}
 			}
 			genStart := time.Now()
 			doc, err := buildDocument(raw, format, cfg.Projection, cfg.StorageLayout, &encoder)
 			if err != nil {
-				return err
+				return fmt.Errorf("build document input row %d: %w", out.InputRows, err)
 			}
 			id := documentID(uint64(out.Rows + 1))
 			generationElapsed += time.Since(genStart)

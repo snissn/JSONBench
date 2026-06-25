@@ -144,6 +144,10 @@ func runNotes(cfg runConfig) []string {
 	if !isColumnStoreLayout(cfg.StorageLayout) {
 		return nil
 	}
+	var inputNotes []string
+	if cfg.AllowErrors {
+		inputNotes = append(inputNotes, "allow-errors skips malformed JSON input rows before TreeDB insertion to match ClickHouse JSONAsObject allow-errors comparison runs.")
+	}
 	if isFullDataColumnStoreLayout(cfg.StorageLayout) {
 		notes := []string{
 			fmt.Sprintf("storage_layout=%s stores full source JSON by retaining non-declared fields and declaring JSONBench hot-path columns in TreeDB typed column parts.", cfg.StorageLayout),
@@ -151,6 +155,7 @@ func runNotes(cfg runConfig) []string {
 			fmt.Sprintf("storage_layout=%s forces TreeDB durable command-WAL mode because current column-store publication requires it.", cfg.StorageLayout),
 			"full-data column-store cells do not use load-time sentinel masking; q2/q3/q4/q4a/q4b/q5 predicates are evaluated as real physical predicates or predicate-qualified aggregate metadata.",
 		}
+		notes = append(notes, inputNotes...)
 		if cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
 			notes = append(notes, "column-store-full-prepared prepares physical query runners outside timed attempts; q1/q3/q5 request aggregate metadata and q4/q4a/q4b keep bounded physical TopK over typed-column part sections.")
 		}
@@ -161,6 +166,7 @@ func runNotes(cfg runConfig) []string {
 		fmt.Sprintf("storage_layout=%s forces TreeDB durable command-WAL mode because current column-store publication requires it.", cfg.StorageLayout),
 		"q3/q4/q4a/q4b/q5 column-store cells use physical dictionary predicates when supported; q4/q4a/q4b/q5 aggregate-metadata cells still use load-time sentinel masking for metadata semantics; q2 remains sentinel-masked.",
 	}
+	notes = append(notes, inputNotes...)
 	if cfg.StorageLayout == storageLayoutColumnStorePrepared {
 		notes = append(notes, "column-store-prepared prepares physical query runners outside timed attempts and scans base column rows; it does not declare aggregate metadata.")
 	}
