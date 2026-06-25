@@ -7,7 +7,7 @@ cd "$ROOT_DIR"
 DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-1000000}"
 TRIES="${TRIES:-3}"
-QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q5}"
+QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5}"
 SUITE="${SUITE:-minimal}"
 VALIDATE_RECONSTRUCTION="${VALIDATE_RECONSTRUCTION:-0}"
 if [[ -z "${STORAGE_LAYOUTS:-}" ]]; then
@@ -22,7 +22,7 @@ default_metadata_query_cells() {
   local query
   for query in $QUERY_CELLS; do
     case "$query" in
-      q4|q5)
+      q4|q4a|q4b|q5)
         out="${out:+$out }$query"
         ;;
     esac
@@ -94,7 +94,7 @@ if [[ "$RUN_DEFAULT_METADATA_LAYOUT" == "1" ]]; then
   elif [[ "$METADATA_QUERY_CELLS_EXPLICIT" == "1" ]]; then
     metadata_label="none (METADATA_QUERY_CELLS is empty)"
   else
-    metadata_label="none (QUERY_CELLS has no q4/q5 metadata cells)"
+    metadata_label="none (QUERY_CELLS has no q4/q4a/q4b/q5 metadata cells)"
   fi
 fi
 
@@ -138,7 +138,7 @@ run_matrix_cell() {
 
 # run_matrix.sh regenerates reports from all result.json files already present
 # in OUT_DIR. Calling it twice is intentional: default metadata rows are a
-# focused q4/q5 pass appended beside the direct and prepared-scan cells while
+# focused q4/q4a/q4b/q5 pass appended beside the direct and prepared-scan cells while
 # preserving the same scale/subset row selection as the primary pass.
 run_matrix_cell "$STORAGE_LAYOUTS" "$QUERY_CELLS"
 if [[ "$SUITE" != "full" && "$RUN_DEFAULT_METADATA_LAYOUT" == "1" && -n "${METADATA_QUERY_CELLS// }" ]]; then
