@@ -126,7 +126,7 @@ run_treedb() {
   GOMAP_REPLACE="$GOMAP_REPLACE" \
   STORAGE_LAYOUTS="$TREEDB_QUERY_STORAGE_LAYOUTS" \
   SUITE="minimal" \
-  QUERY_CELLS="q1 q2 q3 q4 q5" \
+  QUERY_CELLS="q1 q2 q3 q4 q4a q4b q5" \
   OUT_DIR="$TREE_OUT" \
   ./run_columnstore_benchmark.sh
 }
@@ -210,7 +210,10 @@ SQL
     insert_settings="$insert_settings, input_format_allow_errors_num = 1000000000, input_format_allow_errors_ratio = 1"
   fi
 
-  mapfile -t input_files < <(find "$DATA_DIR" -maxdepth 1 \( -name '*.json.gz' -o -name '*.json' \) -type f | LC_ALL=C sort | head -n "$CLICKHOUSE_MAX_FILES")
+  input_files=()
+  while IFS= read -r file; do
+    input_files+=("$file")
+  done < <(find "$DATA_DIR" -maxdepth 1 \( -name '*.json.gz' -o -name '*.json' \) -type f | LC_ALL=C sort | head -n "$CLICKHOUSE_MAX_FILES")
   if [[ "${#input_files[@]}" -ne "$CLICKHOUSE_MAX_FILES" ]]; then
     echo "requested $CLICKHOUSE_MAX_FILES input files in $DATA_DIR, found ${#input_files[@]}" >&2
     exit 1
@@ -339,9 +342,18 @@ tree_doc = load_json(os.environ["TREEDB_RESULT"])
 ch_doc = load_json(os.environ["CLICKHOUSE_RESULT"])
 ch_times = ch_doc["result"]
 if len(ch_times) < 5:
-    raise ValueError(f"ClickHouse result has {len(ch_times)} query rows, expected 5")
+    raise ValueError(f"ClickHouse result has {len(ch_times)} query rows, expected at least 5")
 
-queries = ["q1", "q2", "q3", "q4", "q5"]
+queries = ["q1", "q2", "q3", "q4", "q4a", "q4b", "q5"]
+clickhouse_query_index = {
+    "q1": 0,
+    "q2": 1,
+    "q3": 2,
+    "q4": 3,
+    "q4a": 3,
+    "q4b": 3,
+    "q5": 4,
+}
 tree_report_rows = [
     row for row in tree_doc["rows"]
     if row.get("system", "TreeDB") == "TreeDB"
@@ -436,7 +448,7 @@ print("| system/layout | query | best | loaded rows/s | scanned rows | storage |
 print("|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|")
 for idx, query in enumerate(queries):
     tree = tree_storage_rows[query]
-    ch_best = best(ch_times[idx])
+    ch_best = best(ch_times[clickhouse_query_index[query]])
     label = tree.get("storage_layout", "column-store-full")
     scanned = tree.get("rows_scanned", 0)
     tree_dataset_size = tree.get("dataset_size", rows_requested)
@@ -492,7 +504,8 @@ print("## Caveats")
 print()
 print("- The full-data TreeDB headline uses `column-store-full`/`column-store-full-prepared` rows with retained non-column JSON plus `typed_column_part` hot-path columns.")
 print("- Query-shaped `column-store*` rows are attribution rows only; their storage is not compared to ClickHouse as apples-to-apples storage.")
-print("- q4/q5 aggregate-metadata Top-K attribution rows may still report scanned rows as 0; the full-data headline reports the full-data scan path unless a full-data metadata layout is added.")
+print("- q4/q4a/q4b/q5 aggregate-metadata Top-K attribution rows may still report scanned rows as 0; the full-data headline reports the full-data scan path unless a full-data metadata layout is added.")
+print("- q4a/q4b TreeDB rows use the same q4 grouped-min physical query; the preferred summary maps them to the q4 ClickHouse query unless a separate ClickHouse q4 fairness artifact is supplied.")
 print("- ClickHouse uses `JSONAsObject`; with `CLICKHOUSE_ALLOW_ERRORS=1`, rows ClickHouse rejects as invalid JSON are skipped and reflected in the ClickHouse loaded-row count.")
 print()
 print(f"Summary written to `{summary_out}`.")

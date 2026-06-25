@@ -487,7 +487,7 @@ func reportRowSortLayout(layout, projection string) string {
 		return "time_us"
 	}
 	switch projection {
-	case "q3", "q4", "q5", "minimal":
+	case "q3", "q4", "q4a", "q4b", "q5", "minimal":
 		return "time_us"
 	default:
 		return "ingest_order_unsorted"

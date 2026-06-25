@@ -58,11 +58,11 @@ func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnP
 		ColumnAssetReadIntegrity: collections.ColumnAssetReadIntegritySkipChecksums,
 	}
 	if columnStoreUsesAggregateMetadata(cfg.StorageLayout, query) {
-		req.AggregateMetadataName = columnStoreAggregateMetadataName
+		req.AggregateMetadataName, _ = columnStoreAggregateMetadataNameForQuery(cfg.StorageLayout, query)
 	}
 	if columnStoreRequestsBoundedTopK(cfg.StorageLayout, query) {
 		switch query {
-		case "q4":
+		case "q4", "q4a", "q4b":
 			req.TopK = 3
 			req.TopKOrder = collections.ColumnPhysicalQueryTopKInt64Asc
 			req.SkipEmptyGroupKey = true
@@ -81,18 +81,10 @@ func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnP
 			}
 		}
 	case "q3":
-		req.Predicates = []collections.ColumnPhysicalQueryPredicate{
-			{Column: "kind", Value: "commit"},
-			{Column: "operation", Value: "create"},
-			{Column: "event", Kind: collections.ColumnPhysicalQueryPredicateInList, Values: columnStoreQ3Events()},
-		}
-	case "q4", "q5":
-		if req.AggregateMetadataName == "" {
-			req.Predicates = []collections.ColumnPhysicalQueryPredicate{
-				{Column: "kind", Value: "commit"},
-				{Column: "operation", Value: "create"},
-				{Column: "event", Value: "app.bsky.feed.post"},
-			}
+		req.Predicates = columnStoreQ3Predicates()
+	case "q4", "q4a", "q4b", "q5":
+		if req.AggregateMetadataName == "" || isFullDataColumnStoreLayout(cfg.StorageLayout) {
+			req.Predicates = columnStorePostPredicates()
 		}
 	}
 	return req
@@ -100,6 +92,22 @@ func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnP
 
 func columnStoreQ3Events() []string {
 	return []string{"app.bsky.feed.post", "app.bsky.feed.repost", "app.bsky.feed.like"}
+}
+
+func columnStoreQ3Predicates() []collections.ColumnPhysicalQueryPredicate {
+	return []collections.ColumnPhysicalQueryPredicate{
+		{Column: "kind", Value: "commit"},
+		{Column: "operation", Value: "create"},
+		{Column: "event", Kind: collections.ColumnPhysicalQueryPredicateInList, Values: columnStoreQ3Events()},
+	}
+}
+
+func columnStorePostPredicates() []collections.ColumnPhysicalQueryPredicate {
+	return []collections.ColumnPhysicalQueryPredicate{
+		{Column: "kind", Value: "commit"},
+		{Column: "operation", Value: "create"},
+		{Column: "event", Value: "app.bsky.feed.post"},
+	}
 }
 
 type preparedColumnQuery struct {
@@ -134,8 +142,8 @@ func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfi
 			return nil, err
 		}
 		return &preparedColumnQuery{name: name, count: runner}, nil
-	case "q4":
-		runner, err := prepare(columnPhysicalRequest(cfg, "q4", collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", ""))
+	case "q4", "q4a", "q4b":
+		runner, err := prepare(columnPhysicalRequest(cfg, name, collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", ""))
 		if err != nil {
 			return nil, err
 		}
@@ -184,7 +192,7 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 		return renderColumnQ2(rows, countResult), nil
 	case "q3":
 		return renderColumnQ3(rows, countResult), nil
-	case "q4":
+	case "q4", "q4a", "q4b":
 		return renderColumnQ4(rows, countResult), nil
 	case "q5":
 		return renderColumnQ5(rows, countResult), nil

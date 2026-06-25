@@ -12,12 +12,16 @@ import (
 )
 
 var querySQL = map[string]string{
-	"q1": "SELECT data.commit.collection AS event, count() AS count FROM bluesky GROUP BY event ORDER BY count DESC",
-	"q2": "SELECT data.commit.collection AS event, count() AS count, count(DISTINCT data.did) AS users FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' GROUP BY event ORDER BY count DESC",
-	"q3": "SELECT data.commit.collection AS event, hour(to_timestamp(data.time_us / 1000000)) AS hour_of_day, count() AS count FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection IN (...) GROUP BY event, hour_of_day ORDER BY hour_of_day, event",
-	"q4": "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
-	"q5": "SELECT data.did AS user_id, date_diff('milliseconds', min(data.time_us), max(data.time_us)) AS activity_span FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY activity_span DESC LIMIT 3",
+	"q1":  "SELECT data.commit.collection AS event, count() AS count FROM bluesky GROUP BY event ORDER BY count DESC",
+	"q2":  "SELECT data.commit.collection AS event, count() AS count, count(DISTINCT data.did) AS users FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' GROUP BY event ORDER BY count DESC",
+	"q3":  "SELECT data.commit.collection AS event, hour(to_timestamp(data.time_us / 1000000)) AS hour_of_day, count() AS count FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection IN (...) GROUP BY event, hour_of_day ORDER BY hour_of_day, event",
+	"q4":  "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
+	"q4a": "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
+	"q4b": "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
+	"q5":  "SELECT data.did AS user_id, date_diff('milliseconds', min(data.time_us), max(data.time_us)) AS activity_span FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY activity_span DESC LIMIT 3",
 }
+
+var jsonBenchQueryNames = []string{"q1", "q2", "q3", "q4", "q4a", "q4b", "q5"}
 
 func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]queryRun, error) {
 	out := make([]queryRun, 0, len(cfg.Queries))
@@ -113,7 +117,7 @@ func runQueryOnce(collection *collections.Collection, cfg runConfig, name string
 			return runColumnQ2(collection, cfg, rows)
 		case "q3":
 			return runColumnQ3(collection, cfg, rows)
-		case "q4":
+		case "q4", "q4a", "q4b":
 			return runColumnQ4(collection, cfg, rows)
 		case "q5":
 			return runColumnQ5(collection, cfg, rows)
@@ -128,7 +132,7 @@ func runQueryOnce(collection *collections.Collection, cfg runConfig, name string
 		return runQ2(collection, cfg, rows)
 	case "q3":
 		return runQ3(collection, cfg, rows)
-	case "q4":
+	case "q4", "q4a", "q4b":
 		return runQ4(collection, cfg, rows)
 	case "q5":
 		return runQ5(collection, cfg, rows)

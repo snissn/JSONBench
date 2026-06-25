@@ -195,7 +195,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 		Checkpoint:       true,
 		CompactBatchSize: defaultBatchSize,
 		Tries:            3,
-		Queries:          []string{"q1", "q2", "q3", "q4", "q5"},
+		Queries:          append([]string(nil), jsonBenchQueryNames...),
 	}
 	var queryList string
 	var deprecatedAllowShortData bool
@@ -211,8 +211,8 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "TreeDB collection format: json or template-v1")
 	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row, column-store, column-store-prepared, or column-store-prepared-metadata")
 	fs.StringVar(&cfg.RetainedPayloadEncoding, "column-store-retained-payload-encoding", os.Getenv(envColumnStoreRetainedPayloadEncoding), "Retained-payload encoding override for full-data column-store non-column retained payloads (default/template-v1,json,semantic-stream-v1). Can also be set with "+envColumnStoreRetainedPayloadEncoding)
-	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q5")
-	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q5")
+	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q4a, q4b, q5")
+	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q4a, q4b, q5")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
 	fs.StringVar(&cfg.Profile, "profile", cfg.Profile, "TreeDB profile: fast, wal_on_fast, durable, bench")
 	fs.StringVar(&cfg.QueryProfileDir, "query-profile-dir", "", "Directory for per-query timed-attempt CPU and allocs pprof artifacts; disabled when empty")
@@ -831,7 +831,7 @@ func appendJSONString(dst []byte, s string) []byte {
 func parseQueryList(raw string) ([]string, error) {
 	raw = strings.TrimSpace(strings.ToLower(raw))
 	if raw == "" || raw == "all" {
-		return []string{"q1", "q2", "q3", "q4", "q5"}, nil
+		return append([]string(nil), jsonBenchQueryNames...), nil
 	}
 	parts := strings.Split(raw, ",")
 	out := make([]string, 0, len(parts))
@@ -860,7 +860,7 @@ func projectionFields(projection string) ([]string, error) {
 		return []string{"event", "did", "kind", "operation"}, nil
 	case "q3":
 		return []string{"event", "kind", "operation", "time_us"}, nil
-	case "q4", "q5", "minimal":
+	case "q4", "q4a", "q4b", "q5", "minimal":
 		return []string{"event", "did", "kind", "operation", "time_us"}, nil
 	default:
 		return nil, fmt.Errorf("unknown projection %q", projection)

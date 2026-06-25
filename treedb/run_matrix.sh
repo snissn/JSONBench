@@ -7,7 +7,7 @@ SCALES="${SCALES:-subset}"
 FORMATS="${FORMATS:-json}"
 STORAGE_LAYOUTS="${STORAGE_LAYOUTS:-row}"
 SUITE="${SUITE:-minimal}"
-QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q5}"
+QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5}"
 BATCH_SIZE="${BATCH_SIZE:-16000}"
 TRIES="${TRIES:-3}"
 PROFILE="${PROFILE:-fast}"
@@ -35,7 +35,7 @@ Environment:
                       Defaults to "row".
   SUITE               minimal, full, or all. Defaults to "minimal".
   QUERY_CELLS         Query-specific minimal cells for SUITE=minimal/all.
-                      Defaults to "q1 q2 q3 q4 q5".
+                      Defaults to "q1 q2 q3 q4 q4a q4b q5".
   SUBSET_ROWS         Rows for subset scale. Defaults to 10000.
   TRIES               Query attempts per cell. Defaults to 3.
   DUCKDB_RESULTS_DIR  DuckDB result JSON directory for report import.

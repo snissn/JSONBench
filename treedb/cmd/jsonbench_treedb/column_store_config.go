@@ -15,7 +15,10 @@ const (
 	storageLayoutColumnStoreFull             = "column-store-full"
 	storageLayoutColumnStoreFullPrepared     = "column-store-full-prepared"
 
-	columnStoreAggregateMetadataName = "min_time_us"
+	columnStoreQ1AggregateMetadataName   = "event_count"
+	columnStoreQ3AggregateMetadataName   = "feed_event_hour_count"
+	columnStoreQ5AggregateMetadataName   = "post_time_us_minmax"
+	columnStoreTopKAggregateMetadataName = "min_time_us"
 )
 
 func normalizeStorageLayout(raw string) (string, error) {
@@ -53,7 +56,7 @@ func validateStorageLayoutConfig(cfg runConfig) error {
 		return nil
 	}
 	if cfg.Projection == "full" {
-		return fmt.Errorf("-storage-layout %s requires a query projection (q1..q5), not full", cfg.StorageLayout)
+		return fmt.Errorf("-storage-layout %s requires a query projection (q1..q5 plus q4a/q4b), not full", cfg.StorageLayout)
 	}
 	if len(cfg.Queries) != 1 {
 		return fmt.Errorf("-storage-layout %s uses query-shaped column fixtures; pass exactly one -queries value", cfg.StorageLayout)
@@ -82,20 +85,38 @@ func isPreparedColumnStoreLayout(layout string) bool {
 }
 
 func columnStoreUsesAggregateMetadata(layout, query string) bool {
-	if layout != storageLayoutColumnStorePreparedMetadata {
-		return false
-	}
-	switch query {
-	case "q4", "q5":
-		return true
+	_, ok := columnStoreAggregateMetadataNameForQuery(layout, query)
+	return ok
+}
+
+func columnStoreAggregateMetadataNameForQuery(layout, query string) (string, bool) {
+	switch layout {
+	case storageLayoutColumnStorePreparedMetadata:
+		switch query {
+		case "q4", "q4a", "q4b", "q5":
+			return columnStoreTopKAggregateMetadataName, true
+		default:
+			return "", false
+		}
+	case storageLayoutColumnStoreFullPrepared:
+		switch query {
+		case "q1":
+			return columnStoreQ1AggregateMetadataName, true
+		case "q3":
+			return columnStoreQ3AggregateMetadataName, true
+		case "q5":
+			return columnStoreQ5AggregateMetadataName, true
+		default:
+			return "", false
+		}
 	default:
-		return false
+		return "", false
 	}
 }
 
 func columnStoreRequestsBoundedTopK(layout, query string) bool {
 	switch query {
-	case "q4", "q5":
+	case "q4", "q4a", "q4b", "q5":
 		return layout == storageLayoutColumnStorePreparedMetadata || layout == storageLayoutColumnStoreFullPrepared
 	default:
 		return false
@@ -113,7 +134,7 @@ func treeDBEngineName(cfg runConfig) string {
 	case storageLayoutColumnStoreFull:
 		return "treedb-collections-column-store-full-direct-go"
 	case storageLayoutColumnStoreFullPrepared:
-		return "treedb-collections-column-store-full-prepared-scan-go"
+		return "treedb-collections-column-store-full-prepared-metadata-go"
 	default:
 		return "treedb-collections-direct-go"
 	}
@@ -128,23 +149,23 @@ func runNotes(cfg runConfig) []string {
 			fmt.Sprintf("storage_layout=%s stores full source JSON by retaining non-declared fields and declaring JSONBench hot-path columns in TreeDB typed column parts.", cfg.StorageLayout),
 			fmt.Sprintf("storage_layout=%s reconstructs documents from retained JSON plus typed columns; query timing uses physical column queries, not document reconstruction.", cfg.StorageLayout),
 			fmt.Sprintf("storage_layout=%s forces TreeDB durable command-WAL mode because current column-store publication requires it.", cfg.StorageLayout),
-			"full-data column-store cells do not use load-time sentinel masking; q2/q4/q5 predicates are evaluated as real physical predicates.",
+			"full-data column-store cells do not use load-time sentinel masking; q2/q3/q4/q4a/q4b/q5 predicates are evaluated as real physical predicates or predicate-qualified aggregate metadata.",
 		}
 		if cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
-			notes = append(notes, "column-store-full-prepared prepares physical query runners outside timed attempts; q4/q5 request bounded physical TopK over typed-column part sections.")
+			notes = append(notes, "column-store-full-prepared prepares physical query runners outside timed attempts; q1/q3/q5 request aggregate metadata and q4/q4a/q4b keep bounded physical TopK over typed-column part sections.")
 		}
 		return notes
 	}
 	notes := []string{
 		fmt.Sprintf("storage_layout=%s stores declared projection fields in TreeDB physical column row assets with retained_payload=none.", cfg.StorageLayout),
 		fmt.Sprintf("storage_layout=%s forces TreeDB durable command-WAL mode because current column-store publication requires it.", cfg.StorageLayout),
-		"q3/q4/q5 column-store cells use physical dictionary predicates when supported; q4/q5 aggregate-metadata cells still use load-time sentinel masking for metadata semantics; q2 remains sentinel-masked.",
+		"q3/q4/q4a/q4b/q5 column-store cells use physical dictionary predicates when supported; q4/q4a/q4b/q5 aggregate-metadata cells still use load-time sentinel masking for metadata semantics; q2 remains sentinel-masked.",
 	}
 	if cfg.StorageLayout == storageLayoutColumnStorePrepared {
 		notes = append(notes, "column-store-prepared prepares physical query runners outside timed attempts and scans base column rows; it does not declare aggregate metadata.")
 	}
 	if cfg.StorageLayout == storageLayoutColumnStorePreparedMetadata {
-		notes = append(notes, "column-store-prepared-metadata prepares physical query runners outside timed attempts; only q4/q5 declare and use aggregate metadata named min_time_us.")
+		notes = append(notes, "column-store-prepared-metadata prepares physical query runners outside timed attempts; only q4/q4a/q4b/q5 declare and use aggregate metadata named min_time_us.")
 	}
 	for _, q := range cfg.Queries {
 		if q == "q3" {
@@ -194,15 +215,41 @@ func columnStoreConfigForProjection(projection, storageLayout, retainedPayloadEn
 			cfg.SortKey = []collections.ColumnSortKey{{Column: "time_us"}}
 		}
 	}
-	if columnStoreUsesAggregateMetadata(storageLayout, projection) {
+	if fullData && storageLayout == storageLayoutColumnStoreFullPrepared {
+		cfg.AggregateMetadata = columnStoreFullPreparedAggregateMetadata()
+	} else if name, ok := columnStoreAggregateMetadataNameForQuery(storageLayout, projection); ok {
 		cfg.AggregateMetadata = []collections.ColumnAggregateMetadata{{
-			Name:        columnStoreAggregateMetadataName,
+			Name:        name,
 			Column:      "time_us",
 			GroupColumn: "did",
 			Kind:        collections.ColumnAggregateMin,
 		}}
 	}
 	return cfg, nil
+}
+
+func columnStoreFullPreparedAggregateMetadata() []collections.ColumnAggregateMetadata {
+	return []collections.ColumnAggregateMetadata{
+		{
+			Name:        columnStoreQ1AggregateMetadataName,
+			GroupColumn: "event",
+			Kind:        collections.ColumnAggregateCount,
+		},
+		{
+			Name:        columnStoreQ3AggregateMetadataName,
+			Column:      "time_us",
+			GroupColumn: "event",
+			Kind:        collections.ColumnAggregateGroupHourCount,
+			Predicates:  columnStoreQ3Predicates(),
+		},
+		{
+			Name:        columnStoreQ5AggregateMetadataName,
+			Column:      "time_us",
+			GroupColumn: "did",
+			Kind:        collections.ColumnAggregateMin,
+			Predicates:  columnStorePostPredicates(),
+		},
+	}
 }
 
 func columnStoreRetainedPayloadEncodingOverride(raw string) (collections.ColumnRetainedPayloadEncoding, bool, error) {
@@ -260,7 +307,7 @@ func applyColumnStoreQueryMask(fields *extractedFields, projection, storageLayou
 			fields.Event = ""
 			fields.DID = ""
 		}
-	case "q4", "q5":
+	case "q4", "q4a", "q4b", "q5":
 		if columnStoreUsesAggregateMetadata(storageLayout, projection) && (fields.Kind != "commit" || fields.Operation != "create" || fields.Event != "app.bsky.feed.post") {
 			fields.DID = ""
 		}

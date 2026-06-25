@@ -204,6 +204,17 @@ func TestRenderMarkdownReportLabelsDataShapeAndClickHouseBest(t *testing.T) {
 	}
 }
 
+func TestReportRowSortLayoutLabelsQ4ABQueryShapedProjection(t *testing.T) {
+	for _, projection := range []string{"q4", "q4a", "q4b", "q5", "minimal"} {
+		if got := reportRowSortLayout(storageLayoutColumnStorePrepared, projection); got != "time_us" {
+			t.Fatalf("reportRowSortLayout(column prepared, %q)=%q want time_us", projection, got)
+		}
+	}
+	if got := reportRowSortLayout(storageLayoutColumnStorePrepared, "q2"); got != "ingest_order_unsorted" {
+		t.Fatalf("reportRowSortLayout(column prepared, q2)=%q want ingest_order_unsorted", got)
+	}
+}
+
 func writeSizedFile(t *testing.T, path string, size int) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
