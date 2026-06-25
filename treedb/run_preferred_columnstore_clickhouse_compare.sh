@@ -96,6 +96,21 @@ require_positive_int() {
   fi
 }
 
+bool_enabled() {
+  case "$1" in
+    1|true|TRUE|yes|YES|on|ON)
+      return 0
+      ;;
+    0|false|FALSE|no|NO|off|OFF|"")
+      return 1
+      ;;
+    *)
+      echo "invalid boolean value: $1" >&2
+      exit 2
+      ;;
+  esac
+}
+
 require_positive_int ROWS "$ROWS"
 require_positive_int TRIES "$TRIES"
 if ! command -v python3 >/dev/null 2>&1; then
@@ -211,7 +226,7 @@ SQL
   load_start=$(python3 -c 'import time; print(time.time())')
   "$CLICKHOUSE_BIN" local --path "$CLICKHOUSE_PATH" --multiquery < "$CLICKHOUSE_OUT/schema.sql"
   insert_settings="min_insert_block_size_rows = 1000000, min_insert_block_size_bytes = 0"
-  if [[ "$CLICKHOUSE_ALLOW_ERRORS" == "1" ]]; then
+  if bool_enabled "$CLICKHOUSE_ALLOW_ERRORS"; then
     insert_settings="$insert_settings, input_format_allow_errors_num = 1000000000, input_format_allow_errors_ratio = 1"
   fi
 

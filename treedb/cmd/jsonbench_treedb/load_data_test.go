@@ -15,7 +15,7 @@ func TestRunTreeDBBenchmarkRejectsMalformedJSONByDefault(t *testing.T) {
 	if err == nil {
 		t.Fatal("runTreeDBBenchmark err=nil, want malformed JSON failure")
 	}
-	if !strings.Contains(err.Error(), "hash source JSON input row 2") {
+	if !strings.Contains(err.Error(), "invalid source JSON input row 2") {
 		t.Fatalf("runTreeDBBenchmark err=%v, want source JSON input row failure", err)
 	}
 }
@@ -29,8 +29,28 @@ func TestRunTreeDBBenchmarkRejectsMalformedJSONByDefaultWithoutReconstructionVal
 	if err == nil {
 		t.Fatal("runTreeDBBenchmark err=nil, want malformed JSON failure")
 	}
-	if !strings.Contains(err.Error(), "invalid JSON document") {
-		t.Fatalf("runTreeDBBenchmark err=%v, want invalid JSON document failure", err)
+	if !strings.Contains(err.Error(), "invalid source JSON input row 2") {
+		t.Fatalf("runTreeDBBenchmark err=%v, want source JSON input row failure", err)
+	}
+}
+
+func TestRunTreeDBBenchmarkRejectsMalformedJSONByDefaultForProjectedLayouts(t *testing.T) {
+	for _, storageLayout := range []string{storageLayoutRow, storageLayoutColumnStore} {
+		t.Run(storageLayout, func(t *testing.T) {
+			dataDir := writeMalformedJSONBenchFixture(t)
+			cfg := malformedJSONBenchRunConfig(t, dataDir)
+			cfg.StorageLayout = storageLayout
+			cfg.Projection = "q1"
+			cfg.ValidateReconstruction = false
+
+			_, err := runTreeDBBenchmark(cfg)
+			if err == nil {
+				t.Fatal("runTreeDBBenchmark err=nil, want malformed JSON failure")
+			}
+			if !strings.Contains(err.Error(), "invalid source JSON input row 2") {
+				t.Fatalf("runTreeDBBenchmark err=%v, want source JSON input row failure", err)
+			}
+		})
 	}
 }
 

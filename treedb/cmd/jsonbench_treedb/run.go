@@ -584,9 +584,12 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				return errStopScan
 			}
 			out.InputRows++
-			if cfg.AllowErrors && !json.Valid(raw) {
-				out.SkippedInvalidJSONRows++
-				return nil
+			if !json.Valid(raw) {
+				if cfg.AllowErrors {
+					out.SkippedInvalidJSONRows++
+					return nil
+				}
+				return fmt.Errorf("invalid source JSON input row %d", out.InputRows)
 			}
 			if sourceHasher != nil {
 				if err := sourceHasher.Add(raw); err != nil {
