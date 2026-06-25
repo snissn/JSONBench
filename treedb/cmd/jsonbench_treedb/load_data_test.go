@@ -20,6 +20,20 @@ func TestRunTreeDBBenchmarkRejectsMalformedJSONByDefault(t *testing.T) {
 	}
 }
 
+func TestRunTreeDBBenchmarkRejectsMalformedJSONByDefaultWithoutReconstructionValidation(t *testing.T) {
+	dataDir := writeMalformedJSONBenchFixture(t)
+	cfg := malformedJSONBenchRunConfig(t, dataDir)
+	cfg.ValidateReconstruction = false
+
+	_, err := runTreeDBBenchmark(cfg)
+	if err == nil {
+		t.Fatal("runTreeDBBenchmark err=nil, want malformed JSON failure")
+	}
+	if !strings.Contains(err.Error(), "invalid JSON document") {
+		t.Fatalf("runTreeDBBenchmark err=%v, want invalid JSON document failure", err)
+	}
+}
+
 func TestRunTreeDBBenchmarkAllowErrorsSkipsMalformedJSON(t *testing.T) {
 	dataDir := writeMalformedJSONBenchFixture(t)
 	cfg := malformedJSONBenchRunConfig(t, dataDir)
