@@ -126,6 +126,7 @@ type jsonBenchBaselineResult struct {
 	System             string      `json:"system"`
 	DatasetSize        int         `json:"dataset_size"`
 	NumLoadedDocuments int         `json:"num_loaded_documents"`
+	RequestedRows      int         `json:"requested_rows,omitempty"`
 	TotalSize          int64       `json:"total_size"`
 	DataSize           int64       `json:"data_size"`
 	IndexSize          int64       `json:"index_size"`
@@ -402,6 +403,9 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 
 func reportScaleLabel(result runResult) string {
 	if result.RequestedRows > 0 && result.DatasetSize > 0 && result.RequestedRows != result.DatasetSize {
+		if result.Load.InputRows == result.RequestedRows && result.Load.SkippedInvalidJSONRows > 0 {
+			return scaleFromDatasetSize(result.RequestedRows)
+		}
 		return fmt.Sprintf("%d of %d requested rows", result.DatasetSize, result.RequestedRows)
 	}
 	if result.Scale == "subset" || result.Scale == "smoke" {
@@ -615,7 +619,15 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 		if result.System == "" || len(result.Result) == 0 || result.System != systemName {
 			continue
 		}
-		scale := scaleFromDatasetSize(result.DatasetSize)
+		requestedRows := result.NumLoadedDocuments
+		if result.RequestedRows > 0 {
+			requestedRows = result.RequestedRows
+		}
+		scaleRows := result.DatasetSize
+		if requestedRows > 0 {
+			scaleRows = requestedRows
+		}
+		scale := scaleFromDatasetSize(scaleRows)
 		if !scaleAllowed(scales, scale) {
 			continue
 		}
@@ -627,7 +639,7 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 				System:                  result.System,
 				Engine:                  engine,
 				Scale:                   scale,
-				RequestedRows:           result.NumLoadedDocuments,
+				RequestedRows:           requestedRows,
 				DatasetSize:             result.DatasetSize,
 				RowCount:                result.DatasetSize,
 				Format:                  "json",
