@@ -3,7 +3,7 @@ module jsonbench-treedb
 go 1.26
 
 require (
-	github.com/snissn/gomap v0.5.1-0.20260626005942-8f6c0dfd28e3
+	github.com/snissn/gomap v0.5.1-0.20260626021106-f93a00ee3ac8
 	github.com/tidwall/gjson v1.14.3
 )
 
