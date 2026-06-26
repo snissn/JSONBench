@@ -26,7 +26,7 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 	if err := os.MkdirAll(filepath.Dir(clickHouseResult), 0o755); err != nil {
 		t.Fatalf("mkdir clickhouse stub: %v", err)
 	}
-	const clickHouseStub = `{"system":"ClickHouse","dataset_size":6,"num_loaded_documents":6,"total_size":1234,"data_size":1000,"index_size":234,"load_seconds":0.001,"result":[[0.001],[0.001],[0.001],[0.001],[0.001]]}`
+	const clickHouseStub = `{"system":"ClickHouse","dataset_size":6,"num_loaded_documents":6,"total_size":1234,"data_size":1000,"index_size":234,"load_seconds":0.001,"result":[[0.001],[0.001],[0.001],[0.001],[0.001],[0.001]]}`
 	if err := os.WriteFile(clickHouseResult, []byte(clickHouseStub), 0o644); err != nil {
 		t.Fatalf("write clickhouse stub: %v", err)
 	}
@@ -58,6 +58,7 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		"- retained payload: `non-column`",
 		"- typed owner: `typed_column_part`",
 		"## Query-shaped attribution rows",
+		"| TreeDB column-store-full-prepared | qexpr |",
 		"typed_row_asset | attribution only |",
 		"Query-shaped `column-store*` rows are attribution rows only",
 	} {

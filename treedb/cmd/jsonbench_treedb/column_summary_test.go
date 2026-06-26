@@ -29,6 +29,7 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 		"`full-retained-json` rows store enough JSON payload",
 		"`prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5",
 		"`full-prepared aggregate metadata` applies to full-retained q1/q3/q5",
+		"`qexpr` is an arbitrary-expression typed-column scan/evaluation lane",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("summary missing %q\n%s", want, got)

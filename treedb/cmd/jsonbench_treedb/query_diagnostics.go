@@ -61,13 +61,20 @@ type queryDiagnostics struct {
 	SegmentFileCacheHits          uint64                    `json:"segment_file_cache_hits,omitempty"`
 	SegmentFileCacheMisses        uint64                    `json:"segment_file_cache_misses,omitempty"`
 	ColumnAssetReadIntegrity      string                    `json:"column_asset_read_integrity,omitempty"`
+	AggregateMetadataUsed         bool                      `json:"aggregate_metadata_used,omitempty"`
+	JSONReconstructionUsed        bool                      `json:"json_reconstruction_used,omitempty"`
+	PrepareSetupNanos             int64                     `json:"prepare_setup_nanos,omitempty"`
+	RunNanos                      int64                     `json:"run_nanos,omitempty"`
 	ScanNanos                     int64                     `json:"scan_nanos,omitempty"`
 	VisibilityNanos               int64                     `json:"visibility_nanos,omitempty"`
 	ReduceNanos                   int64                     `json:"reduce_nanos,omitempty"`
 	ResultShapeNanos              int64                     `json:"result_shape_nanos,omitempty"`
 	ReconstructionNanos           int64                     `json:"reconstruction_nanos,omitempty"`
 	ResultRenderNanos             int64                     `json:"result_render_nanos,omitempty"`
+	HashNanos                     int64                     `json:"hash_nanos,omitempty"`
+	RenderHashNanos               int64                     `json:"render_hash_nanos,omitempty"`
 	AttemptWallNanos              int64                     `json:"attempt_wall_nanos,omitempty"`
+	TotalQueryNanos               int64                     `json:"total_query_nanos,omitempty"`
 	PhysicalQueries               []queryPhysicalDiagnostic `json:"physical_queries,omitempty"`
 }
 
@@ -140,6 +147,12 @@ type queryPhysicalDiagnostic struct {
 type namedColumnPhysicalResult struct {
 	Name         string
 	Result       collections.ColumnPhysicalQueryResult
+	FallbackRows int
+}
+
+type namedTypedInt64AggregateResult struct {
+	Name         string
+	Result       collections.TypedColumnInt64PredicateAggregateResult
 	FallbackRows int
 }
 
@@ -234,6 +247,42 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 	return out
 }
 
+func typedInt64AggregateQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedTypedInt64AggregateResult) queryDiagnostics {
+	out := queryDiagnostics{
+		QueryPath:         "typed_column_int64_aggregate",
+		ResultRows:        resultRows,
+		ResultGroups:      resultRows,
+		ResultRenderNanos: renderNanos,
+	}
+	for _, input := range inputs {
+		phys := typedInt64AggregatePhysicalDiagnostic(input)
+		out.PhysicalQueries = append(out.PhysicalQueries, phys)
+		out.StorageSource = mergeDiagnosticString(out.StorageSource, phys.StorageSource)
+		out.FallbackReason = mergeDiagnosticString(out.FallbackReason, phys.FallbackReason)
+		out.RowsScanned = maxInt(out.RowsScanned, phys.RowsScanned)
+		out.RowsMatched = maxInt(out.RowsMatched, phys.RowsMatched)
+		out.ReduceRows = maxInt(out.ReduceRows, phys.ReduceRows)
+		out.ResultGroups = maxInt(out.ResultGroups, phys.ResultGroups)
+		out.DecodedBlocks += phys.DecodedBlocks
+		out.DirectReduceBlocks += phys.DirectReduceBlocks
+		out.TypedColumnPartSections += phys.TypedColumnPartSections
+		out.TypedColumnPartSectionBytes += phys.TypedColumnPartSectionBytes
+		out.DecodedPayloadBytes += phys.DecodedPayloadBytes
+		out.DecodedMetadataBytes += phys.DecodedMetadataBytes
+		out.PhysicalBytesScanned += phys.PhysicalBytesScanned
+		out.MappedBytes += phys.MappedBytes
+		out.HeapCopyBytes += phys.HeapCopyBytes
+		out.RowMaterializations += phys.RowMaterializations
+		out.DocumentMaterializations += phys.DocumentMaterializations
+		out.FallbackReads += phys.FallbackReads
+		out.SegmentFileCacheHits += phys.SegmentFileCacheHits
+		out.SegmentFileCacheMisses += phys.SegmentFileCacheMisses
+		out.ColumnAssetReadIntegrity = mergeDiagnosticString(out.ColumnAssetReadIntegrity, phys.ColumnAssetReadIntegrity)
+		out.ScanNanos += phys.ScanNanos
+	}
+	return out
+}
+
 func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagnostic {
 	d := input.Result.Diagnostics
 	rowsScanned := d.RowsScanned
@@ -307,6 +356,71 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		ReconstructionNanos:           d.ReconstructionNanos,
 		FallbackRowsUsed:              fallbackRowsUsed,
 	}
+}
+
+func typedInt64AggregatePhysicalDiagnostic(input namedTypedInt64AggregateResult) queryPhysicalDiagnostic {
+	d := input.Result.Diagnostics
+	rowsScanned := d.RowsScanned
+	fallbackRowsUsed := false
+	if rowsScanned == 0 && input.FallbackRows > 0 {
+		rowsScanned = input.FallbackRows
+		fallbackRowsUsed = true
+	}
+	rowsMatched := d.RowsMatched
+	if rowsMatched == 0 && input.Result.Count > 0 {
+		rowsMatched = int(input.Result.Count)
+	}
+	storageSource := "typed_column_part"
+	fallbackReason := "none"
+	if d.Fallback {
+		storageSource = "primary_document_btree"
+		fallbackReason = d.FallbackReason
+		if fallbackReason == "" {
+			fallbackReason = "document_fallback"
+		}
+	} else if d.FallbackReason != "" {
+		fallbackReason = d.FallbackReason
+	}
+	physicalBytesScanned := d.PhysicalBytesScanned
+	if physicalBytesScanned == 0 {
+		physicalBytesScanned = int64(d.SectionBytesRead + d.RangeBytesRead + d.FullAssetBytes)
+	}
+	return queryPhysicalDiagnostic{
+		Name:                        input.Name,
+		StorageSource:               storageSource,
+		FallbackReason:              fallbackReason,
+		RowsScanned:                 rowsScanned,
+		RowsMatched:                 rowsMatched,
+		ReduceRows:                  int(input.Result.Count),
+		ResultGroups:                1,
+		DecodedBlocks:               d.BlocksDecoded,
+		DirectReduceBlocks:          d.KernelBlocks + d.StatsBlocks,
+		TypedColumnPartSections:     d.DirectTypedColumnAssetReads,
+		TypedColumnPartSectionBytes: d.SectionBytesRead,
+		DecodedPayloadBytes:         d.DecodedHeapCopyBytes,
+		DecodedMetadataBytes:        d.DecodedMetadataBytes,
+		PhysicalBytesScanned:        physicalBytesScanned,
+		MappedBytes:                 d.MappedBytes,
+		HeapCopyBytes:               d.HeapCopyBytes,
+		RowMaterializations:         d.RowMaterializations,
+		DocumentMaterializations:    d.DocumentMaterializations,
+		FallbackReads:               d.FallbackReads,
+		SegmentFileCacheHits:        d.SegmentFileCacheHits,
+		SegmentFileCacheMisses:      d.SegmentFileCacheMisses,
+		ColumnAssetReadIntegrity:    d.ColumnAssetReadIntegrity,
+		ScanNanos:                   d.ScanNanos,
+		FallbackRowsUsed:            fallbackRowsUsed,
+	}
+}
+
+func typedInt64AggregateRowsScanned(fallback int, result collections.TypedColumnInt64PredicateAggregateResult) int {
+	if result.Diagnostics.RowsScanned > 0 {
+		return result.Diagnostics.RowsScanned
+	}
+	if fallback > 0 {
+		return fallback
+	}
+	return int(result.Count)
 }
 
 func mergeDiagnosticString(existing, next string) string {

@@ -112,7 +112,7 @@ func renderColumnStoreCompactSummary(doc reportDocument) []byte {
 			formatSeconds(row.LoadSec),
 		)
 	}
-	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. `full-retained-json` rows store enough JSON payload to reconstruct every loaded document; `query-shaped-projection` rows are smaller benchmark projections and are not full-storage baselines. `prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5 and answers from aggregate metadata with `scanned rows` = 0; `full-prepared aggregate metadata` applies to full-retained q1/q3/q5; `full-prepared bounded top-k` applies to full-retained q4/q4a/q4b and scans typed-column data with a bounded TopK request.\n")
+	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. `full-retained-json` rows store enough JSON payload to reconstruct every loaded document; `query-shaped-projection` rows are smaller benchmark projections and are not full-storage baselines. `prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5 and answers from aggregate metadata with `scanned rows` = 0; `full-prepared aggregate metadata` applies to full-retained q1/q3/q5; `full-prepared bounded top-k` applies to full-retained q4/q4a/q4b and scans typed-column data with a bounded TopK request; `qexpr` is an arbitrary-expression typed-column scan/evaluation lane.\n")
 	return buf.Bytes()
 }
 
@@ -185,6 +185,8 @@ func columnSummaryQueryRank(query string) int {
 		return 6
 	case "q5":
 		return 7
+	case "qexpr":
+		return 8
 	default:
 		return 100
 	}

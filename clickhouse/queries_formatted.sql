@@ -65,3 +65,12 @@ WHERE data.kind = 'commit'
 GROUP BY user_id
 ORDER BY activity_span DESC
 LIMIT 3;
+
+------------------------------------------------------------------------------------------------------------------------
+-- QEXPR - arbitrary expression scan over typed numeric time
+------------------------------------------------------------------------------------------------------------------------
+SELECT
+    sum(
+        toInt64(intDiv(data.time_us, 1000000) % 86400)
+        * toInt64(intDiv(data.time_us, 1000000) % 86400)) AS second_of_day_square_sum
+FROM bluesky;

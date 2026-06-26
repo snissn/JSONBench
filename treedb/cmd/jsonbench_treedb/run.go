@@ -45,6 +45,8 @@ type runConfig struct {
 	MaxFiles                int
 	Format                  string
 	StorageLayout           string
+	QueryMode               string
+	MetadataMode            string
 	RetainedPayloadEncoding string
 	Projection              string
 	Queries                 []string
@@ -78,6 +80,8 @@ type runResult struct {
 	Collection                    string                `json:"collection"`
 	Format                        string                `json:"format"`
 	StorageLayout                 string                `json:"storage_layout"`
+	QueryMode                     string                `json:"query_mode"`
+	MetadataMode                  string                `json:"metadata_mode"`
 	Projection                    string                `json:"projection"`
 	RetainsJSON                   bool                  `json:"retains_json_structure"`
 	DataShape                     string                `json:"data_shape,omitempty"`
@@ -169,17 +173,19 @@ type reconstructionResult struct {
 }
 
 type queryRun struct {
-	Name        string                `json:"name"`
-	SQL         string                `json:"sql"`
-	AttemptsSec []float64             `json:"attempts_seconds"`
-	BestSec     float64               `json:"best_seconds"`
-	MedianSec   float64               `json:"median_seconds"`
-	RowsScanned int                   `json:"rows_scanned"`
-	ResultRows  int                   `json:"result_rows"`
-	ResultHash  string                `json:"result_hash"`
-	Preview     []queryRow            `json:"preview,omitempty"`
-	Diagnostics queryDiagnostics      `json:"diagnostics,omitempty"`
-	Profiles    []queryAttemptProfile `json:"attempt_profiles,omitempty"`
+	Name         string                `json:"name"`
+	SQL          string                `json:"sql"`
+	QueryMode    string                `json:"query_mode"`
+	MetadataMode string                `json:"metadata_mode"`
+	AttemptsSec  []float64             `json:"attempts_seconds"`
+	BestSec      float64               `json:"best_seconds"`
+	MedianSec    float64               `json:"median_seconds"`
+	RowsScanned  int                   `json:"rows_scanned"`
+	ResultRows   int                   `json:"result_rows"`
+	ResultHash   string                `json:"result_hash"`
+	Preview      []queryRow            `json:"preview,omitempty"`
+	Diagnostics  queryDiagnostics      `json:"diagnostics,omitempty"`
+	Profiles     []queryAttemptProfile `json:"attempt_profiles,omitempty"`
 }
 
 type queryRow map[string]any
@@ -190,6 +196,8 @@ func parseRunFlags(args []string) (runConfig, error) {
 		Scale:            "subset",
 		Format:           "json",
 		StorageLayout:    storageLayoutRow,
+		QueryMode:        queryModeOneShotEndToEnd,
+		MetadataMode:     metadataModeAutoAggregateMetadata,
 		Projection:       "full",
 		BatchSize:        defaultBatchSize,
 		Profile:          "fast",
@@ -213,9 +221,11 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.IntVar(&cfg.MaxFiles, "max-files", 0, "Maximum input files to read; defaults from -scale")
 	fs.StringVar(&cfg.Format, "format", cfg.Format, "TreeDB collection format: json or template-v1")
 	fs.StringVar(&cfg.StorageLayout, "storage-layout", cfg.StorageLayout, "TreeDB storage layout: row, column-store, column-store-prepared, or column-store-prepared-metadata")
+	fs.StringVar(&cfg.QueryMode, "query-mode", cfg.QueryMode, "Query timing mode: one_shot_end_to_end, first_touch_after_open, or hot_prepared_run")
+	fs.StringVar(&cfg.MetadataMode, "metadata-mode", cfg.MetadataMode, "Column-store metadata mode: auto_aggregate_metadata or no_aggregate_metadata")
 	fs.StringVar(&cfg.RetainedPayloadEncoding, "column-store-retained-payload-encoding", os.Getenv(envColumnStoreRetainedPayloadEncoding), "Retained-payload encoding override for full-data column-store non-column retained payloads (default/template-v1,json,semantic-stream-v1). Can also be set with "+envColumnStoreRetainedPayloadEncoding)
-	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q4a, q4b, q5")
-	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q4a, q4b, q5")
+	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q4a, q4b, q5, qexpr")
+	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q4a, q4b, q5, qexpr")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
 	fs.StringVar(&cfg.Profile, "profile", cfg.Profile, "TreeDB profile: fast, wal_on_fast, durable, bench")
 	fs.StringVar(&cfg.QueryProfileDir, "query-profile-dir", "", "Directory for per-query timed-attempt CPU and allocs pprof artifacts; disabled when empty")
@@ -242,6 +252,14 @@ func parseRunFlags(args []string) (runConfig, error) {
 	cfg.Queries = queries
 	cfg.Format = strings.ToLower(strings.TrimSpace(cfg.Format))
 	cfg.StorageLayout, err = normalizeStorageLayout(cfg.StorageLayout)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.QueryMode, err = normalizeQueryMode(cfg.QueryMode)
+	if err != nil {
+		return cfg, err
+	}
+	cfg.MetadataMode, err = normalizeMetadataMode(cfg.MetadataMode)
 	if err != nil {
 		return cfg, err
 	}
@@ -272,6 +290,9 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if cfg.Tries <= 0 {
 		return cfg, errors.New("-tries must be positive")
 	}
+	if cfg.QueryMode == queryModeFirstTouchAfterOpen && cfg.Tries != 1 {
+		return cfg, errors.New("-query-mode first_touch_after_open measures one freshly opened execution; pass -tries 1")
+	}
 	if _, err := collectionFormat(cfg.Format); err != nil {
 		return cfg, err
 	}
@@ -299,6 +320,18 @@ func parseRunFlags(args []string) (runConfig, error) {
 }
 
 func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
+	var err error
+	cfg.QueryMode, err = normalizeQueryMode(cfg.QueryMode)
+	if err != nil {
+		return runResult{}, err
+	}
+	cfg.MetadataMode, err = normalizeMetadataMode(cfg.MetadataMode)
+	if err != nil {
+		return runResult{}, err
+	}
+	if cfg.QueryMode == queryModeFirstTouchAfterOpen && cfg.Tries != 1 {
+		return runResult{}, errors.New("-query-mode first_touch_after_open measures one freshly opened execution; pass -tries 1")
+	}
 	dataDir, err := expandPath(cfg.DataDir)
 	if err != nil {
 		return runResult{}, err
@@ -370,6 +403,20 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		}
 		compaction = &compact
 	}
+	if cfg.QueryMode == queryModeFirstTouchAfterOpen {
+		if err := cleanup(); err != nil {
+			return runResult{}, fmt.Errorf("close backend before first-touch query reopen: %w", err)
+		}
+		backend, cleanup, err = openBackend(cfg)
+		if err != nil {
+			return runResult{}, fmt.Errorf("reopen backend for first-touch query mode: %w", err)
+		}
+		manager = collections.NewCollectionManager(backend)
+		collection, err = manager.OpenCollection(cfg.Collection)
+		if err != nil {
+			return runResult{}, fmt.Errorf("reopen collection for first-touch query mode: %w", err)
+		}
+	}
 	queryResults, err := runQueries(collection, cfg, load.Rows)
 	if err != nil {
 		return runResult{}, err
@@ -405,6 +452,8 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		Collection:                    cfg.Collection,
 		Format:                        cfg.Format,
 		StorageLayout:                 cfg.StorageLayout,
+		QueryMode:                     cfg.QueryMode,
+		MetadataMode:                  cfg.MetadataMode,
 		Projection:                    cfg.Projection,
 		RetainsJSON:                   cfg.Projection == "full" && (cfg.StorageLayout == storageLayoutRow || isFullDataColumnStoreLayout(cfg.StorageLayout)),
 		DataShape:                     treeDBDataShape(cfg),
@@ -882,6 +931,8 @@ func projectionFields(projection string) ([]string, error) {
 		return []string{"event", "did", "kind", "operation"}, nil
 	case "q3":
 		return []string{"event", "kind", "operation", "time_us"}, nil
+	case "qexpr":
+		return []string{"time_us"}, nil
 	case "q4", "q4a", "q4b", "q5", "minimal":
 		return []string{"event", "did", "kind", "operation", "time_us"}, nil
 	default:
