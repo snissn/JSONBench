@@ -163,8 +163,18 @@ storage assets; `hot_prepared_run` is the repeated exact-runner ceiling. q4/q5
 can use aggregate-metadata Top-K when metadata mode allows it, and qexpr remains
 a typed expression scan. It loads ClickHouse through `clickhouse local`
 and writes `preferred_summary.md` alongside the TreeDB and ClickHouse result
-JSON. Set `RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a
-run.
+JSON. The preferred summary includes a standard detail table with query mode,
+metadata mode, prepare/setup time, run time, render/hash time, total query time,
+rows/cells visited, bytes read/decoded, row/document materializations,
+aggregate-metadata use, TopK/sort-pruning use, JSON reconstruction, ClickHouse
+comparison mode, and TreeDB WAL-excluded durable storage. It also includes
+metadata-cost accounting for automatic aggregate-metadata wins: available
+metadata storage, sidecar/embedded bytes, ref count, and the current full-load
+insert-time upper-bound label until a metadata-only write-cost benchmark is
+added. The metadata-cost table names the source row it charged; if the full-data
+row did not use aggregate metadata but a query-shaped attribution row did, the
+table charges and labels that attribution row instead of hiding the cost. Set
+`RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a run.
 
 Useful preferred-run overrides:
 

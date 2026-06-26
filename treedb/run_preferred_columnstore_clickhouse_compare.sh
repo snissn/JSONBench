@@ -470,6 +470,119 @@ def comparison(tree_sec, ch_sec):
         return f"{ch_sec / tree_sec:.1f}x faster"
     return f"{tree_sec / ch_sec:.1f}x slower"
 
+def seconds_or_na(value):
+    if value is None or value == "":
+        return "n/a"
+    value = float(value)
+    if value <= 0:
+        return "n/a"
+    return seconds(value)
+
+def nanos_or_na(row, *keys):
+    for key in keys:
+        value = row.get(key, 0)
+        if value:
+            return seconds(float(value) / 1e9)
+    return "n/a"
+
+def render_hash_or_na(row):
+    value = row.get("render_hash_nanos", 0)
+    if value:
+        return seconds(float(value) / 1e9)
+    value = row.get("result_render_nanos", 0) + row.get("hash_nanos", 0)
+    if value:
+        return seconds(float(value) / 1e9)
+    return "n/a"
+
+def total_query_time(row):
+    value = row.get("total_query_nanos", 0) or row.get("attempt_wall_nanos", 0)
+    if value:
+        return seconds(float(value) / 1e9)
+    return seconds(row["best_seconds"])
+
+def yes_no(value):
+    return "yes" if value else "no"
+
+def rows_or_cells_visited(row):
+    scanned = row.get("rows_scanned", 0)
+    if scanned:
+        return count(scanned)
+    if row.get("aggregate_metadata_used", False):
+        return "0 (aggregate metadata)"
+    return "0"
+
+def bytes_read_decoded(row):
+    parts = []
+    physical = row.get("physical_bytes_scanned", 0)
+    if physical:
+        parts.append(f"physical {byte_count(physical)}")
+    decoded = row.get("decoded_payload_bytes", 0) + row.get("decoded_metadata_bytes", 0)
+    if decoded:
+        parts.append(f"decoded {byte_count(decoded)}")
+    mapped = row.get("mapped_bytes", 0)
+    if mapped:
+        parts.append(f"mapped {byte_count(mapped)}")
+    return "; ".join(parts) if parts else "0 B"
+
+def materializations(row):
+    return (
+        f"row {count(row.get('row_materializations', 0))}; "
+        f"doc {count(row.get('document_materializations', 0))}"
+    )
+
+def aggregate_metadata_status(row):
+    parts = [yes_no(row.get("aggregate_metadata_used", False))]
+    refs = row.get("aggregate_metadata_refs", 0)
+    available = row.get("aggregate_metadata_storage_bytes", 0)
+    if refs or available:
+        parts.append(f"available {byte_count(available)}")
+        parts.append(f"refs {count(refs)}")
+    return "; ".join(parts)
+
+def topk_sort_status(row):
+    parts = []
+    if row.get("bounded_topk_used", False):
+        parts.append(
+            f"bounded TopK limit {count(row.get('topk_limit', 0))} "
+            f"candidates {count(row.get('topk_candidates', 0))}"
+        )
+    if row.get("time_order_topk_used", False):
+        parts.append("time-order TopK")
+    checks = row.get("sort_key_mark_checks", 0)
+    skips = row.get("sort_key_mark_skips", 0)
+    if checks or skips:
+        parts.append(f"sort marks checks {count(checks)} skips {count(skips)}")
+    return "; ".join(parts) if parts else "no"
+
+def metadata_cost_storage(row):
+    if not row.get("aggregate_metadata_used", False):
+        return "n/a"
+    return byte_count(row.get("metadata_cost_storage_bytes", 0))
+
+def metadata_cost_insert(row):
+    if not row.get("aggregate_metadata_used", False):
+        return "n/a"
+    return seconds_or_na(row.get("metadata_cost_insert_seconds", 0))
+
+def text_or_na(value):
+    return str(value) if value not in (None, "") else "n/a"
+
+def row_source(row):
+    return f"{text_or_na(row.get('storage_layout', ''))}/{text_or_na(row.get('data_shape', ''))}"
+
+def metadata_accounting_row(query):
+    full = tree_storage_rows.get(query)
+    attribution = tree_attribution_rows.get(query)
+    for row in (full, attribution):
+        if row and row.get("aggregate_metadata_used", False):
+            return row
+    return full or attribution
+
+clickhouse_loaded_rows = ch_doc.get("num_loaded_documents", ch_doc.get("dataset_size", rows_requested))
+clickhouse_requested_rows = ch_doc.get("requested_rows", ch_doc.get("dataset_size", rows_requested))
+clickhouse_mode = "raw_scan_jsonasobject_no_projection_no_materialized_summary"
+clickhouse_metadata_mode = "no_projection_or_materialized_summary"
+
 print("# Preferred TreeDB column-store vs ClickHouse JSONBench")
 print()
 print(f"- Rows requested: `{rows_requested}`")
@@ -512,6 +625,48 @@ print(f"- typed owner: `{sample_storage.get('typed_column_owner', '')}`")
 print(f"- reconstruction valid: `{sample_storage.get('reconstruction_valid', '')}`")
 print(f"- measurement phase: `{sample_storage.get('storage_measurement_phase', '')}`")
 print()
+print("## Standard comparison detail")
+print()
+print("| system/layout | query | rows loaded | load | insert | storage (TreeDB WAL-excl) | query mode | metadata mode | prepare/setup | run | render/hash | total query | rows/cells visited | bytes read/decoded | row/doc materializations | aggregate metadata | TopK/sort pruning | JSON reconstruction | ClickHouse comparison mode |")
+print("|---|---:|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|---|")
+for query in queries:
+    tree = tree_storage_rows[query]
+    ch_best = best(ch_times[clickhouse_query_index[query]])
+    label = tree.get("storage_layout", "column-store-full")
+    print(
+        f"| TreeDB {label} | {query} | {count(tree.get('dataset_size', rows_requested))} | "
+        f"{seconds_or_na(tree.get('load_seconds', 0))} | {seconds_or_na(tree.get('insert_seconds', 0))} | "
+        f"{byte_count(tree.get('storage_durable_bytes_wal_excluded', tree.get('storage_bytes', 0)))} | "
+        f"{text_or_na(tree.get('query_mode', ''))} | {text_or_na(tree.get('metadata_mode', ''))} | "
+        f"{nanos_or_na(tree, 'prepare_setup_nanos')} | {nanos_or_na(tree, 'run_nanos')} | "
+        f"{render_hash_or_na(tree)} | {total_query_time(tree)} | {rows_or_cells_visited(tree)} | "
+        f"{bytes_read_decoded(tree)} | {materializations(tree)} | {aggregate_metadata_status(tree)} | "
+        f"{topk_sort_status(tree)} | {yes_no(tree.get('json_reconstruction_used', False))} | n/a |"
+    )
+    print(
+        f"| ClickHouse JSON | {query} | {count(clickhouse_loaded_rows)} | "
+        f"{seconds_or_na(ch_doc.get('load_seconds', 0))} | n/a | {byte_count(ch_doc.get('total_size', 0))} | "
+        f"clickhouse_local_sql_end_to_end | {clickhouse_metadata_mode} | n/a | n/a | n/a | "
+        f"{seconds(ch_best)} | {count(clickhouse_loaded_rows)} | n/a | n/a | no | no | "
+        f"JSONAsObject | {clickhouse_mode} |"
+    )
+print()
+print("## Metadata cost accounting")
+print()
+print("| query | source row | aggregate metadata used | available metadata storage | metadata cost storage | sidecar storage | embedded typed-section storage | refs | insert cost | insert cost basis | storage basis |")
+print("|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|")
+for query in queries:
+    tree = metadata_accounting_row(query)
+    print(
+        f"| {query} | {row_source(tree)} | {yes_no(tree.get('aggregate_metadata_used', False))} | "
+        f"{byte_count(tree.get('aggregate_metadata_storage_bytes', 0))} | {metadata_cost_storage(tree)} | "
+        f"{byte_count(tree.get('aggregate_metadata_sidecar_bytes', 0))} | "
+        f"{byte_count(tree.get('aggregate_metadata_embedded_bytes', 0))} | "
+        f"{count(tree.get('aggregate_metadata_refs', 0))} | {metadata_cost_insert(tree)} | "
+        f"{text_or_na(tree.get('metadata_cost_insert_basis', ''))} | "
+        f"{text_or_na(tree.get('metadata_cost_storage_basis', ''))} |"
+    )
+print()
 if tree_attribution_rows:
     print("## Query-shaped attribution rows")
     print()
@@ -527,6 +682,14 @@ if tree_attribution_rows:
             f"{count(scanned) if scanned else '0'} | {byte_count(tree.get('storage_bytes', 0))} | "
             f"{tree.get('typed_column_owner', '')} | attribution only |"
         )
+print()
+print("## ClickHouse comparison mode")
+print()
+print(f"- mode: `{clickhouse_mode}`")
+print(f"- requested rows: `{clickhouse_requested_rows}`")
+print(f"- loaded rows: `{clickhouse_loaded_rows}`")
+print("- projections/materialized summaries: `none configured by this wrapper`")
+print("- metadata/materialized-summary comparisons must use this row separately from TreeDB `no_aggregate_metadata` scan rows.")
 print()
 print("## ClickHouse attempts")
 print()
