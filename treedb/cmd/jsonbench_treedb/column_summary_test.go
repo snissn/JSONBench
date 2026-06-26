@@ -8,13 +8,13 @@ import (
 func TestRenderColumnStoreCompactSummary(t *testing.T) {
 	doc := reportDocument{Rows: []reportRow{
 		{System: "DuckDB", StorageLayout: "", Query: "q1", DatasetSize: 1_000_000, BestSec: 0.01},
-		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q4", DatasetSize: 1_000_000, BestSec: 0.0005, RowsScanned: 0, StorageBytes: 1024, LoadSec: 2},
-		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q4a", DatasetSize: 1_000_000, BestSec: 0.0004, RowsScanned: 0, StorageBytes: 1024, LoadSec: 2},
+		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q4", DatasetSize: 1_000_000, BestSec: 0.0005, RowsScanned: 0, StorageBytes: 1024, LoadSec: 2, AggregateMetadataUsed: true},
+		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q4a", DatasetSize: 1_000_000, BestSec: 0.0004, RowsScanned: 0, StorageBytes: 1024, LoadSec: 2, AggregateMetadataUsed: true},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q3", DatasetSize: 1_000_000, BestSec: 0.010, RowsScanned: 1_000_000, StorageBytes: 1024, LoadSec: 2},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStorePrepared, Query: "q4", DatasetSize: 1_000_000, BestSec: 0.020, RowsScanned: 1_000_000, StorageBytes: 1024, LoadSec: 2},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStore, Query: "q3", DatasetSize: 1_000_000, BestSec: 0.025, RowsScanned: 1_000_000, StorageBytes: 2 * 1024 * 1024, LoadSec: 3},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStoreFull, DataShape: "full-retained-json", Query: "q2", DatasetSize: 1_000_000, BestSec: 0.030, RowsScanned: 1_000_000, StorageBytes: 4 * 1024 * 1024, LoadSec: 4},
-		{System: "TreeDB", StorageLayout: storageLayoutColumnStoreFullPrepared, DataShape: "full-retained-json", Query: "q1", DatasetSize: 1_000_000, BestSec: 0.004, RowsScanned: 0, StorageBytes: 5 * 1024 * 1024, LoadSec: 5},
+		{System: "TreeDB", StorageLayout: storageLayoutColumnStoreFullPrepared, DataShape: "full-retained-json", Query: "q1", DatasetSize: 1_000_000, BestSec: 0.004, RowsScanned: 0, StorageBytes: 5 * 1024 * 1024, LoadSec: 5, AggregateMetadataUsed: true},
 	}}
 	got := string(renderColumnStoreCompactSummary(doc))
 	for _, want := range []string{
@@ -37,5 +37,20 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 	}
 	if strings.Contains(got, "DuckDB") {
 		t.Fatalf("summary should filter non-TreeDB rows:\n%s", got)
+	}
+}
+
+func TestColumnSummaryExecutionModeDoesNotInferMetadataFromLayout(t *testing.T) {
+	noMetadataTopK := reportRow{StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q4", MetadataMode: metadataModeNoAggregateMetadata, AggregateMetadataUsed: false}
+	if got, want := columnSummaryExecutionMode(noMetadataTopK), "prepared physical scan"; got != want {
+		t.Fatalf("no-metadata q4 mode=%q want %q", got, want)
+	}
+	noMetadataAggregate := reportRow{StorageLayout: storageLayoutColumnStoreFullPrepared, Query: "q1", MetadataMode: metadataModeNoAggregateMetadata, AggregateMetadataUsed: false}
+	if got, want := columnSummaryExecutionMode(noMetadataAggregate), "prepared physical scan"; got != want {
+		t.Fatalf("no-metadata q1 mode=%q want %q", got, want)
+	}
+	autoMetadataAggregate := reportRow{StorageLayout: storageLayoutColumnStoreFullPrepared, Query: "q1", MetadataMode: metadataModeAutoAggregateMetadata, AggregateMetadataUsed: true}
+	if got, want := columnSummaryExecutionMode(autoMetadataAggregate), "full-prepared aggregate metadata"; got != want {
+		t.Fatalf("auto-metadata q1 mode=%q want %q", got, want)
 	}
 }

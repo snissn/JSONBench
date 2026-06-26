@@ -140,14 +140,14 @@ func columnSummaryExecutionMode(row reportRow) string {
 	case storageLayoutColumnStorePrepared:
 		return "prepared physical scan"
 	case storageLayoutColumnStorePreparedMetadata:
-		if columnStoreUsesAggregateMetadata(row.StorageLayout, row.Query) {
+		if row.AggregateMetadataUsed && columnStoreUsesAggregateMetadata(row.StorageLayout, row.Query) {
 			return "prepared metadata top-k"
 		}
 		return "prepared physical scan"
 	case storageLayoutColumnStoreFull:
 		return "direct physical scan"
 	case storageLayoutColumnStoreFullPrepared:
-		if columnStoreUsesAggregateMetadata(row.StorageLayout, row.Query) {
+		if row.AggregateMetadataUsed && columnStoreUsesAggregateMetadata(row.StorageLayout, row.Query) {
 			return "full-prepared aggregate metadata"
 		}
 		if columnStoreRequestsBoundedTopK(row.StorageLayout, row.Query) {

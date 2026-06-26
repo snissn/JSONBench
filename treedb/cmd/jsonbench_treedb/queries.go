@@ -19,7 +19,7 @@ var querySQL = map[string]string{
 	"q4a":   "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
 	"q4b":   "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
 	"q5":    "SELECT data.did AS user_id, date_diff('milliseconds', min(data.time_us), max(data.time_us)) AS activity_span FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY activity_span DESC LIMIT 3",
-	"qexpr": "SELECT sum(((data.time_us / 1000000) % 86400) * ((data.time_us / 1000000) % 86400)) AS second_of_day_square_sum FROM bluesky",
+	"qexpr": "WITH floor_unix_seconds(data.time_us) AS unix_seconds, positive_mod(unix_seconds, 86400) AS second_of_day SELECT sum(second_of_day * second_of_day) AS second_of_day_square_sum FROM bluesky",
 }
 
 var jsonBenchQueryNames = []string{"q1", "q2", "q3", "q4", "q4a", "q4b", "q5", "qexpr"}
@@ -451,8 +451,20 @@ func runQExpr(collection *collections.Collection, cfg runConfig, rows int) (quer
 }
 
 func secondOfDaySquareFromUnixMicros(timeUS int64) int64 {
-	secondOfDay := (timeUS / 1_000_000) % 86_400
+	seconds := floorUnixSecondsFromMicros(timeUS)
+	secondOfDay := seconds % 86_400
+	if secondOfDay < 0 {
+		secondOfDay += 86_400
+	}
 	return secondOfDay * secondOfDay
+}
+
+func floorUnixSecondsFromMicros(timeUS int64) int64 {
+	seconds := timeUS / 1_000_000
+	if timeUS < 0 && timeUS%1_000_000 != 0 {
+		seconds--
+	}
+	return seconds
 }
 
 func scanCollectionJSON(collection *collections.Collection, maxDocs int, fn func(raw []byte) error) (int, error) {

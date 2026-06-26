@@ -77,6 +77,25 @@ func TestCanonicalJSONPreservesJSONNumbers(t *testing.T) {
 	}
 }
 
+func TestSecondOfDaySquareFromUnixMicrosFloorsNegativeMicros(t *testing.T) {
+	tests := []struct {
+		timeUS int64
+		want   int64
+	}{
+		{timeUS: -1, want: 86_399 * 86_399},
+		{timeUS: -999_999, want: 86_399 * 86_399},
+		{timeUS: -1_000_000, want: 86_399 * 86_399},
+		{timeUS: -1_000_001, want: 86_398 * 86_398},
+		{timeUS: 0, want: 0},
+		{timeUS: 1_000_000, want: 1},
+	}
+	for _, tt := range tests {
+		if got := secondOfDaySquareFromUnixMicros(tt.timeUS); got != tt.want {
+			t.Fatalf("secondOfDaySquareFromUnixMicros(%d)=%d want %d", tt.timeUS, got, tt.want)
+		}
+	}
+}
+
 func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 	for _, query := range jsonBenchQueryNames {
 		query := query
@@ -281,6 +300,13 @@ func TestColumnStoreQExprProjectionUsesColumnPart(t *testing.T) {
 	}
 	if got, want := col.ValueType, collections.ColumnStoreValueInt64; got != want {
 		t.Fatalf("qexpr column value type=%q want %q", got, want)
+	}
+}
+
+func TestColumnStoreQExprRunReportsColumnPartOwner(t *testing.T) {
+	result := runJSONBenchFixtureCell(t, storageLayoutColumnStorePrepared, "qexpr")
+	if got, want := result.TypedColumnOwner, string(collections.TypedStorageOwnerColumnPart); got != want {
+		t.Fatalf("qexpr typed_column_owner=%q want %q", got, want)
 	}
 }
 

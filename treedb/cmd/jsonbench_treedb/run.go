@@ -1007,8 +1007,20 @@ func columnStoreTypedColumnOwner(cfg runConfig) string {
 	if !isColumnStoreLayout(cfg.StorageLayout) {
 		return ""
 	}
-	if isFullDataColumnStoreLayout(cfg.StorageLayout) {
-		return string(collections.TypedStorageOwnerColumnPart)
+	columnStore, err := columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout, cfg.RetainedPayloadEncoding)
+	if err == nil && len(columnStore.Columns) > 0 {
+		owner := columnStore.Columns[0].Owner
+		mixed := false
+		for _, col := range columnStore.Columns[1:] {
+			if col.Owner != owner {
+				mixed = true
+				break
+			}
+		}
+		if !mixed {
+			return string(owner)
+		}
+		return "mixed"
 	}
 	return string(collections.TypedStorageOwnerRowAsset)
 }

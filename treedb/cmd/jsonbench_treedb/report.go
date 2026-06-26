@@ -666,7 +666,7 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 			continue
 		}
 		for i, attempts := range result.Result {
-			name := "q" + strconv.Itoa(i+1)
+			name := baselineQueryName(i, len(result.Result))
 			best, median := bestMedian(attempts)
 			retainsJSON := true
 			rows = append(rows, reportRow{
@@ -704,6 +704,13 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 		}
 	}
 	return rows, nil
+}
+
+func baselineQueryName(index, total int) string {
+	if total == 6 && index == 5 {
+		return "qexpr"
+	}
+	return "q" + strconv.Itoa(index+1)
 }
 
 func parseScaleFilter(raw string) (map[string]struct{}, error) {
