@@ -39,6 +39,8 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		"TRIES=1",
 		"RUN_CLICKHOUSE=0",
 		"CLICKHOUSE_RESULT="+clickHouseResult,
+		"QUERY_MODE=first_touch_after_open",
+		"METADATA_MODE=no_aggregate_metadata",
 		"TREEDB_VALIDATE_RECONSTRUCTION=1",
 		"OUT_DIR="+outDir,
 	)
@@ -80,6 +82,8 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 	for _, row := range report.Rows {
 		if row.StorageLayout == storageLayoutColumnStoreFullPrepared &&
 			row.Query == "q1" &&
+			row.QueryMode == queryModeFirstTouchAfterOpen &&
+			row.MetadataMode == metadataModeNoAggregateMetadata &&
 			row.DataShape == "full-retained-json" &&
 			row.TypedColumnOwner == "typed_column_part" &&
 			row.RetainedPayloadPolicy == "non-column" &&
@@ -91,6 +95,8 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		}
 		if row.StorageLayout == storageLayoutColumnStorePreparedMetadata &&
 			row.Query == "q4" &&
+			row.QueryMode == queryModeFirstTouchAfterOpen &&
+			row.MetadataMode == metadataModeNoAggregateMetadata &&
 			row.DataShape == "query-shaped-projection" &&
 			row.TypedColumnOwner == "typed_row_asset" {
 			foundQueryAttribution = true
