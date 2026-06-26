@@ -18,6 +18,8 @@ TREEDB_ALLOW_ERRORS="${TREEDB_ALLOW_ERRORS:-$CLICKHOUSE_ALLOW_ERRORS}"
 CLICKHOUSE_MAX_FILES="${CLICKHOUSE_MAX_FILES:-}"
 TREEDB_FULL_STORAGE_LAYOUTS="${TREEDB_FULL_STORAGE_LAYOUTS:-column-store-full-prepared}"
 TREEDB_QUERY_STORAGE_LAYOUTS="${TREEDB_QUERY_STORAGE_LAYOUTS:-column-store-prepared-metadata}"
+TREEDB_QUERY_MODE="${TREEDB_QUERY_MODE:-one_shot_end_to_end}"
+TREEDB_METADATA_MODE="${TREEDB_METADATA_MODE:-auto_aggregate_metadata}"
 TREEDB_COMPACT_AFTER_LOAD="${TREEDB_COMPACT_AFTER_LOAD:-0}"
 TREEDB_VALIDATE_RECONSTRUCTION="${TREEDB_VALIDATE_RECONSTRUCTION:-0}"
 TREEDB_RESULT="${TREEDB_RESULT:-}"
@@ -56,6 +58,11 @@ Environment:
   TREEDB_QUERY_STORAGE_LAYOUTS
                            Query-shaped TreeDB layouts used for attribution.
                            Defaults to column-store-prepared-metadata.
+  TREEDB_QUERY_MODE        TreeDB query timing mode: one_shot_end_to_end,
+                           first_touch_after_open, or hot_prepared_run.
+                           Defaults to one_shot_end_to_end.
+  TREEDB_METADATA_MODE     TreeDB metadata mode: auto_aggregate_metadata or
+                           no_aggregate_metadata. Defaults to auto_aggregate_metadata.
   TREEDB_COMPACT_AFTER_LOAD
                            Set 1 to compact full-data TreeDB rows before
                            measurement. Defaults to 0.
@@ -131,6 +138,8 @@ run_treedb() {
   TRIES="$TRIES" \
   GOMAP_REPLACE="$GOMAP_REPLACE" \
   STORAGE_LAYOUTS="$TREEDB_FULL_STORAGE_LAYOUTS" \
+  QUERY_MODE="$TREEDB_QUERY_MODE" \
+  METADATA_MODE="$TREEDB_METADATA_MODE" \
   SUITE="full" \
   COMPACT_AFTER_LOAD="$TREEDB_COMPACT_AFTER_LOAD" \
   VALIDATE_RECONSTRUCTION="$TREEDB_VALIDATE_RECONSTRUCTION" \
@@ -144,8 +153,10 @@ run_treedb() {
   TRIES="$TRIES" \
   GOMAP_REPLACE="$GOMAP_REPLACE" \
   STORAGE_LAYOUTS="$TREEDB_QUERY_STORAGE_LAYOUTS" \
+  QUERY_MODE="$TREEDB_QUERY_MODE" \
+  METADATA_MODE="$TREEDB_METADATA_MODE" \
   SUITE="minimal" \
-  QUERY_CELLS="q1 q2 q3 q4 q4a q4b q5" \
+  QUERY_CELLS="q1 q2 q3 q4 q4a q4b q5 qexpr" \
   TREEDB_ALLOW_ERRORS="$TREEDB_ALLOW_ERRORS" \
   OUT_DIR="$TREE_OUT" \
   ./run_columnstore_benchmark.sh
@@ -361,10 +372,10 @@ def load_json(path):
 tree_doc = load_json(os.environ["TREEDB_RESULT"])
 ch_doc = load_json(os.environ["CLICKHOUSE_RESULT"])
 ch_times = ch_doc["result"]
-if len(ch_times) < 5:
-    raise ValueError(f"ClickHouse result has {len(ch_times)} query rows, expected at least 5")
+if len(ch_times) < 6:
+    raise ValueError(f"ClickHouse result has {len(ch_times)} query rows, expected at least 6")
 
-queries = ["q1", "q2", "q3", "q4", "q4a", "q4b", "q5"]
+queries = ["q1", "q2", "q3", "q4", "q4a", "q4b", "q5", "qexpr"]
 clickhouse_query_index = {
     "q1": 0,
     "q2": 1,
@@ -373,6 +384,7 @@ clickhouse_query_index = {
     "q4a": 3,
     "q4b": 3,
     "q5": 4,
+    "qexpr": 5,
 }
 tree_report_rows = [
     row for row in tree_doc["rows"]
@@ -517,8 +529,10 @@ print("## ClickHouse attempts")
 print()
 print("| query | attempts | best | median |")
 print("|---:|---|---:|---:|")
+clickhouse_query_labels = ["q1", "q2", "q3", "q4", "q5", "qexpr"]
 for idx, values in enumerate(ch_times, start=1):
-    print(f"| q{idx} | {', '.join(seconds(v) for v in values)} | {seconds(best(values))} | {seconds(median(values))} |")
+    label = clickhouse_query_labels[idx - 1] if idx <= len(clickhouse_query_labels) else f"q{idx}"
+    print(f"| {label} | {', '.join(seconds(v) for v in values)} | {seconds(best(values))} | {seconds(median(values))} |")
 print()
 print("## Caveats")
 print()
@@ -526,6 +540,7 @@ print("- The full-data TreeDB headline uses `column-store-full`/`column-store-fu
 print("- Query-shaped `column-store*` rows are attribution rows only; their storage is not compared to ClickHouse as apples-to-apples storage.")
 print("- q4/q4a/q4b/q5 aggregate-metadata Top-K attribution rows may still report scanned rows as 0; the full-data headline reports the full-data scan path unless a full-data metadata layout is added.")
 print("- q4a/q4b TreeDB rows use the same q4 grouped-min physical query; the preferred summary maps them to the q4 ClickHouse query unless a separate ClickHouse q4 fairness artifact is supplied.")
+print("- qexpr is an arbitrary-expression typed-column scan/evaluation lane and should not be answered from aggregate metadata unless an explicit expression summary is added and reported separately.")
 print("- ClickHouse uses `JSONAsObject`; with `CLICKHOUSE_ALLOW_ERRORS=1`, rows ClickHouse rejects as invalid JSON are skipped and reflected in the ClickHouse loaded-row count.")
 print("- TreeDB uses `TREEDB_ALLOW_ERRORS=1` in this preferred comparison by default when ClickHouse allow-errors is enabled; skipped malformed JSON rows are reflected in the TreeDB loaded-row count and result JSON counters.")
 print()

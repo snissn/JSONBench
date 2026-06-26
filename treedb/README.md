@@ -27,7 +27,7 @@ The default TreeDB matrix is the strict minimal JSON suite:
 - scale: `subset`, `1m`, `10m` (`100m`/`1000m` are accepted but intentionally
   not the default)
 - collection format: `json`
-- projection/query cells: `q1` through `q5`
+- projection/query cells: `q1` through `q5`, plus `qexpr`
 
 `full` preserves the input JSON document. Query-specific projections store only
 the fields needed by that query plus the TreeDB primary key. For example, `q1`
@@ -37,7 +37,8 @@ Full-document and `template-v1` row-layout cells are available with environment
 overrides. Column-store storage layouts are also available for query-shaped
 `json` projection cells. They store declared projection fields in TreeDB
 physical column row assets with `retained_payload=none` and use physical column
-reducers for q1 through q5. The harness opens TreeDB with the cached leaf-log
+reducers for q1 through q5 plus a typed int64 expression aggregate for `qexpr`.
+The harness opens TreeDB with the cached leaf-log
 backend so collection data roots can store oversized documents through
 persistent value-log pointers.
 
@@ -77,6 +78,15 @@ cd /Users/michaelseiler/dev/snissn/JSONBench/treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=100000 TRIES=1 ./run_matrix.sh
 ```
 
+`run_matrix.sh` defaults to the production-shaped query lane:
+`QUERY_MODE=one_shot_end_to_end` and
+`METADATA_MODE=auto_aggregate_metadata`. That means each submitted query
+includes request construction, physical-query preparation when applicable,
+execution, result shaping, and result hashing. To measure the older repeated
+runner ceiling explicitly, pass `QUERY_MODE=hot_prepared_run`. To force typed
+column scans even when aggregate metadata is available, pass
+`METADATA_MODE=no_aggregate_metadata`.
+
 The run fails if fewer rows are available than requested.
 
 To make the reported TreeDB storage column represent a post-load fully
@@ -111,9 +121,12 @@ cd treedb
 ./run_columnstore_benchmark.sh
 ```
 
-By default this runs 1MM rows and 3 tries for q1..q5 direct and prepared-scan
+By default this runs 1MM rows and 3 tries for q1..q5 plus qexpr direct and prepared-scan
 column-store layouts, plus prepared-metadata q4/q5 where aggregate metadata is
-applicable. It writes the full matrix report plus the compact table used in
+applicable. Runs use `QUERY_MODE=one_shot_end_to_end` by default; hot prepared
+timings must be requested with `QUERY_MODE=hot_prepared_run` and reported as a
+secondary repeated-query/dashboard lane. It writes the full matrix report plus
+the compact table used in
 TreeDB benchmark updates:
 
 - `report.md`
@@ -145,7 +158,7 @@ ROWS=10000000 TRIES=3 GOMAP_REPLACE=/path/to/gomap \
 This runs a full-data TreeDB storage headline with `column-store-full-prepared`
 (`typed_column_part` hot-path columns plus retained non-column JSON), then runs
 the server-shaped query attribution rows (q1/q2/q3 prepared physical runners,
-q4/q5 aggregate-metadata Top-K). It loads ClickHouse through `clickhouse local`
+q4/q5 aggregate-metadata Top-K, and qexpr typed expression scan). It loads ClickHouse through `clickhouse local`
 and writes `preferred_summary.md` alongside the TreeDB and ClickHouse result
 JSON. Set `RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a
 run.
@@ -171,7 +184,7 @@ cell:
 cd treedb
 DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=1000000 TRIES=1 \
   STORAGE_LAYOUTS="column-store column-store-prepared column-store-prepared-metadata" \
-  QUERY_CELLS="q1 q2 q3 q4 q5" \
+  QUERY_CELLS="q1 q2 q3 q4 q5 qexpr" \
   ./run_matrix.sh
 ```
 
@@ -190,7 +203,7 @@ Column-store execution modes are explicit:
 
 - `column-store`: direct one-shot physical query API.
 - `column-store-prepared`: prepared physical query runners outside timed
-  attempts, with no aggregate metadata; q4/q5 scan base column rows.
+  attempts, with no aggregate metadata; q4/q5/qexpr scan base column rows.
 - `column-store-prepared-metadata`: prepared physical query runners; only q4/q5
   declare `min_time_us` aggregate metadata with Top-K and answer with
   `rows_scanned=0`.
@@ -199,8 +212,9 @@ Column-store execution modes are explicit:
 - `column-store-full-prepared`: full retained JSON cell with declared hot paths
   owned by `typed_column_part`; prepared physical query runners.
 
-q1/q2/q3 prepared rows are scan-mode rows, not metadata rows. q3 uses TreeDB's
-physical grouped-hour reducer over dictionary and int64 column sidecars. q4/q5
+q1/q2/q3/qexpr prepared rows are scan-mode rows, not metadata rows. q3 uses TreeDB's
+physical grouped-hour reducer over dictionary and int64 column sidecars. qexpr
+uses a typed int64 expression aggregate over `time_us`. q4/q5
 direct and prepared-scan cells use physical dictionary predicates; q4/q5
 prepared aggregate-metadata cells still use query-specific sentinel masking
 during load so the aggregate metadata represents the filtered JSONBench post
@@ -305,7 +319,10 @@ artifacts at `queries[].attempt_profiles`, and per-query execution counters at
 fallback reason, rows scanned/matched/reduced, result groups, Top-K candidates,
 sort-key mark pruning counters, grouped-distinct readiness/use, dense reducer
 selection, decoded bytes, materialization counts, result-render time, and the
-timed attempt wall clock.
+timed attempt wall clock. Current runs also record `query_mode`,
+`metadata_mode`, `prepare_setup_nanos`, `run_nanos`, `hash_nanos`,
+`render_hash_nanos`, `total_query_nanos`, whether aggregate metadata was used,
+and whether JSON reconstruction occurred.
 
 ## Notes
 

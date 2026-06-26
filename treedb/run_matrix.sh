@@ -6,8 +6,10 @@ OUT_DIR="${OUT_DIR:-results/run_$(date -u +%Y%m%d_%H%M%S)_$$}"
 SCALES="${SCALES:-subset}"
 FORMATS="${FORMATS:-json}"
 STORAGE_LAYOUTS="${STORAGE_LAYOUTS:-row}"
+QUERY_MODE="${QUERY_MODE:-one_shot_end_to_end}"
+METADATA_MODE="${METADATA_MODE:-auto_aggregate_metadata}"
 SUITE="${SUITE:-minimal}"
-QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5}"
+QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5 qexpr}"
 BATCH_SIZE="${BATCH_SIZE:-16000}"
 TRIES="${TRIES:-3}"
 PROFILE="${PROFILE:-fast}"
@@ -34,9 +36,14 @@ Environment:
                       column-store-prepared, column-store-prepared-metadata,
                       column-store-full, or column-store-full-prepared.
                       Defaults to "row".
+  QUERY_MODE          Query timing mode: one_shot_end_to_end,
+                      first_touch_after_open, or hot_prepared_run.
+                      Defaults to one_shot_end_to_end.
+  METADATA_MODE       Column-store metadata mode: auto_aggregate_metadata or
+                      no_aggregate_metadata. Defaults to auto_aggregate_metadata.
   SUITE               minimal, full, or all. Defaults to "minimal".
   QUERY_CELLS         Query-specific minimal cells for SUITE=minimal/all.
-                      Defaults to "q1 q2 q3 q4 q4a q4b q5".
+                      Defaults to "q1 q2 q3 q4 q4a q4b q5 qexpr".
   SUBSET_ROWS         Rows for subset scale. Defaults to 10000.
   TRIES               Query attempts per cell. Defaults to 3.
   DUCKDB_RESULTS_DIR  DuckDB result JSON directory for report import.
@@ -64,8 +71,8 @@ skipped and reflected in the loaded-row count. Use SUBSET_ROWS=6 only for the
 checked-in smoke fixture, or DATA_DIR="$HOME/data/bluesky" for downloaded
 JSONBench data.
 
-The default suite is intentionally strict minimal JSON: q1..q5 each load only
-the fields needed for that query. Full-document cells are available with
+The default suite is intentionally strict minimal JSON: q1..q5 plus qexpr each
+load only the fields needed for that query. Full-document cells are available with
 SUITE=full or SUITE=all. The collection harness opens TreeDB with the cached
 leaf-log backend so full-document data roots can store oversized documents
 through persistent value-log pointers.
@@ -117,7 +124,7 @@ run_cell() {
     rows_arg=(-rows "$SUBSET_ROWS")
   fi
 
-  local cell="${cell_scale}_${storage_layout}_${format}_${projection}_${queries//,/_}"
+  local cell="${cell_scale}_${storage_layout}_${QUERY_MODE}_${METADATA_MODE}_${format}_${projection}_${queries//,/_}"
   local compact_arg=()
   local compact_suffix=""
   local validate_arg=()
@@ -178,6 +185,8 @@ run_cell() {
   cmd+=(
     -format "$format" \
     -storage-layout "$storage_layout" \
+    -query-mode "$QUERY_MODE" \
+    -metadata-mode "$METADATA_MODE" \
     -projection "$projection" \
     -queries "$queries" \
     -batch-size "$BATCH_SIZE" \

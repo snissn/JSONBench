@@ -49,6 +49,14 @@ func runColumnQ5(collection *collections.Collection, cfg runConfig, rows int) (q
 	return renderColumnQ5(rows, result), nil
 }
 
+func runColumnQExpr(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
+	result, err := collection.RunTypedColumnInt64PredicateAggregate(qexprTypedInt64AggregateRequest())
+	if err != nil {
+		return queryComputation{}, err
+	}
+	return renderColumnQExpr(rows, result), nil
+}
+
 func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnPhysicalQueryKind, groupColumn, valueColumn, distinctColumn string) collections.ColumnPhysicalQueryRequest {
 	req := collections.ColumnPhysicalQueryRequest{
 		Kind:                     kind,
@@ -57,7 +65,7 @@ func columnPhysicalRequest(cfg runConfig, query string, kind collections.ColumnP
 		DistinctColumn:           distinctColumn,
 		ColumnAssetReadIntegrity: collections.ColumnAssetReadIntegritySkipChecksums,
 	}
-	if columnStoreUsesAggregateMetadata(cfg.StorageLayout, query) {
+	if columnStoreRequestUsesAggregateMetadata(cfg, query) {
 		req.AggregateMetadataName, _ = columnStoreAggregateMetadataNameForQuery(cfg.StorageLayout, query)
 	}
 	if columnStoreRequestsBoundedTopK(cfg.StorageLayout, query) {
@@ -111,9 +119,10 @@ func columnStorePostPredicates() []collections.ColumnPhysicalQueryPredicate {
 }
 
 type preparedColumnQuery struct {
-	name     string
-	count    *collections.ColumnPhysicalQueryRunner
-	distinct *collections.ColumnPhysicalQueryRunner
+	name           string
+	count          *collections.ColumnPhysicalQueryRunner
+	distinct       *collections.ColumnPhysicalQueryRunner
+	int64Aggregate *collections.TypedColumnInt64PredicateAggregateSession
 }
 
 func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfig, name string) (*preparedColumnQuery, error) {
@@ -154,6 +163,12 @@ func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfi
 			return nil, err
 		}
 		return &preparedColumnQuery{name: name, count: runner}, nil
+	case "qexpr":
+		runner, err := collection.PrepareTypedColumnInt64PredicateAggregate(qexprTypedInt64AggregateRequest())
+		if err != nil {
+			return nil, err
+		}
+		return &preparedColumnQuery{name: name, int64Aggregate: runner}, nil
 	default:
 		return nil, nil
 	}
@@ -174,11 +189,26 @@ func (p *preparedColumnQuery) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if p.int64Aggregate != nil {
+		if err := p.int64Aggregate.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
 }
 
 func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
-	if p == nil || p.count == nil {
+	if p == nil {
+		return queryComputation{}, errors.New("prepared column query is not initialized")
+	}
+	if p.int64Aggregate != nil {
+		result, err := p.int64Aggregate.Run()
+		if err != nil {
+			return queryComputation{}, err
+		}
+		return renderColumnQExpr(rows, result), nil
+	}
+	if p.count == nil {
 		return queryComputation{}, errors.New("prepared column query is not initialized")
 	}
 	countResult, err := p.count.Run()
@@ -328,6 +358,30 @@ func renderColumnQ5(rows int, result collections.ColumnPhysicalQueryResult) quer
 			len(out),
 			renderNanos,
 			namedColumnPhysicalResult{Name: "group_int64_span", Result: result, FallbackRows: rows},
+		),
+	}
+}
+
+func qexprTypedInt64AggregateRequest() collections.TypedColumnInt64PredicateAggregateRequest {
+	return collections.TypedColumnInt64PredicateAggregateRequest{
+		Column:                   "time_us",
+		Kind:                     collections.TypedColumnInt64PredicateAll,
+		Expression:               collections.TypedColumnInt64AggregateSecondOfDaySquare,
+		ColumnAssetReadIntegrity: collections.ColumnAssetReadIntegritySkipChecksums,
+	}
+}
+
+func renderColumnQExpr(rows int, result collections.TypedColumnInt64PredicateAggregateResult) queryComputation {
+	renderStart := time.Now()
+	out := []queryRow{{"second_of_day_square_sum": result.Sum}}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: typedInt64AggregateRowsScanned(rows, result),
+		Rows:        out,
+		Diagnostics: typedInt64AggregateQueryDiagnostics(
+			len(out),
+			renderNanos,
+			namedTypedInt64AggregateResult{Name: "second_of_day_square_sum", Result: result, FallbackRows: rows},
 		),
 	}
 }

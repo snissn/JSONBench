@@ -63,6 +63,34 @@ func TestCollectBaselineRowsUsesRequestedRowsForScale(t *testing.T) {
 	}
 }
 
+func TestCollectBaselineRowsNamesSixthBaselineQueryQExpr(t *testing.T) {
+	dir := t.TempDir()
+	resultPath := filepath.Join(dir, "result.json")
+	const clickHouseResult = `{
+  "system": "ClickHouse",
+  "dataset_size": 6,
+  "num_loaded_documents": 6,
+  "total_size": 1234,
+  "data_size": 1000,
+  "index_size": 234,
+  "result": [[0.001],[0.002],[0.003],[0.004],[0.005],[0.006]]
+}`
+	if err := os.WriteFile(resultPath, []byte(clickHouseResult), 0o644); err != nil {
+		t.Fatalf("write ClickHouse result: %v", err)
+	}
+
+	rows, err := collectBaselineRows(dir, nil, "ClickHouse", "json-column-sql")
+	if err != nil {
+		t.Fatalf("collectBaselineRows: %v", err)
+	}
+	if got, want := len(rows), 6; got != want {
+		t.Fatalf("rows=%d want %d", got, want)
+	}
+	if got, want := rows[5].Query, "qexpr"; got != want {
+		t.Fatalf("sixth query=%q want %q", got, want)
+	}
+}
+
 func TestCollectBaselineRowsPreservesLegacyDatasetScale(t *testing.T) {
 	dir := t.TempDir()
 	resultPath := filepath.Join(dir, "result.json")

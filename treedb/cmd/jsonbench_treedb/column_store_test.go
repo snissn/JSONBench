@@ -42,6 +42,30 @@ func TestNormalizeFullColumnStoreLayouts(t *testing.T) {
 	}
 }
 
+func TestNormalizeQueryAndMetadataModes(t *testing.T) {
+	queryMode, err := normalizeQueryMode("one-shot")
+	if err != nil {
+		t.Fatalf("normalizeQueryMode one-shot: %v", err)
+	}
+	if queryMode != queryModeOneShotEndToEnd {
+		t.Fatalf("query mode=%q want %q", queryMode, queryModeOneShotEndToEnd)
+	}
+	queryMode, err = normalizeQueryMode("hot-prepared")
+	if err != nil {
+		t.Fatalf("normalizeQueryMode hot-prepared: %v", err)
+	}
+	if queryMode != queryModeHotPreparedRun {
+		t.Fatalf("query mode=%q want %q", queryMode, queryModeHotPreparedRun)
+	}
+	metadataMode, err := normalizeMetadataMode("no-aggmeta")
+	if err != nil {
+		t.Fatalf("normalizeMetadataMode no-aggmeta: %v", err)
+	}
+	if metadataMode != metadataModeNoAggregateMetadata {
+		t.Fatalf("metadata mode=%q want %q", metadataMode, metadataModeNoAggregateMetadata)
+	}
+}
+
 func TestCanonicalJSONPreservesJSONNumbers(t *testing.T) {
 	got, err := canonicalJSON([]byte(`{"fraction":1.0,"large":100000000000000000001}`))
 	if err != nil {
@@ -50,6 +74,25 @@ func TestCanonicalJSONPreservesJSONNumbers(t *testing.T) {
 	const want = `{"fraction":1.0,"large":100000000000000000001}`
 	if string(got) != want {
 		t.Fatalf("canonicalJSON=%s want %s", got, want)
+	}
+}
+
+func TestSecondOfDaySquareFromUnixMicrosFloorsNegativeMicros(t *testing.T) {
+	tests := []struct {
+		timeUS int64
+		want   int64
+	}{
+		{timeUS: -1, want: 86_399 * 86_399},
+		{timeUS: -999_999, want: 86_399 * 86_399},
+		{timeUS: -1_000_000, want: 86_399 * 86_399},
+		{timeUS: -1_000_001, want: 86_398 * 86_398},
+		{timeUS: 0, want: 0},
+		{timeUS: 1_000_000, want: 1},
+	}
+	for _, tt := range tests {
+		if got := secondOfDaySquareFromUnixMicros(tt.timeUS); got != tt.want {
+			t.Fatalf("secondOfDaySquareFromUnixMicros(%d)=%d want %d", tt.timeUS, got, tt.want)
+		}
 	}
 }
 
@@ -66,7 +109,11 @@ func TestColumnStoreLayoutMatchesRowFixture(t *testing.T) {
 				t.Fatalf("column-store rows_scanned=%d want %d", got, want)
 			}
 			assertRowScanQueryDiagnostics(t, row.Queries[0])
-			assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
+			if query == "qexpr" {
+				assertTypedInt64AggregateQueryDiagnostics(t, column.Queries[0])
+			} else {
+				assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
+			}
 		})
 	}
 }
@@ -128,7 +175,11 @@ func TestFullColumnStoreLayoutsMatchFullRowFixture(t *testing.T) {
 				if got, want := query.RowsScanned, rowQuery.RowsScanned; got != want {
 					t.Fatalf("%s %s rows_scanned=%d want %d", layout, query.Name, got, want)
 				}
-				assertColumnPhysicalQueryDiagnostics(t, query, expectedPhysicalQueryCount(query.Name))
+				if query.Name == "qexpr" {
+					assertTypedInt64AggregateQueryDiagnostics(t, query)
+				} else {
+					assertColumnPhysicalQueryDiagnostics(t, query, expectedPhysicalQueryCount(query.Name))
+				}
 			}
 		})
 	}
@@ -182,6 +233,24 @@ func TestColumnPhysicalRequestBoundedTopKLayouts(t *testing.T) {
 	}
 }
 
+func TestColumnPhysicalRequestNoAggregateMetadataLane(t *testing.T) {
+	cfg := runConfig{StorageLayout: storageLayoutColumnStoreFullPrepared, MetadataMode: metadataModeNoAggregateMetadata}
+	q1 := columnPhysicalRequest(cfg, "q1", collections.ColumnPhysicalQueryGroupCount, "event", "", "")
+	if q1.AggregateMetadataName != "" {
+		t.Fatalf("q1 aggregate metadata=%q want empty", q1.AggregateMetadataName)
+	}
+	q5 := columnPhysicalRequest(cfg, "q5", collections.ColumnPhysicalQueryGroupInt64Span, "did", "time_us", "")
+	if q5.AggregateMetadataName != "" {
+		t.Fatalf("q5 aggregate metadata=%q want empty", q5.AggregateMetadataName)
+	}
+	if got := q5.TopK; got != 3 {
+		t.Fatalf("q5 topk=%d want 3", got)
+	}
+	if got := len(q5.Predicates); got == 0 {
+		t.Fatalf("q5 predicates empty; no-metadata full-data lane must still push predicates")
+	}
+}
+
 func TestFullColumnStoreLayoutsDeclareNullableStringColumns(t *testing.T) {
 	full, err := columnStoreConfigForProjection("q1", storageLayoutColumnStoreFullPrepared, "")
 	if err != nil {
@@ -211,6 +280,33 @@ func TestFullColumnStoreLayoutsDeclareNullableStringColumns(t *testing.T) {
 	}
 	if got, want := len(full.AggregateMetadata), 3; got != want {
 		t.Fatalf("full-data aggregate metadata count=%d want %d: %+v", got, want, full.AggregateMetadata)
+	}
+}
+
+func TestColumnStoreQExprProjectionUsesColumnPart(t *testing.T) {
+	cfg, err := columnStoreConfigForProjection("qexpr", storageLayoutColumnStorePrepared, "")
+	if err != nil {
+		t.Fatalf("columnStoreConfigForProjection qexpr: %v", err)
+	}
+	if got, want := len(cfg.Columns), 1; got != want {
+		t.Fatalf("qexpr columns=%d want %d: %+v", got, want, cfg.Columns)
+	}
+	col := cfg.Columns[0]
+	if got, want := col.Name, "time_us"; got != want {
+		t.Fatalf("qexpr column name=%q want %q", got, want)
+	}
+	if got, want := col.Owner, collections.TypedStorageOwnerColumnPart; got != want {
+		t.Fatalf("qexpr column owner=%q want %q", got, want)
+	}
+	if got, want := col.ValueType, collections.ColumnStoreValueInt64; got != want {
+		t.Fatalf("qexpr column value type=%q want %q", got, want)
+	}
+}
+
+func TestColumnStoreQExprRunReportsColumnPartOwner(t *testing.T) {
+	result := runJSONBenchFixtureCell(t, storageLayoutColumnStorePrepared, "qexpr")
+	if got, want := result.TypedColumnOwner, string(collections.TypedStorageOwnerColumnPart); got != want {
+		t.Fatalf("qexpr typed_column_owner=%q want %q", got, want)
 	}
 }
 
@@ -342,7 +438,11 @@ func TestColumnStorePreparedLayoutMatchesRowFixture(t *testing.T) {
 			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
 				t.Fatalf("column-store-prepared rows_scanned=%d want %d", got, want)
 			}
-			assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
+			if query == "qexpr" {
+				assertTypedInt64AggregateQueryDiagnostics(t, column.Queries[0])
+			} else {
+				assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
+			}
 			if (isQ4FamilyQuery(query) || query == "q5") && column.Queries[0].RowsScanned == 0 {
 				t.Fatalf("column-store-prepared %s rows_scanned=0; non-metadata prepared layout must scan base rows", query)
 			}
@@ -378,7 +478,11 @@ func TestColumnStorePreparedMetadataLayoutMatchesRowFixture(t *testing.T) {
 			if got, want := column.Queries[0].RowsScanned, row.Queries[0].RowsScanned; got != want {
 				t.Fatalf("column-store-prepared-metadata rows_scanned=%d want %d", got, want)
 			}
-			assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
+			if query == "qexpr" {
+				assertTypedInt64AggregateQueryDiagnostics(t, column.Queries[0])
+			} else {
+				assertColumnPhysicalQueryDiagnostics(t, column.Queries[0], expectedPhysicalQueryCount(query))
+			}
 		})
 	}
 }
@@ -460,6 +564,60 @@ func TestQueryAttemptProfilesWriteArtifacts(t *testing.T) {
 	assertRowScanQueryDiagnostics(t, query)
 }
 
+func TestFullPreparedNoAggregateMetadataScansRows(t *testing.T) {
+	row := runJSONBenchFixtureCell(t, storageLayoutRow, "q1")
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.Queries = []string{"q1"}
+	cfg.MetadataMode = metadataModeNoAggregateMetadata
+	column := runJSONBenchConfig(t, cfg)
+	query := column.Queries[0]
+	if got, want := query.ResultHash, row.Queries[0].ResultHash; got != want {
+		t.Fatalf("no-metadata q1 result hash=%s want row hash=%s", got, want)
+	}
+	if query.RowsScanned == 0 {
+		t.Fatalf("no-metadata q1 rows_scanned=0; want typed-column scan")
+	}
+	if query.Diagnostics.AggregateMetadataUsed {
+		t.Fatalf("no-metadata q1 aggregate_metadata_used=true diagnostics=%+v", query.Diagnostics)
+	}
+	if got, want := query.MetadataMode, metadataModeNoAggregateMetadata; got != want {
+		t.Fatalf("metadata_mode=%q want %q", got, want)
+	}
+}
+
+func TestOneShotPreparedRunReportsSetupRunAndRenderHash(t *testing.T) {
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.Queries = []string{"q1"}
+	cfg.QueryMode = queryModeOneShotEndToEnd
+	result := runJSONBenchConfig(t, cfg)
+	query := result.Queries[0]
+	if got, want := query.QueryMode, queryModeOneShotEndToEnd; got != want {
+		t.Fatalf("query_mode=%q want %q", got, want)
+	}
+	if query.Diagnostics.PrepareSetupNanos <= 0 {
+		t.Fatalf("prepare_setup_nanos=%d want >0", query.Diagnostics.PrepareSetupNanos)
+	}
+	if query.Diagnostics.RunNanos <= 0 {
+		t.Fatalf("run_nanos=%d want >0", query.Diagnostics.RunNanos)
+	}
+	if query.Diagnostics.RenderHashNanos <= 0 {
+		t.Fatalf("render_hash_nanos=%d want >0", query.Diagnostics.RenderHashNanos)
+	}
+	if query.Diagnostics.TotalQueryNanos < query.Diagnostics.PrepareSetupNanos+query.Diagnostics.RunNanos+query.Diagnostics.RenderHashNanos {
+		t.Fatalf("total_query_nanos=%d split prepare=%d run=%d render_hash=%d", query.Diagnostics.TotalQueryNanos, query.Diagnostics.PrepareSetupNanos, query.Diagnostics.RunNanos, query.Diagnostics.RenderHashNanos)
+	}
+}
+
+func TestFirstTouchAfterOpenRequiresSingleAttempt(t *testing.T) {
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.Queries = []string{"q1"}
+	cfg.QueryMode = queryModeFirstTouchAfterOpen
+	cfg.Tries = 2
+	if _, err := runTreeDBBenchmark(cfg); err == nil || !strings.Contains(err.Error(), "pass -tries 1") {
+		t.Fatalf("runTreeDBBenchmark first-touch tries=2 error=%v want tries error", err)
+	}
+}
+
 func runFixtureConfig(layout, query string) runConfig {
 	return runConfig{
 		DataDir:       "../../testdata/bluesky",
@@ -485,12 +643,21 @@ func runJSONBenchFixtureCell(t *testing.T, layout, query string) runResult {
 	t.Helper()
 	cfg := runFixtureConfig(layout, query)
 	cfg.DBDir = t.TempDir()
-	result, err := runTreeDBBenchmark(cfg)
-	if err != nil {
-		t.Fatalf("runTreeDBBenchmark(%s, %s): %v", layout, query, err)
-	}
+	result := runJSONBenchConfig(t, cfg)
 	if got := len(result.Queries); got != 1 {
 		t.Fatalf("queries=%d want 1", got)
+	}
+	return result
+}
+
+func runJSONBenchConfig(t *testing.T, cfg runConfig) runResult {
+	t.Helper()
+	if cfg.DBDir == "" {
+		cfg.DBDir = t.TempDir()
+	}
+	result, err := runTreeDBBenchmark(cfg)
+	if err != nil {
+		t.Fatalf("runTreeDBBenchmark(%s, %v): %v", cfg.StorageLayout, cfg.Queries, err)
 	}
 	return result
 }
@@ -527,6 +694,34 @@ func assertColumnPhysicalQueryDiagnostics(t *testing.T, query queryRun, wantPhys
 	}
 	if query.Diagnostics.ResultRows != query.ResultRows || query.Diagnostics.ResultGroups == 0 {
 		t.Fatalf("%s result diagnostics=%+v result_rows=%d", query.Name, query.Diagnostics, query.ResultRows)
+	}
+}
+
+func assertTypedInt64AggregateQueryDiagnostics(t *testing.T, query queryRun) {
+	t.Helper()
+	if got, want := query.Diagnostics.QueryPath, "typed_column_int64_aggregate"; got != want {
+		t.Fatalf("%s query path=%q want %q diagnostics=%+v", query.Name, got, want, query.Diagnostics)
+	}
+	if got, want := len(query.Diagnostics.PhysicalQueries), 1; got != want {
+		t.Fatalf("%s physical query diagnostics=%d want %d: %+v", query.Name, got, want, query.Diagnostics.PhysicalQueries)
+	}
+	if got, want := query.Diagnostics.PhysicalQueries[0].Name, "second_of_day_square_sum"; got != want {
+		t.Fatalf("%s physical query name=%q want %q", query.Name, got, want)
+	}
+	if query.Diagnostics.StorageSource != "typed_column_part" {
+		t.Fatalf("%s storage source=%q want typed_column_part diagnostics=%+v", query.Name, query.Diagnostics.StorageSource, query.Diagnostics)
+	}
+	if query.Diagnostics.RowsScanned != query.RowsScanned || query.RowsScanned == 0 {
+		t.Fatalf("%s rows scanned diagnostics=%+v rows_scanned=%d", query.Name, query.Diagnostics, query.RowsScanned)
+	}
+	if query.Diagnostics.RowMaterializations != 0 || query.Diagnostics.DocumentMaterializations != 0 {
+		t.Fatalf("%s materializations diagnostics=%+v", query.Name, query.Diagnostics)
+	}
+	if query.Diagnostics.AggregateMetadataUsed {
+		t.Fatalf("%s aggregate_metadata_used=true diagnostics=%+v", query.Name, query.Diagnostics)
+	}
+	if query.Diagnostics.JSONReconstructionUsed {
+		t.Fatalf("%s json_reconstruction_used=true diagnostics=%+v", query.Name, query.Diagnostics)
 	}
 }
 
@@ -587,9 +782,17 @@ func assertAggregateMetadataTopKDiagnostics(t *testing.T, query queryRun) {
 
 func runJSONBenchFullFixtureCell(t *testing.T, layout string, validateReconstruction bool) runResult {
 	t.Helper()
-	cfg := runConfig{
+	cfg := runFullFixtureConfig(layout, validateReconstruction)
+	result := runJSONBenchConfig(t, cfg)
+	if got := len(result.Queries); got != len(cfg.Queries) {
+		t.Fatalf("queries=%d want %d", got, len(cfg.Queries))
+	}
+	return result
+}
+
+func runFullFixtureConfig(layout string, validateReconstruction bool) runConfig {
+	return runConfig{
 		DataDir:                "../../testdata/bluesky",
-		DBDir:                  t.TempDir(),
 		Reset:                  true,
 		Scale:                  "subset",
 		Rows:                   6,
@@ -606,14 +809,6 @@ func runJSONBenchFullFixtureCell(t *testing.T, layout string, validateReconstruc
 		ValidateReconstruction: validateReconstruction,
 		Tries:                  1,
 	}
-	result, err := runTreeDBBenchmark(cfg)
-	if err != nil {
-		t.Fatalf("runTreeDBBenchmark(%s, full): %v", layout, err)
-	}
-	if got := len(result.Queries); got != len(cfg.Queries) {
-		t.Fatalf("queries=%d want %d", got, len(cfg.Queries))
-	}
-	return result
 }
 
 func isQ4FamilyQuery(query string) bool {

@@ -12,27 +12,36 @@ import (
 )
 
 var querySQL = map[string]string{
-	"q1":  "SELECT data.commit.collection AS event, count() AS count FROM bluesky GROUP BY event ORDER BY count DESC",
-	"q2":  "SELECT data.commit.collection AS event, count() AS count, count(DISTINCT data.did) AS users FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' GROUP BY event ORDER BY count DESC",
-	"q3":  "SELECT data.commit.collection AS event, hour(to_timestamp(data.time_us / 1000000)) AS hour_of_day, count() AS count FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection IN (...) GROUP BY event, hour_of_day ORDER BY hour_of_day, event",
-	"q4":  "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
-	"q4a": "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
-	"q4b": "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
-	"q5":  "SELECT data.did AS user_id, date_diff('milliseconds', min(data.time_us), max(data.time_us)) AS activity_span FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY activity_span DESC LIMIT 3",
+	"q1":    "SELECT data.commit.collection AS event, count() AS count FROM bluesky GROUP BY event ORDER BY count DESC",
+	"q2":    "SELECT data.commit.collection AS event, count() AS count, count(DISTINCT data.did) AS users FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' GROUP BY event ORDER BY count DESC",
+	"q3":    "SELECT data.commit.collection AS event, hour(to_timestamp(data.time_us / 1000000)) AS hour_of_day, count() AS count FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection IN (...) GROUP BY event, hour_of_day ORDER BY hour_of_day, event",
+	"q4":    "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
+	"q4a":   "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
+	"q4b":   "SELECT data.did AS user_id, to_timestamp(min(data.time_us) / 1000000) AS first_post_date FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY first_post_date ASC LIMIT 3",
+	"q5":    "SELECT data.did AS user_id, date_diff('milliseconds', min(data.time_us), max(data.time_us)) AS activity_span FROM bluesky WHERE data.kind = 'commit' AND data.commit.operation = 'create' AND data.commit.collection = 'app.bsky.feed.post' GROUP BY user_id ORDER BY activity_span DESC LIMIT 3",
+	"qexpr": "WITH floor_unix_seconds(data.time_us) AS unix_seconds, positive_mod(unix_seconds, 86400) AS second_of_day SELECT sum(second_of_day * second_of_day) AS second_of_day_square_sum FROM bluesky",
 }
 
-var jsonBenchQueryNames = []string{"q1", "q2", "q3", "q4", "q4a", "q4b", "q5"}
+var jsonBenchQueryNames = []string{"q1", "q2", "q3", "q4", "q4a", "q4b", "q5", "qexpr"}
 
 func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]queryRun, error) {
 	out := make([]queryRun, 0, len(cfg.Queries))
 	for _, name := range cfg.Queries {
-		prepared, err := prepareColumnQueryIfNeeded(collection, cfg, name)
-		if err != nil {
-			return nil, fmt.Errorf("%s prepare: %w", name, err)
+		var prepared *preparedColumnQuery
+		var outsidePrepareSetupNanos int64
+		if cfg.QueryMode == queryModeHotPreparedRun {
+			prepareStart := time.Now()
+			var err error
+			prepared, err = prepareColumnQueryIfNeeded(collection, cfg, name)
+			outsidePrepareSetupNanos = time.Since(prepareStart).Nanoseconds()
+			if err != nil {
+				return nil, fmt.Errorf("%s prepare: %w", name, err)
+			}
 		}
 		var attempts []float64
 		var profiles []queryAttemptProfile
 		var final queryComputation
+		var finalHash string
 		for i := 0; i < cfg.Tries; i++ {
 			attempt := i + 1
 			profile, err := startQueryAttemptProfile(cfg.QueryProfileDir, name, attempt)
@@ -44,9 +53,7 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 				}
 				return nil, fmt.Errorf("%s attempt %d profile: %w", name, attempt, err)
 			}
-			start := time.Now()
-			computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
-			elapsed := time.Since(start)
+			computed, hash, elapsed, err := runTimedQueryAttempt(collection, cfg, name, rows, prepared, outsidePrepareSetupNanos)
 			if profile != nil {
 				attemptProfile, profileErr := profile.Stop(cfg.QueryProfileDir, name, attempt)
 				if attemptProfile.Attempt != 0 {
@@ -64,9 +71,9 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 				}
 				return nil, fmt.Errorf("%s attempt %d: %w", name, attempt, err)
 			}
-			computed.Diagnostics.AttemptWallNanos = elapsed.Nanoseconds()
 			attempts = append(attempts, seconds(elapsed))
 			final = computed
+			finalHash = hash
 		}
 		if prepared != nil {
 			if err := prepared.Close(); err != nil {
@@ -74,22 +81,20 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 			}
 		}
 		best, median := bestMedian(attempts)
-		hash, err := hashRows(final.Rows)
-		if err != nil {
-			return nil, err
-		}
 		out = append(out, queryRun{
-			Name:        name,
-			SQL:         querySQL[name],
-			AttemptsSec: attempts,
-			BestSec:     best,
-			MedianSec:   median,
-			RowsScanned: final.RowsScanned,
-			ResultRows:  len(final.Rows),
-			ResultHash:  hash,
-			Preview:     previewRows(final.Rows, 5),
-			Diagnostics: final.Diagnostics,
-			Profiles:    profiles,
+			Name:         name,
+			SQL:          querySQL[name],
+			QueryMode:    cfg.QueryMode,
+			MetadataMode: cfg.MetadataMode,
+			AttemptsSec:  attempts,
+			BestSec:      best,
+			MedianSec:    median,
+			RowsScanned:  final.RowsScanned,
+			ResultRows:   len(final.Rows),
+			ResultHash:   finalHash,
+			Preview:      previewRows(final.Rows, 5),
+			Diagnostics:  final.Diagnostics,
+			Profiles:     profiles,
 		})
 	}
 	return out, nil
@@ -108,6 +113,64 @@ func runQueryAttempt(collection *collections.Collection, cfg runConfig, name str
 	return runQueryOnce(collection, cfg, name, rows)
 }
 
+func runTimedQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, outsidePrepared *preparedColumnQuery, outsidePrepareSetupNanos int64) (queryComputation, string, time.Duration, error) {
+	attemptStart := time.Now()
+	prepared := outsidePrepared
+	prepareSetupNanos := outsidePrepareSetupNanos
+	if cfg.QueryMode != queryModeHotPreparedRun {
+		prepareStart := time.Now()
+		var err error
+		prepared, err = prepareColumnQueryIfNeeded(collection, cfg, name)
+		prepareSetupNanos = time.Since(prepareStart).Nanoseconds()
+		if err != nil {
+			return queryComputation{}, "", 0, err
+		}
+	}
+	runStart := time.Now()
+	computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
+	runElapsedNanos := time.Since(runStart).Nanoseconds()
+	if err != nil {
+		if prepared != nil && prepared != outsidePrepared {
+			err = errors.Join(err, prepared.Close())
+		}
+		return queryComputation{}, "", 0, err
+	}
+	renderNanos := computed.Diagnostics.ResultRenderNanos
+	if runElapsedNanos < renderNanos {
+		runElapsedNanos = renderNanos
+	}
+	hashStart := time.Now()
+	hash, err := hashRows(computed.Rows)
+	hashNanos := time.Since(hashStart).Nanoseconds()
+	if err != nil {
+		if prepared != nil && prepared != outsidePrepared {
+			err = errors.Join(err, prepared.Close())
+		}
+		return queryComputation{}, "", 0, err
+	}
+	if prepared != nil && prepared != outsidePrepared {
+		closeStart := time.Now()
+		closeErr := prepared.Close()
+		prepareSetupNanos += time.Since(closeStart).Nanoseconds()
+		if closeErr != nil {
+			return queryComputation{}, "", 0, closeErr
+		}
+	}
+	elapsed := time.Since(attemptStart)
+	computed.Diagnostics.PrepareSetupNanos = prepareSetupNanos
+	computed.Diagnostics.RunNanos = runElapsedNanos - renderNanos
+	computed.Diagnostics.HashNanos = hashNanos
+	computed.Diagnostics.RenderHashNanos = renderNanos + hashNanos
+	computed.Diagnostics.AttemptWallNanos = elapsed.Nanoseconds()
+	computed.Diagnostics.TotalQueryNanos = elapsed.Nanoseconds()
+	if cfg.QueryMode == queryModeHotPreparedRun {
+		computed.Diagnostics.TotalQueryNanos += outsidePrepareSetupNanos
+	}
+	computed.Diagnostics.AggregateMetadataUsed = computed.Diagnostics.MetadataHits > 0
+	computed.Diagnostics.JSONReconstructionUsed = computed.Diagnostics.ReconstructionRows > 0 || computed.Diagnostics.ReconstructionNanos > 0
+	return computed, hash, elapsed, nil
+}
+
 func runQueryOnce(collection *collections.Collection, cfg runConfig, name string, rows int) (queryComputation, error) {
 	if isColumnStoreLayout(cfg.StorageLayout) {
 		switch name {
@@ -121,6 +184,8 @@ func runQueryOnce(collection *collections.Collection, cfg runConfig, name string
 			return runColumnQ4(collection, cfg, rows)
 		case "q5":
 			return runColumnQ5(collection, cfg, rows)
+		case "qexpr":
+			return runColumnQExpr(collection, cfg, rows)
 		default:
 			return queryComputation{}, fmt.Errorf("unknown query %q", name)
 		}
@@ -136,6 +201,8 @@ func runQueryOnce(collection *collections.Collection, cfg runConfig, name string
 		return runQ4(collection, cfg, rows)
 	case "q5":
 		return runQ5(collection, cfg, rows)
+	case "qexpr":
+		return runQExpr(collection, cfg, rows)
 	default:
 		return queryComputation{}, fmt.Errorf("unknown query %q", name)
 	}
@@ -362,6 +429,42 @@ func runQ5(collection *collections.Collection, cfg runConfig, rows int) (queryCo
 		Rows:        out,
 		Diagnostics: rowScanQueryDiagnostics(scanned, matched, len(out), renderNanos),
 	}, nil
+}
+
+func runQExpr(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
+	var sum int64
+	scanned, err := scanCollectionJSON(collection, rows, func(raw []byte) error {
+		sum += secondOfDaySquareFromUnixMicros(jsonTimeUS(raw, cfg.Projection))
+		return nil
+	})
+	if err != nil {
+		return queryComputation{}, err
+	}
+	renderStart := time.Now()
+	out := []queryRow{{"second_of_day_square_sum": sum}}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: scanned,
+		Rows:        out,
+		Diagnostics: rowScanQueryDiagnostics(scanned, scanned, len(out), renderNanos),
+	}, nil
+}
+
+func secondOfDaySquareFromUnixMicros(timeUS int64) int64 {
+	seconds := floorUnixSecondsFromMicros(timeUS)
+	secondOfDay := seconds % 86_400
+	if secondOfDay < 0 {
+		secondOfDay += 86_400
+	}
+	return secondOfDay * secondOfDay
+}
+
+func floorUnixSecondsFromMicros(timeUS int64) int64 {
+	seconds := timeUS / 1_000_000
+	if timeUS < 0 && timeUS%1_000_000 != 0 {
+		seconds--
+	}
+	return seconds
 }
 
 func scanCollectionJSON(collection *collections.Collection, maxDocs int, fn func(raw []byte) error) (int, error) {

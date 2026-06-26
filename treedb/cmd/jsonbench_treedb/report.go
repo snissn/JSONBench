@@ -42,6 +42,8 @@ type reportRow struct {
 	Format                             string    `json:"format,omitempty"`
 	StorageLayout                      string    `json:"storage_layout,omitempty"`
 	Projection                         string    `json:"projection,omitempty"`
+	QueryMode                          string    `json:"query_mode,omitempty"`
+	MetadataMode                       string    `json:"metadata_mode,omitempty"`
 	Profile                            string    `json:"profile,omitempty"`
 	DataRoot                           string    `json:"data_root,omitempty"`
 	DataShape                          string    `json:"data_shape,omitempty"`
@@ -95,8 +97,15 @@ type reportRow struct {
 	RowMaterializations                int       `json:"row_materializations,omitempty"`
 	DocumentMaterializations           int       `json:"document_materializations,omitempty"`
 	FallbackReads                      int       `json:"fallback_reads,omitempty"`
+	AggregateMetadataUsed              bool      `json:"aggregate_metadata_used,omitempty"`
+	JSONReconstructionUsed             bool      `json:"json_reconstruction_used,omitempty"`
+	PrepareSetupNanos                  int64     `json:"prepare_setup_nanos,omitempty"`
+	RunNanos                           int64     `json:"run_nanos,omitempty"`
 	ResultRenderNanos                  int64     `json:"result_render_nanos,omitempty"`
+	HashNanos                          int64     `json:"hash_nanos,omitempty"`
+	RenderHashNanos                    int64     `json:"render_hash_nanos,omitempty"`
 	AttemptWallNanos                   int64     `json:"attempt_wall_nanos,omitempty"`
+	TotalQueryNanos                    int64     `json:"total_query_nanos,omitempty"`
 	PhysicalQueryCount                 int       `json:"physical_query_count,omitempty"`
 	StorageBytes                       int64     `json:"storage_bytes,omitempty"`
 	StorageGrossBytes                  int64     `json:"storage_gross_bytes,omitempty"`
@@ -288,7 +297,9 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 			typedColumnSectionBytes = result.Storage.ColumnStorePhysical.Totals.TypedColumnSections.TotalStoredBytes
 		}
 		for _, q := range result.Queries {
-			scanPath := reportRowMetadataDataScanPath(result.StorageLayout, q.Name)
+			queryMode := nonEmpty(q.QueryMode, result.QueryMode, inferQueryMode(result.StorageLayout))
+			metadataMode := nonEmpty(q.MetadataMode, result.MetadataMode, inferMetadataMode(result.StorageLayout, q.Name))
+			scanPath := reportRowMetadataDataScanPath(result.StorageLayout, q.Name, metadataMode)
 			diagnostics := q.Diagnostics
 			queryPath := diagnostics.QueryPath
 			storageSource := reportRowStorageSource(result.StorageLayout)
@@ -318,10 +329,12 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				Format:                             result.Format,
 				StorageLayout:                      result.StorageLayout,
 				Projection:                         result.Projection,
+				QueryMode:                          queryMode,
+				MetadataMode:                       metadataMode,
 				Profile:                            result.Profile,
 				DataRoot:                           result.DataRoot,
 				DataShape:                          result.DataShape,
-				ExecutionMode:                      reportRowExecutionMode(result.StorageLayout),
+				ExecutionMode:                      queryMode,
 				QueryPath:                          queryPath,
 				StorageSource:                      storageSource,
 				FallbackReason:                     fallbackReason,
@@ -371,8 +384,15 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				RowMaterializations:                diagnostics.RowMaterializations,
 				DocumentMaterializations:           diagnostics.DocumentMaterializations,
 				FallbackReads:                      diagnostics.FallbackReads,
+				AggregateMetadataUsed:              diagnostics.AggregateMetadataUsed,
+				JSONReconstructionUsed:             diagnostics.JSONReconstructionUsed,
+				PrepareSetupNanos:                  diagnostics.PrepareSetupNanos,
+				RunNanos:                           diagnostics.RunNanos,
 				ResultRenderNanos:                  diagnostics.ResultRenderNanos,
+				HashNanos:                          diagnostics.HashNanos,
+				RenderHashNanos:                    diagnostics.RenderHashNanos,
 				AttemptWallNanos:                   diagnostics.AttemptWallNanos,
+				TotalQueryNanos:                    diagnostics.TotalQueryNanos,
 				PhysicalQueryCount:                 len(diagnostics.PhysicalQueries),
 				StorageBytes:                       result.Storage.TotalBytes,
 				StorageGrossBytes:                  result.Storage.GrossBytes,
@@ -441,14 +461,28 @@ func reportStorageDurableBytesWALExcluded(storage storageResult) int64 {
 func reportRowExecutionMode(layout string) string {
 	switch {
 	case isPreparedColumnStoreLayout(layout):
-		return "prepared"
+		return queryModeHotPreparedRun
 	case isColumnStoreLayout(layout):
-		return "direct"
+		return queryModeOneShotEndToEnd
 	case layout == storageLayoutRow:
-		return "row_scan"
+		return queryModeOneShotEndToEnd
 	default:
 		return "unknown"
 	}
+}
+
+func inferQueryMode(layout string) string {
+	return reportRowExecutionMode(layout)
+}
+
+func inferMetadataMode(layout, query string) string {
+	if columnStoreUsesAggregateMetadata(layout, query) {
+		return metadataModeAutoAggregateMetadata
+	}
+	if isColumnStoreLayout(layout) {
+		return metadataModeNoAggregateMetadata
+	}
+	return "not_applicable"
 }
 
 func reportRowStorageSource(layout string) string {
@@ -474,9 +508,9 @@ func reportRowFallbackReason(layout string) string {
 	return "unknown"
 }
 
-func reportRowMetadataDataScanPath(layout, query string) string {
+func reportRowMetadataDataScanPath(layout, query, metadataMode string) string {
 	switch {
-	case columnStoreUsesAggregateMetadata(layout, query):
+	case metadataMode == metadataModeAutoAggregateMetadata && columnStoreUsesAggregateMetadata(layout, query):
 		return "aggregate_metadata"
 	case isColumnStoreLayout(layout):
 		return "typed_column_data_scan"
@@ -495,7 +529,7 @@ func reportRowSortLayout(layout, projection string) string {
 		return "time_us"
 	}
 	switch projection {
-	case "q3", "q4", "q4a", "q4b", "q5", "minimal":
+	case "q3", "q4", "q4a", "q4b", "q5", "qexpr", "minimal":
 		return "time_us"
 	default:
 		return "ingest_order_unsorted"
@@ -632,7 +666,7 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 			continue
 		}
 		for i, attempts := range result.Result {
-			name := "q" + strconv.Itoa(i+1)
+			name := baselineQueryName(i, len(result.Result))
 			best, median := bestMedian(attempts)
 			retainsJSON := true
 			rows = append(rows, reportRow{
@@ -670,6 +704,13 @@ func collectBaselineRows(dir string, scales map[string]struct{}, systemName, eng
 		}
 	}
 	return rows, nil
+}
+
+func baselineQueryName(index, total int) string {
+	if total == 6 && index == 5 {
+		return "qexpr"
+	}
+	return "q" + strconv.Itoa(index+1)
 }
 
 func parseScaleFilter(raw string) (map[string]struct{}, error) {
@@ -762,18 +803,20 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		)
 	}
 	fmt.Fprintf(&buf, "\n## TreeDB Query Diagnostics\n\n")
-	fmt.Fprintf(&buf, "| rows/scale | layout | query | path | source | fallback | scanned | matched | reduced | groups | predicates | topK | topK candidates | bounded topK | time-order topK | mark checks | mark skips | sorted distinct | dense path | decoded payload | decoded metadata | physical bytes | row mats | doc mats | render | attempt |\n")
-	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | path | source | fallback | scanned | matched | reduced | groups | predicates | topK | topK candidates | aggregate metadata | bounded topK | time-order topK | mark checks | mark skips | sorted distinct | dense path | decoded payload | decoded metadata | physical bytes | row mats | doc mats | JSON reconstruction | prepare/setup | run | render/hash | total |\n")
+	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|\n")
 	for _, row := range doc.Rows {
 		if row.System != "TreeDB" {
 			continue
 		}
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %t | %t | %d | %d | %s | %s | %d | %d | %d | %d | %d | %d | %d |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %t | %t | %t | %d | %d | %s | %s | %d | %d | %d | %d | %d | %t | %d | %d | %d | %d |\n",
 			row.Scale,
 			reportRowLayout(row),
 			row.Query,
+			row.QueryMode,
+			row.MetadataMode,
 			nonEmpty(row.QueryPath, row.MetadataDataScanPath),
 			row.StorageSource,
 			row.FallbackReason,
@@ -784,6 +827,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.PredicateCount,
 			row.TopKLimit,
 			row.TopKCandidates,
+			row.AggregateMetadataUsed,
 			row.BoundedTopKUsed,
 			row.TimeOrderTopKUsed,
 			row.SortKeyMarkChecks,
@@ -795,8 +839,11 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.PhysicalBytesScanned,
 			row.RowMaterializations,
 			row.DocumentMaterializations,
-			row.ResultRenderNanos,
-			row.AttemptWallNanos,
+			row.JSONReconstructionUsed,
+			row.PrepareSetupNanos,
+			row.RunNanos,
+			row.RenderHashNanos,
+			row.TotalQueryNanos,
 		)
 	}
 	fmt.Fprintf(&buf, "\n## Best Runtime By Query\n\n")

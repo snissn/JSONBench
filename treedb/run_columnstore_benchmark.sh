@@ -7,7 +7,9 @@ cd "$ROOT_DIR"
 DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-1000000}"
 TRIES="${TRIES:-3}"
-QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5}"
+QUERY_MODE="${QUERY_MODE:-one_shot_end_to_end}"
+METADATA_MODE="${METADATA_MODE:-auto_aggregate_metadata}"
+QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5 qexpr}"
 SUITE="${SUITE:-minimal}"
 VALIDATE_RECONSTRUCTION="${VALIDATE_RECONSTRUCTION:-0}"
 TREEDB_ALLOW_ERRORS="${TREEDB_ALLOW_ERRORS:-0}"
@@ -107,6 +109,8 @@ cat <<EOF
     rows:      $EFFECTIVE_ROWS
     scale:     $SCALE
     tries:     $TRIES
+    query mode: $QUERY_MODE
+    metadata mode: $METADATA_MODE
     suite:     $SUITE
     layouts:   $STORAGE_LAYOUTS
     queries:   $QUERY_CELLS
@@ -126,6 +130,8 @@ run_matrix_cell() {
   SUBSET_ROWS="$ROWS" \
   FORMATS="json" \
   STORAGE_LAYOUTS="$layouts" \
+  QUERY_MODE="$QUERY_MODE" \
+  METADATA_MODE="$METADATA_MODE" \
   SUITE="$SUITE" \
   QUERY_CELLS="$queries" \
   VALIDATE_RECONSTRUCTION="$VALIDATE_RECONSTRUCTION" \
@@ -156,6 +162,8 @@ summary="$OUT_DIR/columnstore_summary.md"
   echo "- gomap: \`$gomap_module\`"
   echo "- rows: \`$EFFECTIVE_ROWS\`"
   echo "- tries: \`$TRIES\`"
+  echo "- query mode: \`$QUERY_MODE\`"
+  echo "- metadata mode: \`$METADATA_MODE\`"
   echo "- suite: \`$SUITE\`"
   echo "- validate reconstruction: \`$VALIDATE_RECONSTRUCTION\`"
   echo "- allow errors: \`$TREEDB_ALLOW_ERRORS\`"
