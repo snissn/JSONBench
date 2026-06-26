@@ -59,9 +59,20 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		"- data shape: `full-retained-json`",
 		"- retained payload: `non-column`",
 		"- typed owner: `typed_column_part`",
+		"## Standard comparison detail",
+		"| system/layout | query | rows loaded | load | insert | storage (TreeDB WAL-excl) | query mode | metadata mode | prepare/setup |",
+		"| TreeDB column-store-full-prepared | q1 | 6 |",
+		"first_touch_after_open",
+		"no_aggregate_metadata",
+		"row/doc materializations",
+		"## Metadata cost accounting",
+		"| query | aggregate metadata used | available metadata storage | metadata cost storage |",
 		"## Query-shaped attribution rows",
 		"| TreeDB column-store-full-prepared | qexpr |",
 		"typed_row_asset | attribution only |",
+		"## ClickHouse comparison mode",
+		"raw_scan_jsonasobject_no_projection_no_materialized_summary",
+		"projections/materialized summaries: `none configured by this wrapper`",
 		"Query-shaped `column-store*` rows are attribution rows only",
 	} {
 		if !strings.Contains(summary, want) {
@@ -91,6 +102,9 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 			row.RetainedPayloadEncodingStatus == "active_semantic_stream_v1_non_column_retained_payload" &&
 			row.ReconstructionValid != nil &&
 			*row.ReconstructionValid {
+			if row.InsertSec <= 0 {
+				t.Fatalf("full headline row insert_seconds=%f want >0: %+v", row.InsertSec, row)
+			}
 			foundFullHeadline = true
 		}
 		if row.StorageLayout == storageLayoutColumnStorePreparedMetadata &&

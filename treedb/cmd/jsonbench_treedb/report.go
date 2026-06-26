@@ -98,6 +98,14 @@ type reportRow struct {
 	DocumentMaterializations           int       `json:"document_materializations,omitempty"`
 	FallbackReads                      int       `json:"fallback_reads,omitempty"`
 	AggregateMetadataUsed              bool      `json:"aggregate_metadata_used,omitempty"`
+	AggregateMetadataRefs              int       `json:"aggregate_metadata_refs,omitempty"`
+	AggregateMetadataStorageBytes      int64     `json:"aggregate_metadata_storage_bytes,omitempty"`
+	AggregateMetadataSidecarBytes      int64     `json:"aggregate_metadata_sidecar_bytes,omitempty"`
+	AggregateMetadataEmbeddedBytes     int64     `json:"aggregate_metadata_embedded_bytes,omitempty"`
+	MetadataCostStorageBytes           int64     `json:"metadata_cost_storage_bytes,omitempty"`
+	MetadataCostStorageBasis           string    `json:"metadata_cost_storage_basis,omitempty"`
+	MetadataCostInsertSec              float64   `json:"metadata_cost_insert_seconds,omitempty"`
+	MetadataCostInsertBasis            string    `json:"metadata_cost_insert_basis,omitempty"`
 	JSONReconstructionUsed             bool      `json:"json_reconstruction_used,omitempty"`
 	PrepareSetupNanos                  int64     `json:"prepare_setup_nanos,omitempty"`
 	RunNanos                           int64     `json:"run_nanos,omitempty"`
@@ -124,6 +132,7 @@ type reportRow struct {
 	StorageAccountingScope             string    `json:"storage_accounting_scope,omitempty"`
 	StorageMeasurementPhase            string    `json:"storage_measurement_phase,omitempty"`
 	LoadSec                            float64   `json:"load_seconds,omitempty"`
+	InsertSec                          float64   `json:"insert_seconds,omitempty"`
 	CompactionSec                      float64   `json:"compaction_seconds,omitempty"`
 	Compacted                          bool      `json:"compacted,omitempty"`
 	RetainsJSON                        *bool     `json:"retains_json_structure,omitempty"`
@@ -292,10 +301,17 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 		columnAssetBytes := storageCategoryBytes(result.Storage, "column_asset_segments", "column_asset_indexes", "column_asset_metadata", "column_asset_quarantine")
 		typedColumnPartBytes := int64(0)
 		typedColumnSectionBytes := int64(0)
+		aggregateMetadataSidecarBytes := int64(0)
+		aggregateMetadataEmbeddedBytes := int64(0)
+		aggregateMetadataRefs := 0
 		if result.Storage.ColumnStorePhysical != nil {
 			typedColumnPartBytes = result.Storage.ColumnStorePhysical.Totals.TypedColumnPartBytes
 			typedColumnSectionBytes = result.Storage.ColumnStorePhysical.Totals.TypedColumnSections.TotalStoredBytes
+			aggregateMetadataSidecarBytes = result.Storage.ColumnStorePhysical.Totals.AggregateMetadataBytes
+			aggregateMetadataEmbeddedBytes = result.Storage.ColumnStorePhysical.Totals.TypedColumnSections.AggregateMetadataBytes
+			aggregateMetadataRefs = result.Storage.ColumnStorePhysical.AggregateMetadataRefs
 		}
+		aggregateMetadataStorageBytes := aggregateMetadataSidecarBytes + aggregateMetadataEmbeddedBytes
 		for _, q := range result.Queries {
 			queryMode := nonEmpty(q.QueryMode, result.QueryMode, inferQueryMode(result.StorageLayout))
 			metadataMode := nonEmpty(q.MetadataMode, result.MetadataMode, inferMetadataMode(result.StorageLayout, q.Name))
@@ -316,6 +332,19 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 			rowsScanned := q.RowsScanned
 			if strings.TrimSpace(queryPath) != "" || diagnostics.RowsScanned > 0 {
 				rowsScanned = diagnostics.RowsScanned
+			}
+			metadataCostStorageBytes := int64(0)
+			metadataCostStorageBasis := ""
+			metadataCostInsertSec := 0.0
+			metadataCostInsertBasis := ""
+			if diagnostics.AggregateMetadataUsed {
+				metadataCostStorageBytes = aggregateMetadataStorageBytes
+				metadataCostStorageBasis = "active_manifest_aggregate_metadata_sidecars_plus_typed_column_embedded_sections"
+				if aggregateMetadataStorageBytes == 0 {
+					metadataCostStorageBasis = "aggregate_metadata_used_but_storage_bytes_not_reported"
+				}
+				metadataCostInsertSec = result.Load.InsertSec
+				metadataCostInsertBasis = "full_load_insert_seconds_current_upper_bound"
 			}
 			rows = append(rows, reportRow{
 				System:                             result.System,
@@ -385,6 +414,14 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				DocumentMaterializations:           diagnostics.DocumentMaterializations,
 				FallbackReads:                      diagnostics.FallbackReads,
 				AggregateMetadataUsed:              diagnostics.AggregateMetadataUsed,
+				AggregateMetadataRefs:              aggregateMetadataRefs,
+				AggregateMetadataStorageBytes:      aggregateMetadataStorageBytes,
+				AggregateMetadataSidecarBytes:      aggregateMetadataSidecarBytes,
+				AggregateMetadataEmbeddedBytes:     aggregateMetadataEmbeddedBytes,
+				MetadataCostStorageBytes:           metadataCostStorageBytes,
+				MetadataCostStorageBasis:           metadataCostStorageBasis,
+				MetadataCostInsertSec:              metadataCostInsertSec,
+				MetadataCostInsertBasis:            metadataCostInsertBasis,
 				JSONReconstructionUsed:             diagnostics.JSONReconstructionUsed,
 				PrepareSetupNanos:                  diagnostics.PrepareSetupNanos,
 				RunNanos:                           diagnostics.RunNanos,
@@ -409,6 +446,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				StorageAccountingScope:             result.Storage.AccountingScope,
 				StorageMeasurementPhase:            result.Storage.MeasurementPhase,
 				LoadSec:                            result.Load.WallSec,
+				InsertSec:                          result.Load.InsertSec,
 				CompactionSec:                      compactionSec,
 				Compacted:                          compactionEnabled,
 				RetainsJSON:                        &retainsJSON,
