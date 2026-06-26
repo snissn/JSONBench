@@ -567,6 +567,17 @@ def metadata_cost_insert(row):
 def text_or_na(value):
     return str(value) if value not in (None, "") else "n/a"
 
+def row_source(row):
+    return f"{text_or_na(row.get('storage_layout', ''))}/{text_or_na(row.get('data_shape', ''))}"
+
+def metadata_accounting_row(query):
+    full = tree_storage_rows.get(query)
+    attribution = tree_attribution_rows.get(query)
+    for row in (full, attribution):
+        if row and row.get("aggregate_metadata_used", False):
+            return row
+    return full or attribution
+
 clickhouse_loaded_rows = ch_doc.get("num_loaded_documents", ch_doc.get("dataset_size", rows_requested))
 clickhouse_requested_rows = ch_doc.get("requested_rows", ch_doc.get("dataset_size", rows_requested))
 clickhouse_mode = "raw_scan_jsonasobject_no_projection_no_materialized_summary"
@@ -642,12 +653,12 @@ for query in queries:
 print()
 print("## Metadata cost accounting")
 print()
-print("| query | aggregate metadata used | available metadata storage | metadata cost storage | sidecar storage | embedded typed-section storage | refs | insert cost | insert cost basis | storage basis |")
-print("|---:|---|---:|---:|---:|---:|---:|---:|---|---|")
+print("| query | source row | aggregate metadata used | available metadata storage | metadata cost storage | sidecar storage | embedded typed-section storage | refs | insert cost | insert cost basis | storage basis |")
+print("|---:|---|---|---:|---:|---:|---:|---:|---:|---|---|")
 for query in queries:
-    tree = tree_storage_rows[query]
+    tree = metadata_accounting_row(query)
     print(
-        f"| {query} | {yes_no(tree.get('aggregate_metadata_used', False))} | "
+        f"| {query} | {row_source(tree)} | {yes_no(tree.get('aggregate_metadata_used', False))} | "
         f"{byte_count(tree.get('aggregate_metadata_storage_bytes', 0))} | {metadata_cost_storage(tree)} | "
         f"{byte_count(tree.get('aggregate_metadata_sidecar_bytes', 0))} | "
         f"{byte_count(tree.get('aggregate_metadata_embedded_bytes', 0))} | "

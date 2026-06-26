@@ -66,7 +66,7 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		"no_aggregate_metadata",
 		"row/doc materializations",
 		"## Metadata cost accounting",
-		"| query | aggregate metadata used | available metadata storage | metadata cost storage |",
+		"| query | source row | aggregate metadata used | available metadata storage | metadata cost storage |",
 		"## Query-shaped attribution rows",
 		"| TreeDB column-store-full-prepared | qexpr |",
 		"typed_row_asset | attribution only |",
@@ -121,5 +121,71 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 	}
 	if !foundQueryAttribution {
 		t.Fatalf("report missing query-shaped attribution row: %+v", report.Rows)
+	}
+}
+
+func TestPreferredScriptUsesAttributionMetadataCostRow(t *testing.T) {
+	if testing.Short() {
+		t.Skip("preferred script smoke test shells out to bash")
+	}
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skipf("bash not found: %v", err)
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skipf("python3 not found: %v", err)
+	}
+
+	tmp := t.TempDir()
+	outDir := filepath.Join(tmp, "preferred")
+	treeResult := filepath.Join(tmp, "treedb", "report.json")
+	clickHouseResult := filepath.Join(tmp, "clickhouse", "result.json")
+	if err := os.MkdirAll(filepath.Dir(treeResult), 0o755); err != nil {
+		t.Fatalf("mkdir treedb stub: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(clickHouseResult), 0o755); err != nil {
+		t.Fatalf("mkdir clickhouse stub: %v", err)
+	}
+	const treeStub = `{"rows":[
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q1","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q2","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q3","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q4","best_seconds":0.001,"dataset_size":6,"rows_scanned":9,"storage_bytes":1000,"aggregate_metadata_storage_bytes":999,"aggregate_metadata_refs":9},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q4a","best_seconds":0.001,"dataset_size":6,"rows_scanned":9,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q4b","best_seconds":0.001,"dataset_size":6,"rows_scanned":9,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q5","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"qexpr","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-prepared-metadata","data_shape":"query-shaped-projection","query":"q4","best_seconds":0.0001,"dataset_size":6,"aggregate_metadata_used":true,"aggregate_metadata_storage_bytes":5573853,"metadata_cost_storage_bytes":5573853,"aggregate_metadata_sidecar_bytes":5573853,"aggregate_metadata_refs":63,"metadata_cost_insert_seconds":3.25,"metadata_cost_insert_basis":"full_load_insert_seconds_current_upper_bound","metadata_cost_storage_basis":"active_manifest_aggregate_metadata_sidecars_plus_typed_column_embedded_sections"}
+]}`
+	if err := os.WriteFile(treeResult, []byte(treeStub), 0o644); err != nil {
+		t.Fatalf("write treedb stub: %v", err)
+	}
+	const clickHouseStub = `{"system":"ClickHouse","dataset_size":6,"num_loaded_documents":6,"total_size":1234,"load_seconds":0.001,"result":[[0.001],[0.001],[0.001],[0.001],[0.001],[0.001]]}`
+	if err := os.WriteFile(clickHouseResult, []byte(clickHouseStub), 0o644); err != nil {
+		t.Fatalf("write clickhouse stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "./run_preferred_columnstore_clickhouse_compare.sh")
+	cmd.Dir = filepath.Join("..", "..")
+	cmd.Env = append(os.Environ(),
+		"ROWS=6",
+		"TRIES=1",
+		"RUN_TREEDB=0",
+		"RUN_CLICKHOUSE=0",
+		"TREEDB_RESULT="+treeResult,
+		"CLICKHOUSE_RESULT="+clickHouseResult,
+		"OUT_DIR="+outDir,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("preferred script failed: %v\n%s", err, output)
+	}
+
+	summaryBytes, err := os.ReadFile(filepath.Join(outDir, "preferred_summary.md"))
+	if err != nil {
+		t.Fatalf("read preferred summary: %v", err)
+	}
+	summary := string(summaryBytes)
+	want := "| q4 | column-store-prepared-metadata/query-shaped-projection | yes | 5.32 MiB | 5.32 MiB | 5.32 MiB | 0 B | 63 | 3.250s | full_load_insert_seconds_current_upper_bound | active_manifest_aggregate_metadata_sidecars_plus_typed_column_embedded_sections |"
+	if !strings.Contains(summary, want) {
+		t.Fatalf("preferred summary did not charge q4 attribution metadata cost row %q\n%s", want, summary)
 	}
 }

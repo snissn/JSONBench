@@ -171,8 +171,10 @@ comparison mode, and TreeDB WAL-excluded durable storage. It also includes
 metadata-cost accounting for automatic aggregate-metadata wins: available
 metadata storage, sidecar/embedded bytes, ref count, and the current full-load
 insert-time upper-bound label until a metadata-only write-cost benchmark is
-added. Set `RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a
-run.
+added. The metadata-cost table names the source row it charged; if the full-data
+row did not use aggregate metadata but a query-shaped attribution row did, the
+table charges and labels that attribution row instead of hiding the cost. Set
+`RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a run.
 
 Useful preferred-run overrides:
 
