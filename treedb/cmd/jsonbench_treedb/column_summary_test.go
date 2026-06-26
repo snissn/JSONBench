@@ -20,8 +20,8 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 	for _, want := range []string{
 		"| layout | shape | mode | query | best | loaded rows/s | scanned rows | storage | load |",
 		"| column-store | query-shaped-projection | direct physical scan | q3 | 0.0250s | 40.0M | 1.0M | 2.00 MiB | 3.000s |",
-		"| column-store-prepared | query-shaped-projection | prepared physical scan | q4 | 0.0200s | 50.0M | 1.0M | 1.00 KiB | 2.000s |",
-		"| column-store-prepared-metadata | query-shaped-projection | prepared physical scan | q3 | 0.0100s | 100.0M | 1.0M | 1.00 KiB | 2.000s |",
+		"| column-store-prepared | query-shaped-projection | prepared storage scan | q4 | 0.0200s | 50.0M | 1.0M | 1.00 KiB | 2.000s |",
+		"| column-store-prepared-metadata | query-shaped-projection | prepared storage scan | q3 | 0.0100s | 100.0M | 1.0M | 1.00 KiB | 2.000s |",
 		"| column-store-prepared-metadata | query-shaped-projection | prepared metadata top-k | q4 | 500.0us | 2.00B logical | 0 | 1.00 KiB | 2.000s |",
 		"| column-store-prepared-metadata | query-shaped-projection | prepared metadata top-k | q4a | 400.0us | 2.50B logical | 0 | 1.00 KiB | 2.000s |",
 		"| column-store-full | full-retained-json | direct physical scan | q2 | 0.0300s | 33.3M | 1.0M | 4.00 MiB | 4.000s |",
@@ -42,11 +42,11 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 
 func TestColumnSummaryExecutionModeDoesNotInferMetadataFromLayout(t *testing.T) {
 	noMetadataTopK := reportRow{StorageLayout: storageLayoutColumnStorePreparedMetadata, Query: "q4", MetadataMode: metadataModeNoAggregateMetadata, AggregateMetadataUsed: false}
-	if got, want := columnSummaryExecutionMode(noMetadataTopK), "prepared physical scan"; got != want {
+	if got, want := columnSummaryExecutionMode(noMetadataTopK), "prepared storage scan"; got != want {
 		t.Fatalf("no-metadata q4 mode=%q want %q", got, want)
 	}
 	noMetadataAggregate := reportRow{StorageLayout: storageLayoutColumnStoreFullPrepared, Query: "q1", MetadataMode: metadataModeNoAggregateMetadata, AggregateMetadataUsed: false}
-	if got, want := columnSummaryExecutionMode(noMetadataAggregate), "prepared physical scan"; got != want {
+	if got, want := columnSummaryExecutionMode(noMetadataAggregate), "prepared storage scan"; got != want {
 		t.Fatalf("no-metadata q1 mode=%q want %q", got, want)
 	}
 	autoMetadataAggregate := reportRow{StorageLayout: storageLayoutColumnStoreFullPrepared, Query: "q1", MetadataMode: metadataModeAutoAggregateMetadata, AggregateMetadataUsed: true}

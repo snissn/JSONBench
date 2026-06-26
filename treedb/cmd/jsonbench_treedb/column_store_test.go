@@ -585,7 +585,7 @@ func TestFullPreparedNoAggregateMetadataScansRows(t *testing.T) {
 	}
 }
 
-func TestOneShotPreparedRunReportsSetupRunAndRenderHash(t *testing.T) {
+func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
 	cfg.Queries = []string{"q1"}
 	cfg.QueryMode = queryModeOneShotEndToEnd
@@ -594,8 +594,8 @@ func TestOneShotPreparedRunReportsSetupRunAndRenderHash(t *testing.T) {
 	if got, want := query.QueryMode, queryModeOneShotEndToEnd; got != want {
 		t.Fatalf("query_mode=%q want %q", got, want)
 	}
-	if query.Diagnostics.PrepareSetupNanos <= 0 {
-		t.Fatalf("prepare_setup_nanos=%d want >0", query.Diagnostics.PrepareSetupNanos)
+	if query.Diagnostics.PrepareSetupNanos != 0 {
+		t.Fatalf("prepare_setup_nanos=%d want 0 for direct one-shot run", query.Diagnostics.PrepareSetupNanos)
 	}
 	if query.Diagnostics.RunNanos <= 0 {
 		t.Fatalf("run_nanos=%d want >0", query.Diagnostics.RunNanos)

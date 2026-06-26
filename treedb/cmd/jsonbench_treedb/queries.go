@@ -117,15 +117,6 @@ func runTimedQueryAttempt(collection *collections.Collection, cfg runConfig, nam
 	attemptStart := time.Now()
 	prepared := outsidePrepared
 	prepareSetupNanos := outsidePrepareSetupNanos
-	if cfg.QueryMode != queryModeHotPreparedRun {
-		prepareStart := time.Now()
-		var err error
-		prepared, err = prepareColumnQueryIfNeeded(collection, cfg, name)
-		prepareSetupNanos = time.Since(prepareStart).Nanoseconds()
-		if err != nil {
-			return queryComputation{}, "", 0, err
-		}
-	}
 	runStart := time.Now()
 	computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
 	runElapsedNanos := time.Since(runStart).Nanoseconds()

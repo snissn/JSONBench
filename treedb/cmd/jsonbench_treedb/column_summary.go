@@ -138,12 +138,12 @@ func columnSummaryExecutionMode(row reportRow) string {
 	case storageLayoutColumnStore:
 		return "direct physical scan"
 	case storageLayoutColumnStorePrepared:
-		return "prepared physical scan"
+		return "prepared storage scan"
 	case storageLayoutColumnStorePreparedMetadata:
 		if row.AggregateMetadataUsed && columnStoreUsesAggregateMetadata(row.StorageLayout, row.Query) {
 			return "prepared metadata top-k"
 		}
-		return "prepared physical scan"
+		return "prepared storage scan"
 	case storageLayoutColumnStoreFull:
 		return "direct physical scan"
 	case storageLayoutColumnStoreFullPrepared:
@@ -153,7 +153,7 @@ func columnSummaryExecutionMode(row reportRow) string {
 		if columnStoreRequestsBoundedTopK(row.StorageLayout, row.Query) {
 			return "full-prepared bounded top-k"
 		}
-		return "prepared physical scan"
+		return "prepared storage scan"
 	default:
 		return ""
 	}

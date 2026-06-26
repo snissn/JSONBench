@@ -195,7 +195,7 @@ func runNotes(cfg runConfig) []string {
 		}
 		notes = append(notes, inputNotes...)
 		if cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
-			notes = append(notes, "column-store-full-prepared prepares physical query runners outside timed attempts; q1/q3/q5 request aggregate metadata, q4/q4a/q4b keep bounded physical TopK over typed-column part sections, and qexpr prepares a typed int64 expression aggregate.")
+			notes = append(notes, "column-store-full-prepared declares typed-column hot-path assets and aggregate metadata. one_shot_end_to_end and first_touch_after_open use the direct physical query APIs; hot_prepared_run prepares exact physical runners outside timed attempts. q1/q3/q5 request aggregate metadata when metadata_mode allows it, q4/q4a/q4b keep bounded physical TopK over typed-column part sections, and qexpr scans a typed int64 expression aggregate.")
 		}
 		return notes
 	}
@@ -206,10 +206,10 @@ func runNotes(cfg runConfig) []string {
 	}
 	notes = append(notes, inputNotes...)
 	if cfg.StorageLayout == storageLayoutColumnStorePrepared {
-		notes = append(notes, "column-store-prepared prepares physical query runners outside timed attempts and scans base column rows; it does not declare aggregate metadata.")
+		notes = append(notes, "column-store-prepared declares prepared storage assets and scans base column rows; one_shot_end_to_end and first_touch_after_open use direct physical query APIs, while hot_prepared_run prepares exact physical runners outside timed attempts. It does not declare aggregate metadata.")
 	}
 	if cfg.StorageLayout == storageLayoutColumnStorePreparedMetadata {
-		notes = append(notes, "column-store-prepared-metadata prepares physical query runners outside timed attempts; only q4/q4a/q4b/q5 declare and use aggregate metadata named min_time_us.")
+		notes = append(notes, "column-store-prepared-metadata declares prepared storage assets; one_shot_end_to_end and first_touch_after_open use direct physical query APIs, while hot_prepared_run prepares exact physical runners outside timed attempts. Only q4/q4a/q4b/q5 declare and use aggregate metadata named min_time_us.")
 	}
 	for _, q := range cfg.Queries {
 		if q == "q3" {
