@@ -18,8 +18,8 @@ TREEDB_ALLOW_ERRORS="${TREEDB_ALLOW_ERRORS:-$CLICKHOUSE_ALLOW_ERRORS}"
 CLICKHOUSE_MAX_FILES="${CLICKHOUSE_MAX_FILES:-}"
 TREEDB_FULL_STORAGE_LAYOUTS="${TREEDB_FULL_STORAGE_LAYOUTS:-column-store-full-prepared}"
 TREEDB_QUERY_STORAGE_LAYOUTS="${TREEDB_QUERY_STORAGE_LAYOUTS:-column-store-prepared-metadata}"
-TREEDB_QUERY_MODE="${TREEDB_QUERY_MODE:-one_shot_end_to_end}"
-TREEDB_METADATA_MODE="${TREEDB_METADATA_MODE:-auto_aggregate_metadata}"
+TREEDB_QUERY_MODE="${TREEDB_QUERY_MODE:-${QUERY_MODE:-one_shot_end_to_end}}"
+TREEDB_METADATA_MODE="${TREEDB_METADATA_MODE:-${METADATA_MODE:-auto_aggregate_metadata}}"
 TREEDB_COMPACT_AFTER_LOAD="${TREEDB_COMPACT_AFTER_LOAD:-0}"
 TREEDB_VALIDATE_RECONSTRUCTION="${TREEDB_VALIDATE_RECONSTRUCTION:-0}"
 TREEDB_RESULT="${TREEDB_RESULT:-}"
@@ -60,9 +60,12 @@ Environment:
                            Defaults to column-store-prepared-metadata.
   TREEDB_QUERY_MODE        TreeDB query timing mode: one_shot_end_to_end,
                            first_touch_after_open, or hot_prepared_run.
-                           Defaults to one_shot_end_to_end.
+                           Defaults to QUERY_MODE, then one_shot_end_to_end.
   TREEDB_METADATA_MODE     TreeDB metadata mode: auto_aggregate_metadata or
-                           no_aggregate_metadata. Defaults to auto_aggregate_metadata.
+                           no_aggregate_metadata. Defaults to METADATA_MODE,
+                           then auto_aggregate_metadata.
+  QUERY_MODE               Alias used when TREEDB_QUERY_MODE is unset.
+  METADATA_MODE            Alias used when TREEDB_METADATA_MODE is unset.
   TREEDB_COMPACT_AFTER_LOAD
                            Set 1 to compact full-data TreeDB rows before
                            measurement. Defaults to 0.
