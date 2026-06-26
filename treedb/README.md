@@ -157,8 +157,11 @@ ROWS=10000000 TRIES=3 GOMAP_REPLACE=/path/to/gomap \
 
 This runs a full-data TreeDB storage headline with `column-store-full-prepared`
 (`typed_column_part` hot-path columns plus retained non-column JSON), then runs
-the server-shaped query attribution rows (q1/q2/q3 prepared physical runners,
-q4/q5 aggregate-metadata Top-K, and qexpr typed expression scan). It loads ClickHouse through `clickhouse local`
+server-shaped query attribution rows through the selected query mode. The default
+`one_shot_end_to_end` mode uses direct physical query APIs over the prepared
+storage assets; `hot_prepared_run` is the repeated exact-runner ceiling. q4/q5
+can use aggregate-metadata Top-K when metadata mode allows it, and qexpr remains
+a typed expression scan. It loads ClickHouse through `clickhouse local`
 and writes `preferred_summary.md` alongside the TreeDB and ClickHouse result
 JSON. Set `RUN_CLICKHOUSE=0` or `RUN_TREEDB=0` to reuse an existing half of a
 run.
@@ -202,17 +205,22 @@ DATA_DIR="$HOME/data/bluesky" SUBSET_ROWS=100000 TRIES=1 \
 Column-store execution modes are explicit:
 
 - `column-store`: direct one-shot physical query API.
-- `column-store-prepared`: prepared physical query runners outside timed
-  attempts, with no aggregate metadata; q4/q5/qexpr scan base column rows.
-- `column-store-prepared-metadata`: prepared physical query runners; only q4/q5
-  declare `min_time_us` aggregate metadata with Top-K and answer with
-  `rows_scanned=0`.
+- `column-store-prepared`: prepared storage assets with no aggregate metadata;
+  `one_shot_end_to_end` and `first_touch_after_open` use direct physical query
+  APIs, while `hot_prepared_run` prepares exact physical runners outside timed
+  attempts. q4/q5/qexpr scan base column rows.
+- `column-store-prepared-metadata`: prepared storage assets; only q4/q5 declare
+  `min_time_us` aggregate metadata with Top-K and answer with `rows_scanned=0`
+  when metadata mode allows it. Exact prepared runners are used only by
+  `hot_prepared_run`.
 - `column-store-full`: full retained JSON cell with declared hot paths owned by
   `typed_column_part`; direct physical query API.
 - `column-store-full-prepared`: full retained JSON cell with declared hot paths
-  owned by `typed_column_part`; prepared physical query runners.
+  owned by `typed_column_part` plus maintained aggregate metadata; direct
+  one-shot modes use physical query APIs, while `hot_prepared_run` uses exact
+  prepared physical query runners.
 
-q1/q2/q3/qexpr prepared rows are scan-mode rows, not metadata rows. q3 uses TreeDB's
+q1/q2/q3/qexpr prepared-layout rows are scan-mode rows, not metadata rows. q3 uses TreeDB's
 physical grouped-hour reducer over dictionary and int64 column sidecars. qexpr
 uses a typed int64 expression aggregate over `time_us`. q4/q5
 direct and prepared-scan cells use physical dictionary predicates; q4/q5
@@ -328,9 +336,10 @@ and whether JSON reconstruction occurred.
 
 This harness uses the public TreeDB collections API. The default `row` storage
 layout remains the row-store/template-v1 baseline. The `column-store` layout is
-a separate TreeDB physical-column direct cell, `column-store-prepared` measures
-prepared physical runners without aggregate metadata, and
-`column-store-prepared-metadata` adds q4/q5 Top-K aggregate metadata.
+a separate TreeDB physical-column direct cell, `column-store-prepared` declares
+prepared storage assets without aggregate metadata, and
+`column-store-prepared-metadata` adds q4/q5 Top-K aggregate metadata. Exact
+prepared physical runners are measured only when `QUERY_MODE=hot_prepared_run`.
 `column-store-full` and `column-store-full-prepared` are the full-data storage
 comparison cells; they retain non-column JSON and declare hot paths in
 `typed_column_part` assets. Query-shaped column-store layouts are intentionally
