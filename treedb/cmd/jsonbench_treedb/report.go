@@ -121,6 +121,9 @@ type reportRow struct {
 	TypedColumnPrepareReadImageNanos      int64     `json:"typed_column_prepare_read_image_nanos,omitempty"`
 	TypedColumnPrepareStateBuildNanos     int64     `json:"typed_column_prepare_state_build_nanos,omitempty"`
 	TypedColumnPrepareDictionaryNanos     int64     `json:"typed_column_prepare_dictionary_nanos,omitempty"`
+	TypedColumnPreparePruningNanos        int64     `json:"typed_column_prepare_pruning_nanos,omitempty"`
+	TypedColumnPrepareSortKeyNanos        int64     `json:"typed_column_prepare_sort_key_nanos,omitempty"`
+	TypedColumnPrepareStatsNanos          int64     `json:"typed_column_prepare_stats_nanos,omitempty"`
 	TypedColumnPrepareRangeReadNanos      int64     `json:"typed_column_prepare_range_read_nanos,omitempty"`
 	TypedColumnPrepareRangeReadBytes      int64     `json:"typed_column_prepare_range_read_bytes,omitempty"`
 	TypedColumnPrepareAdapterNanos        int64     `json:"typed_column_prepare_adapter_nanos,omitempty"`
@@ -458,6 +461,9 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				TypedColumnPrepareReadImageNanos:      diagnostics.TypedColumnPrepareReadImageNanos,
 				TypedColumnPrepareStateBuildNanos:     diagnostics.TypedColumnPrepareStateBuildNanos,
 				TypedColumnPrepareDictionaryNanos:     diagnostics.TypedColumnPrepareDictionaryNanos,
+				TypedColumnPreparePruningNanos:        diagnostics.TypedColumnPreparePruningNanos,
+				TypedColumnPrepareSortKeyNanos:        diagnostics.TypedColumnPrepareSortKeyNanos,
+				TypedColumnPrepareStatsNanos:          diagnostics.TypedColumnPrepareStatsNanos,
 				TypedColumnPrepareRangeReadNanos:      diagnostics.TypedColumnPrepareRangeReadNanos,
 				TypedColumnPrepareRangeReadBytes:      diagnostics.TypedColumnPrepareRangeReadBytes,
 				TypedColumnPrepareAdapterNanos:        diagnostics.TypedColumnPrepareAdapterNanos,
@@ -926,6 +932,47 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.TotalQueryNanos,
 		)
 	}
+	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
+		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		for _, row := range doc.Rows {
+			if row.System != "TreeDB" || !reportRowHasTypedColumnSetupDiagnostics(row) {
+				continue
+			}
+			fmt.Fprintf(
+				&buf,
+				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+				row.Scale,
+				reportRowLayout(row),
+				row.Query,
+				row.QueryMode,
+				row.MetadataMode,
+				row.PrepareSetupNanos,
+				row.TypedColumnOneShotBuildNanos,
+				row.TypedColumnPreparePlanNanos,
+				row.TypedColumnPrepareRefsNanos,
+				row.TypedColumnPreparePairingNanos,
+				row.TypedColumnPreparePartDecodeNanos,
+				row.TypedColumnPreparePostPrepareNanos,
+				row.TypedColumnPrepareSummaryNanos,
+				row.TypedColumnOneShotCacheStoreNanos,
+				row.TypedColumnPrepareReadImageNanos,
+				row.TypedColumnPrepareStateBuildNanos,
+				row.TypedColumnPrepareDictionaryNanos,
+				row.TypedColumnPreparePruningNanos,
+				row.TypedColumnPrepareSortKeyNanos,
+				row.TypedColumnPrepareStatsNanos,
+				row.TypedColumnPrepareRangeReadNanos,
+				row.TypedColumnPrepareRangeReadBytes,
+				row.TypedColumnPrepareAdapterNanos,
+				row.TypedColumnPrepareDenseGroupNanos,
+				row.TypedColumnPrepareDenseValueNanos,
+				row.TypedColumnPrepareDensePredicateNanos,
+				row.TypedColumnPrepareDensePreapplyNanos,
+			)
+		}
+	}
 	fmt.Fprintf(&buf, "\n## Best Runtime By Query\n\n")
 	best := bestByScaleQuery(doc.Rows)
 	fmt.Fprintf(&buf, "| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | ClickHouse best | TreeDB / ClickHouse |\n")
@@ -1040,6 +1087,39 @@ func formatDensePath(row reportRow) string {
 		paths = append(paths, "int64_span")
 	}
 	return strings.Join(paths, ",")
+}
+
+func reportHasTypedColumnSetupDiagnostics(rows []reportRow) bool {
+	for _, row := range rows {
+		if row.System == "TreeDB" && reportRowHasTypedColumnSetupDiagnostics(row) {
+			return true
+		}
+	}
+	return false
+}
+
+func reportRowHasTypedColumnSetupDiagnostics(row reportRow) bool {
+	return row.TypedColumnOneShotBuildNanos != 0 ||
+		row.TypedColumnPreparePlanNanos != 0 ||
+		row.TypedColumnPrepareRefsNanos != 0 ||
+		row.TypedColumnPreparePairingNanos != 0 ||
+		row.TypedColumnPreparePartDecodeNanos != 0 ||
+		row.TypedColumnPreparePostPrepareNanos != 0 ||
+		row.TypedColumnPrepareSummaryNanos != 0 ||
+		row.TypedColumnOneShotCacheStoreNanos != 0 ||
+		row.TypedColumnPrepareReadImageNanos != 0 ||
+		row.TypedColumnPrepareStateBuildNanos != 0 ||
+		row.TypedColumnPrepareDictionaryNanos != 0 ||
+		row.TypedColumnPreparePruningNanos != 0 ||
+		row.TypedColumnPrepareSortKeyNanos != 0 ||
+		row.TypedColumnPrepareStatsNanos != 0 ||
+		row.TypedColumnPrepareRangeReadNanos != 0 ||
+		row.TypedColumnPrepareRangeReadBytes != 0 ||
+		row.TypedColumnPrepareAdapterNanos != 0 ||
+		row.TypedColumnPrepareDenseGroupNanos != 0 ||
+		row.TypedColumnPrepareDenseValueNanos != 0 ||
+		row.TypedColumnPrepareDensePredicateNanos != 0 ||
+		row.TypedColumnPrepareDensePreapplyNanos != 0
 }
 
 type bestGroup struct {

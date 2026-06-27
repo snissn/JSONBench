@@ -614,6 +614,18 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 		query.Diagnostics.TypedColumnPreparePartDecodeNanos +
 		query.Diagnostics.TypedColumnPreparePostPrepareNanos +
 		query.Diagnostics.TypedColumnPrepareSummaryNanos
+	prepareFineNanos := query.Diagnostics.TypedColumnPrepareReadImageNanos +
+		query.Diagnostics.TypedColumnPrepareStateBuildNanos +
+		query.Diagnostics.TypedColumnPrepareDictionaryNanos +
+		query.Diagnostics.TypedColumnPreparePruningNanos +
+		query.Diagnostics.TypedColumnPrepareSortKeyNanos +
+		query.Diagnostics.TypedColumnPrepareStatsNanos +
+		query.Diagnostics.TypedColumnPrepareRangeReadNanos +
+		query.Diagnostics.TypedColumnPrepareAdapterNanos +
+		query.Diagnostics.TypedColumnPrepareDenseGroupNanos +
+		query.Diagnostics.TypedColumnPrepareDenseValueNanos +
+		query.Diagnostics.TypedColumnPrepareDensePredicateNanos +
+		query.Diagnostics.TypedColumnPrepareDensePreapplyNanos
 	if prepareSubphaseNanos > 0 {
 		if query.Diagnostics.TypedColumnPreparePartDecodeNanos <= 0 {
 			t.Fatalf("typed_column_prepare_part_decode_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnPreparePartDecodeNanos, query.Diagnostics)
@@ -624,6 +636,12 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 		if query.Diagnostics.PrepareSetupNanos < prepareSubphaseNanos {
 			t.Fatalf("prepare_setup_nanos=%d smaller than subphase sum %d diagnostics=%+v", query.Diagnostics.PrepareSetupNanos, prepareSubphaseNanos, query.Diagnostics)
 		}
+	}
+	if prepareFineNanos > 0 && query.Diagnostics.TypedColumnPrepareRangeReadNanos > 0 && query.Diagnostics.TypedColumnPrepareRangeReadBytes <= 0 {
+		t.Fatalf("typed_column_prepare_range_read_bytes=%d want >0 with range_read_nanos=%d diagnostics=%+v",
+			query.Diagnostics.TypedColumnPrepareRangeReadBytes,
+			query.Diagnostics.TypedColumnPrepareRangeReadNanos,
+			query.Diagnostics)
 	}
 	if query.Diagnostics.RunNanos <= 0 {
 		t.Fatalf("run_nanos=%d want >0", query.Diagnostics.RunNanos)

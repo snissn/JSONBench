@@ -341,8 +341,10 @@ selection, decoded bytes, materialization counts, result-render time, and the
 timed attempt wall clock. Current runs also record `query_mode`,
 `metadata_mode`, `prepare_setup_nanos`, `run_nanos`, `hash_nanos`,
 `render_hash_nanos`, `total_query_nanos`, typed-column one-shot setup subphase
-nanos when exposed by TreeDB, whether aggregate metadata was used, and whether
-JSON reconstruction occurred.
+nanos when exposed by TreeDB (including plan/ref/pair/decode/post/summary,
+prepared-state read image, state build, dictionary, pruning, sort-key, stats,
+range-read bytes/time, adapter, and dense decode phases), whether aggregate
+metadata was used, and whether JSON reconstruction occurred.
 
 ## Notes
 

@@ -78,6 +78,9 @@ type queryDiagnostics struct {
 	TypedColumnPrepareReadImageNanos      int64                     `json:"typed_column_prepare_read_image_nanos,omitempty"`
 	TypedColumnPrepareStateBuildNanos     int64                     `json:"typed_column_prepare_state_build_nanos,omitempty"`
 	TypedColumnPrepareDictionaryNanos     int64                     `json:"typed_column_prepare_dictionary_nanos,omitempty"`
+	TypedColumnPreparePruningNanos        int64                     `json:"typed_column_prepare_pruning_nanos,omitempty"`
+	TypedColumnPrepareSortKeyNanos        int64                     `json:"typed_column_prepare_sort_key_nanos,omitempty"`
+	TypedColumnPrepareStatsNanos          int64                     `json:"typed_column_prepare_stats_nanos,omitempty"`
 	TypedColumnPrepareRangeReadNanos      int64                     `json:"typed_column_prepare_range_read_nanos,omitempty"`
 	TypedColumnPrepareRangeReadBytes      int64                     `json:"typed_column_prepare_range_read_bytes,omitempty"`
 	TypedColumnPrepareAdapterNanos        int64                     `json:"typed_column_prepare_adapter_nanos,omitempty"`
@@ -174,6 +177,9 @@ type queryPhysicalDiagnostic struct {
 	TypedColumnPrepareReadImageNanos      int64    `json:"typed_column_prepare_read_image_nanos,omitempty"`
 	TypedColumnPrepareStateBuildNanos     int64    `json:"typed_column_prepare_state_build_nanos,omitempty"`
 	TypedColumnPrepareDictionaryNanos     int64    `json:"typed_column_prepare_dictionary_nanos,omitempty"`
+	TypedColumnPreparePruningNanos        int64    `json:"typed_column_prepare_pruning_nanos,omitempty"`
+	TypedColumnPrepareSortKeyNanos        int64    `json:"typed_column_prepare_sort_key_nanos,omitempty"`
+	TypedColumnPrepareStatsNanos          int64    `json:"typed_column_prepare_stats_nanos,omitempty"`
 	TypedColumnPrepareRangeReadNanos      int64    `json:"typed_column_prepare_range_read_nanos,omitempty"`
 	TypedColumnPrepareRangeReadBytes      int64    `json:"typed_column_prepare_range_read_bytes,omitempty"`
 	TypedColumnPrepareAdapterNanos        int64    `json:"typed_column_prepare_adapter_nanos,omitempty"`
@@ -297,6 +303,9 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.TypedColumnPrepareReadImageNanos += phys.TypedColumnPrepareReadImageNanos
 		out.TypedColumnPrepareStateBuildNanos += phys.TypedColumnPrepareStateBuildNanos
 		out.TypedColumnPrepareDictionaryNanos += phys.TypedColumnPrepareDictionaryNanos
+		out.TypedColumnPreparePruningNanos += phys.TypedColumnPreparePruningNanos
+		out.TypedColumnPrepareSortKeyNanos += phys.TypedColumnPrepareSortKeyNanos
+		out.TypedColumnPrepareStatsNanos += phys.TypedColumnPrepareStatsNanos
 		out.TypedColumnPrepareRangeReadNanos += phys.TypedColumnPrepareRangeReadNanos
 		out.TypedColumnPrepareRangeReadBytes += phys.TypedColumnPrepareRangeReadBytes
 		out.TypedColumnPrepareAdapterNanos += phys.TypedColumnPrepareAdapterNanos
@@ -429,6 +438,9 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		TypedColumnPrepareReadImageNanos:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareReadImageNanos"),
 		TypedColumnPrepareStateBuildNanos:     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareStateBuildNanos"),
 		TypedColumnPrepareDictionaryNanos:     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDictionaryNanos"),
+		TypedColumnPreparePruningNanos:        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePruningNanos"),
+		TypedColumnPrepareSortKeyNanos:        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareSortKeyNanos"),
+		TypedColumnPrepareStatsNanos:          optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareStatsNanos"),
 		TypedColumnPrepareRangeReadNanos:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRangeReadNanos"),
 		TypedColumnPrepareRangeReadBytes:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRangeReadBytes"),
 		TypedColumnPrepareAdapterNanos:        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareAdapterNanos"),
