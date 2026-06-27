@@ -7,7 +7,6 @@ cd "$ROOT_DIR"
 
 DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-10000000}"
-TRIES="${TRIES:-3}"
 OUT_DIR="${OUT_DIR:-/tmp/jsonbench_preferred_columnstore_clickhouse_$(date -u +%Y%m%d_%H%M%S)}"
 GOMAP_REPLACE="${GOMAP_REPLACE:-}"
 CLICKHOUSE_BIN="${CLICKHOUSE_BIN:-clickhouse}"
@@ -19,6 +18,16 @@ CLICKHOUSE_MAX_FILES="${CLICKHOUSE_MAX_FILES:-}"
 TREEDB_FULL_STORAGE_LAYOUTS="${TREEDB_FULL_STORAGE_LAYOUTS:-column-store-full-prepared}"
 TREEDB_QUERY_STORAGE_LAYOUTS="${TREEDB_QUERY_STORAGE_LAYOUTS:-column-store-prepared-metadata}"
 TREEDB_QUERY_MODE="${TREEDB_QUERY_MODE:-${QUERY_MODE:-one_shot_end_to_end}}"
+if [[ -z "${TRIES+x}" ]]; then
+  case "$TREEDB_QUERY_MODE" in
+    one_shot_end_to_end|one-shot|one_shot|oneshot|one-shot-end-to-end|first_touch_after_open|first-touch|first_touch|first-touch-after-open)
+      TRIES=1
+      ;;
+    *)
+      TRIES=3
+      ;;
+  esac
+fi
 TREEDB_METADATA_MODE="${TREEDB_METADATA_MODE:-${METADATA_MODE:-auto_aggregate_metadata}}"
 TREEDB_COMPACT_AFTER_LOAD="${TREEDB_COMPACT_AFTER_LOAD:-0}"
 TREEDB_VALIDATE_RECONSTRUCTION="${TREEDB_VALIDATE_RECONSTRUCTION:-0}"
@@ -34,14 +43,15 @@ ClickHouse JSON comparison, then writes preferred_summary.md.
 
 Defaults reproduce the 10M experiment:
 
-  DATA_DIR="$HOME/data/bluesky" ROWS=10000000 TRIES=3 \
+  DATA_DIR="$HOME/data/bluesky" ROWS=10000000 TRIES=1 \
     GOMAP_REPLACE=/path/to/gomap \
     ./run_preferred_columnstore_clickhouse_compare.sh
 
 Environment:
   DATA_DIR                 JSONBench data directory. Defaults to ~/data/bluesky.
   ROWS                     Requested rows. Defaults to 10000000.
-  TRIES                    Query attempts. Defaults to 3.
+  TRIES                    Query attempts. Defaults to 1 for one_shot_end_to_end
+                           and first_touch_after_open; defaults to 3 otherwise.
   OUT_DIR                  Output directory. Defaults to /tmp/jsonbench_preferred_*.
   GOMAP_REPLACE            Optional local gomap checkout for go mod replace.
   CLICKHOUSE_BIN           ClickHouse binary. Defaults to clickhouse.

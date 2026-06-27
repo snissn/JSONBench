@@ -6,8 +6,17 @@ cd "$ROOT_DIR"
 
 DATA_DIR="${DATA_DIR:-$HOME/data/bluesky}"
 ROWS="${ROWS:-1000000}"
-TRIES="${TRIES:-3}"
 QUERY_MODE="${QUERY_MODE:-one_shot_end_to_end}"
+if [[ -z "${TRIES+x}" ]]; then
+  case "$QUERY_MODE" in
+    one_shot_end_to_end|one-shot|one_shot|oneshot|one-shot-end-to-end|first_touch_after_open|first-touch|first_touch|first-touch-after-open)
+      TRIES=1
+      ;;
+    *)
+      TRIES=3
+      ;;
+  esac
+fi
 METADATA_MODE="${METADATA_MODE:-auto_aggregate_metadata}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5 qexpr}"
 SUITE="${SUITE:-minimal}"

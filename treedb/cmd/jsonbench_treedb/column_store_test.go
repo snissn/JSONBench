@@ -589,13 +589,24 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
 	cfg.Queries = []string{"q1"}
 	cfg.QueryMode = queryModeOneShotEndToEnd
+	cfg.MetadataMode = metadataModeNoAggregateMetadata
 	result := runJSONBenchConfig(t, cfg)
 	query := result.Queries[0]
 	if got, want := query.QueryMode, queryModeOneShotEndToEnd; got != want {
 		t.Fatalf("query_mode=%q want %q", got, want)
 	}
-	if query.Diagnostics.PrepareSetupNanos != 0 {
-		t.Fatalf("prepare_setup_nanos=%d want 0 for direct one-shot run", query.Diagnostics.PrepareSetupNanos)
+	if !query.Diagnostics.TypedColumnOneShotCacheMiss || !query.Diagnostics.TypedColumnOneShotCacheBuild || query.Diagnostics.TypedColumnOneShotCacheHit {
+		t.Fatalf("typed-column one-shot cache hit/miss/build=%t/%t/%t want false/true/true diagnostics=%+v",
+			query.Diagnostics.TypedColumnOneShotCacheHit,
+			query.Diagnostics.TypedColumnOneShotCacheMiss,
+			query.Diagnostics.TypedColumnOneShotCacheBuild,
+			query.Diagnostics)
+	}
+	if query.Diagnostics.TypedColumnOneShotBuildNanos <= 0 {
+		t.Fatalf("typed_column_one_shot_build_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnOneShotBuildNanos, query.Diagnostics)
+	}
+	if got, want := query.Diagnostics.PrepareSetupNanos, query.Diagnostics.TypedColumnOneShotBuildNanos; got != want {
+		t.Fatalf("prepare_setup_nanos=%d want typed-column one-shot build %d diagnostics=%+v", got, want, query.Diagnostics)
 	}
 	if query.Diagnostics.RunNanos <= 0 {
 		t.Fatalf("run_nanos=%d want >0", query.Diagnostics.RunNanos)
@@ -615,6 +626,16 @@ func TestFirstTouchAfterOpenRequiresSingleAttempt(t *testing.T) {
 	cfg.Tries = 2
 	if _, err := runTreeDBBenchmark(cfg); err == nil || !strings.Contains(err.Error(), "pass -tries 1") {
 		t.Fatalf("runTreeDBBenchmark first-touch tries=2 error=%v want tries error", err)
+	}
+}
+
+func TestOneShotEndToEndRequiresSingleAttempt(t *testing.T) {
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.Queries = []string{"q1"}
+	cfg.QueryMode = queryModeOneShotEndToEnd
+	cfg.Tries = 2
+	if _, err := runTreeDBBenchmark(cfg); err == nil || !strings.Contains(err.Error(), "one submitted execution") {
+		t.Fatalf("runTreeDBBenchmark one-shot tries=2 error=%v want one-shot tries error", err)
 	}
 }
 

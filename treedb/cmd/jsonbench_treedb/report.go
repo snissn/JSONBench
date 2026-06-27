@@ -107,6 +107,10 @@ type reportRow struct {
 	MetadataCostInsertSec              float64   `json:"metadata_cost_insert_seconds,omitempty"`
 	MetadataCostInsertBasis            string    `json:"metadata_cost_insert_basis,omitempty"`
 	JSONReconstructionUsed             bool      `json:"json_reconstruction_used,omitempty"`
+	TypedColumnOneShotCacheHit         bool      `json:"typed_column_one_shot_cache_hit,omitempty"`
+	TypedColumnOneShotCacheMiss        bool      `json:"typed_column_one_shot_cache_miss,omitempty"`
+	TypedColumnOneShotCacheBuild       bool      `json:"typed_column_one_shot_cache_build,omitempty"`
+	TypedColumnOneShotBuildNanos       int64     `json:"typed_column_one_shot_build_nanos,omitempty"`
 	PrepareSetupNanos                  int64     `json:"prepare_setup_nanos,omitempty"`
 	RunNanos                           int64     `json:"run_nanos,omitempty"`
 	ResultRenderNanos                  int64     `json:"result_render_nanos,omitempty"`
@@ -423,6 +427,10 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				MetadataCostInsertSec:              metadataCostInsertSec,
 				MetadataCostInsertBasis:            metadataCostInsertBasis,
 				JSONReconstructionUsed:             diagnostics.JSONReconstructionUsed,
+				TypedColumnOneShotCacheHit:         diagnostics.TypedColumnOneShotCacheHit,
+				TypedColumnOneShotCacheMiss:        diagnostics.TypedColumnOneShotCacheMiss,
+				TypedColumnOneShotCacheBuild:       diagnostics.TypedColumnOneShotCacheBuild,
+				TypedColumnOneShotBuildNanos:       diagnostics.TypedColumnOneShotBuildNanos,
 				PrepareSetupNanos:                  diagnostics.PrepareSetupNanos,
 				RunNanos:                           diagnostics.RunNanos,
 				ResultRenderNanos:                  diagnostics.ResultRenderNanos,

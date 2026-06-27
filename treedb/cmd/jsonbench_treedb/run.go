@@ -205,7 +205,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 		Collection:       defaultCollectionName,
 		Checkpoint:       true,
 		CompactBatchSize: defaultBatchSize,
-		Tries:            3,
+		Tries:            1,
 		Queries:          append([]string(nil), jsonBenchQueryNames...),
 	}
 	var queryList string
@@ -290,8 +290,8 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if cfg.Tries <= 0 {
 		return cfg, errors.New("-tries must be positive")
 	}
-	if cfg.QueryMode == queryModeFirstTouchAfterOpen && cfg.Tries != 1 {
-		return cfg, errors.New("-query-mode first_touch_after_open measures one freshly opened execution; pass -tries 1")
+	if err := validateQueryModeAttempts(cfg.QueryMode, cfg.Tries); err != nil {
+		return cfg, err
 	}
 	if _, err := collectionFormat(cfg.Format); err != nil {
 		return cfg, err
@@ -329,8 +329,8 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 	if err != nil {
 		return runResult{}, err
 	}
-	if cfg.QueryMode == queryModeFirstTouchAfterOpen && cfg.Tries != 1 {
-		return runResult{}, errors.New("-query-mode first_touch_after_open measures one freshly opened execution; pass -tries 1")
+	if err := validateQueryModeAttempts(cfg.QueryMode, cfg.Tries); err != nil {
+		return runResult{}, err
 	}
 	dataDir, err := expandPath(cfg.DataDir)
 	if err != nil {
@@ -472,6 +472,20 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		Queries:                       queryResults,
 		Notes:                         runNotes(cfg),
 	}, nil
+}
+
+func validateQueryModeAttempts(queryMode string, tries int) error {
+	switch queryMode {
+	case queryModeOneShotEndToEnd:
+		if tries != 1 {
+			return errors.New("-query-mode one_shot_end_to_end measures one submitted execution; pass -tries 1")
+		}
+	case queryModeFirstTouchAfterOpen:
+		if tries != 1 {
+			return errors.New("-query-mode first_touch_after_open measures one freshly opened execution; pass -tries 1")
+		}
+	}
+	return nil
 }
 
 func compactLoadedData(ctx context.Context, collection *collections.Collection, _ *backenddb.DB, cfg runConfig, rows int) (compactionResult, error) {

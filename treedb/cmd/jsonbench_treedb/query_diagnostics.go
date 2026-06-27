@@ -60,6 +60,10 @@ type queryDiagnostics struct {
 	WorkerCount                   int                       `json:"worker_count,omitempty"`
 	SegmentFileCacheHits          uint64                    `json:"segment_file_cache_hits,omitempty"`
 	SegmentFileCacheMisses        uint64                    `json:"segment_file_cache_misses,omitempty"`
+	TypedColumnOneShotCacheHit    bool                      `json:"typed_column_one_shot_cache_hit,omitempty"`
+	TypedColumnOneShotCacheMiss   bool                      `json:"typed_column_one_shot_cache_miss,omitempty"`
+	TypedColumnOneShotCacheBuild  bool                      `json:"typed_column_one_shot_cache_build,omitempty"`
+	TypedColumnOneShotBuildNanos  int64                     `json:"typed_column_one_shot_build_nanos,omitempty"`
 	ColumnAssetReadIntegrity      string                    `json:"column_asset_read_integrity,omitempty"`
 	AggregateMetadataUsed         bool                      `json:"aggregate_metadata_used,omitempty"`
 	JSONReconstructionUsed        bool                      `json:"json_reconstruction_used,omitempty"`
@@ -135,6 +139,10 @@ type queryPhysicalDiagnostic struct {
 	WorkerCount                   int      `json:"worker_count,omitempty"`
 	SegmentFileCacheHits          uint64   `json:"segment_file_cache_hits,omitempty"`
 	SegmentFileCacheMisses        uint64   `json:"segment_file_cache_misses,omitempty"`
+	TypedColumnOneShotCacheHit    bool     `json:"typed_column_one_shot_cache_hit,omitempty"`
+	TypedColumnOneShotCacheMiss   bool     `json:"typed_column_one_shot_cache_miss,omitempty"`
+	TypedColumnOneShotCacheBuild  bool     `json:"typed_column_one_shot_cache_build,omitempty"`
+	TypedColumnOneShotBuildNanos  int64    `json:"typed_column_one_shot_build_nanos,omitempty"`
 	ColumnAssetReadIntegrity      string   `json:"column_asset_read_integrity,omitempty"`
 	ScanNanos                     int64    `json:"scan_nanos,omitempty"`
 	VisibilityNanos               int64    `json:"visibility_nanos,omitempty"`
@@ -237,6 +245,10 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.WorkerCount = maxInt(out.WorkerCount, phys.WorkerCount)
 		out.SegmentFileCacheHits += phys.SegmentFileCacheHits
 		out.SegmentFileCacheMisses += phys.SegmentFileCacheMisses
+		out.TypedColumnOneShotCacheHit = out.TypedColumnOneShotCacheHit || phys.TypedColumnOneShotCacheHit
+		out.TypedColumnOneShotCacheMiss = out.TypedColumnOneShotCacheMiss || phys.TypedColumnOneShotCacheMiss
+		out.TypedColumnOneShotCacheBuild = out.TypedColumnOneShotCacheBuild || phys.TypedColumnOneShotCacheBuild
+		out.TypedColumnOneShotBuildNanos += phys.TypedColumnOneShotBuildNanos
 		out.ColumnAssetReadIntegrity = mergeDiagnosticString(out.ColumnAssetReadIntegrity, phys.ColumnAssetReadIntegrity)
 		out.ScanNanos += phys.ScanNanos
 		out.VisibilityNanos += phys.VisibilityNanos
@@ -348,6 +360,10 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		WorkerCount:                   d.WorkerCount,
 		SegmentFileCacheHits:          d.SegmentFileCacheHits,
 		SegmentFileCacheMisses:        d.SegmentFileCacheMisses,
+		TypedColumnOneShotCacheHit:    d.TypedColumnOneShotCacheHit,
+		TypedColumnOneShotCacheMiss:   d.TypedColumnOneShotCacheMiss,
+		TypedColumnOneShotCacheBuild:  d.TypedColumnOneShotCacheBuild,
+		TypedColumnOneShotBuildNanos:  d.TypedColumnOneShotBuildNanos,
 		ColumnAssetReadIntegrity:      d.ColumnAssetReadIntegrity,
 		ScanNanos:                     d.ScanNanos,
 		VisibilityNanos:               d.VisibilityNanos,

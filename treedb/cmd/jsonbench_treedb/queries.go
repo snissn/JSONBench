@@ -148,8 +148,20 @@ func runTimedQueryAttempt(collection *collections.Collection, cfg runConfig, nam
 		}
 	}
 	elapsed := time.Since(attemptStart)
+	internalPrepareSetupNanos := int64(0)
+	if prepareSetupNanos == 0 && computed.Diagnostics.TypedColumnOneShotBuildNanos > 0 {
+		internalPrepareSetupNanos = computed.Diagnostics.TypedColumnOneShotBuildNanos
+		prepareSetupNanos = internalPrepareSetupNanos
+	}
 	computed.Diagnostics.PrepareSetupNanos = prepareSetupNanos
-	computed.Diagnostics.RunNanos = runElapsedNanos - renderNanos
+	runNanos := runElapsedNanos - renderNanos
+	if internalPrepareSetupNanos > 0 {
+		runNanos -= internalPrepareSetupNanos
+		if runNanos < 0 {
+			runNanos = 0
+		}
+	}
+	computed.Diagnostics.RunNanos = runNanos
 	computed.Diagnostics.HashNanos = hashNanos
 	computed.Diagnostics.RenderHashNanos = renderNanos + hashNanos
 	computed.Diagnostics.AttemptWallNanos = elapsed.Nanoseconds()
