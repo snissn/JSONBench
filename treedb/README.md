@@ -121,12 +121,13 @@ cd treedb
 ./run_columnstore_benchmark.sh
 ```
 
-By default this runs 1MM rows and 3 tries for q1..q5 plus qexpr direct and prepared-scan
-column-store layouts, plus prepared-metadata q4/q5 where aggregate metadata is
-applicable. Runs use `QUERY_MODE=one_shot_end_to_end` by default; hot prepared
-timings must be requested with `QUERY_MODE=hot_prepared_run` and reported as a
-secondary repeated-query/dashboard lane. It writes the full matrix report plus
-the compact table used in
+By default this runs 1MM rows and one submitted query attempt for q1..q5 plus
+qexpr direct and prepared-scan column-store layouts, plus prepared-metadata
+q4/q5 where aggregate metadata is applicable. Runs use
+`QUERY_MODE=one_shot_end_to_end` by default; hot prepared timings must be
+requested with `QUERY_MODE=hot_prepared_run` and reported as a secondary
+repeated-query/dashboard lane. It writes the full matrix report plus the compact
+table used in
 TreeDB benchmark updates:
 
 - `report.md`
@@ -151,7 +152,7 @@ comparison script:
 
 ```sh
 cd treedb
-ROWS=10000000 TRIES=3 GOMAP_REPLACE=/path/to/gomap \
+ROWS=10000000 TRIES=1 GOMAP_REPLACE=/path/to/gomap \
   ./run_preferred_columnstore_clickhouse_compare.sh
 ```
 
