@@ -31,117 +31,137 @@ type reportDocument struct {
 }
 
 type reportRow struct {
-	System                             string    `json:"system"`
-	Engine                             string    `json:"engine,omitempty"`
-	Scale                              string    `json:"scale"`
-	RequestedRows                      int       `json:"requested_rows,omitempty"`
-	DatasetSize                        int       `json:"dataset_size"`
-	RowCount                           int       `json:"row_count"`
-	InputRows                          int       `json:"input_rows,omitempty"`
-	SkippedInvalidJSONRows             int       `json:"skipped_invalid_json_rows,omitempty"`
-	Format                             string    `json:"format,omitempty"`
-	StorageLayout                      string    `json:"storage_layout,omitempty"`
-	Projection                         string    `json:"projection,omitempty"`
-	QueryMode                          string    `json:"query_mode,omitempty"`
-	MetadataMode                       string    `json:"metadata_mode,omitempty"`
-	Profile                            string    `json:"profile,omitempty"`
-	DataRoot                           string    `json:"data_root,omitempty"`
-	DataShape                          string    `json:"data_shape,omitempty"`
-	ExecutionMode                      string    `json:"execution_mode,omitempty"`
-	QueryPath                          string    `json:"query_path,omitempty"`
-	StorageSource                      string    `json:"storage_source,omitempty"`
-	FallbackReason                     string    `json:"fallback_reason,omitempty"`
-	MetadataDataScanPath               string    `json:"metadata_data_scan_path,omitempty"`
-	SortLayout                         string    `json:"sort_layout,omitempty"`
-	CompressionMode                    string    `json:"compression_mode,omitempty"`
-	MutationMode                       string    `json:"mutation_mode,omitempty"`
-	DocumentScanFallback               bool      `json:"document_scan_fallback"`
-	RetainedPayloadPolicy              string    `json:"retained_payload_policy,omitempty"`
-	RetainedPayloadEncoding            string    `json:"retained_payload_encoding,omitempty"`
-	RetainedPayloadEncodingStatus      string    `json:"retained_payload_encoding_status,omitempty"`
-	ColumnReconstructionPolicy         string    `json:"column_reconstruction_policy,omitempty"`
-	TypedColumnOwner                   string    `json:"typed_column_owner,omitempty"`
-	ReconstructionStatus               string    `json:"reconstruction_status,omitempty"`
-	Query                              string    `json:"query"`
-	BestSec                            float64   `json:"best_seconds"`
-	MedianSec                          float64   `json:"median_seconds"`
-	AttemptsSec                        []float64 `json:"attempts_seconds"`
-	RowsScanned                        int       `json:"rows_scanned,omitempty"`
-	RowsMatched                        int       `json:"rows_matched,omitempty"`
-	ReduceRows                         int       `json:"reduce_rows,omitempty"`
-	ResultGroups                       int       `json:"result_groups,omitempty"`
-	PredicateCount                     int       `json:"predicate_count,omitempty"`
-	TopKLimit                          int       `json:"topk_limit,omitempty"`
-	TopKCandidates                     int       `json:"topk_candidates,omitempty"`
-	BoundedTopKUsed                    bool      `json:"bounded_topk_used,omitempty"`
-	TimeOrderTopKUsed                  bool      `json:"time_order_topk_used,omitempty"`
-	SortKeyMarkChecks                  int       `json:"sort_key_mark_checks,omitempty"`
-	SortKeyMarkMatches                 int       `json:"sort_key_mark_matches,omitempty"`
-	SortKeyMarkSkips                   int       `json:"sort_key_mark_skips,omitempty"`
-	SortKeyMarkFallbackReason          string    `json:"sort_key_mark_fallback_reason,omitempty"`
-	SortedGroupedDistinctReady         bool      `json:"sorted_grouped_distinct_ready,omitempty"`
-	SortedGroupedDistinctUsed          bool      `json:"sorted_grouped_distinct_used,omitempty"`
-	SortedGroupedDistinctFallback      string    `json:"sorted_grouped_distinct_fallback_reason,omitempty"`
-	DenseGroupCountUsed                bool      `json:"dense_group_count_used,omitempty"`
-	DenseGroupCountDistinctUsed        bool      `json:"dense_group_count_distinct_used,omitempty"`
-	DenseGroupHourCountUsed            bool      `json:"dense_group_hour_count_used,omitempty"`
-	DenseInt64SpanUsed                 bool      `json:"dense_int64_span_used,omitempty"`
-	DictionaryCodeHits                 int       `json:"dictionary_code_hits,omitempty"`
-	PredicateDictionaryCodeHits        int       `json:"predicate_dictionary_code_hits,omitempty"`
-	Int64ValueHits                     int       `json:"int64_value_hits,omitempty"`
-	DecodedPayloadBytes                uint64    `json:"decoded_payload_bytes,omitempty"`
-	DecodedMetadataBytes               uint64    `json:"decoded_metadata_bytes,omitempty"`
-	PhysicalBytesScanned               int64     `json:"physical_bytes_scanned,omitempty"`
-	MappedBytes                        uint64    `json:"mapped_bytes,omitempty"`
-	HeapCopyBytes                      uint64    `json:"heap_copy_bytes,omitempty"`
-	RowMaterializations                int       `json:"row_materializations,omitempty"`
-	DocumentMaterializations           int       `json:"document_materializations,omitempty"`
-	FallbackReads                      int       `json:"fallback_reads,omitempty"`
-	AggregateMetadataUsed              bool      `json:"aggregate_metadata_used,omitempty"`
-	AggregateMetadataRefs              int       `json:"aggregate_metadata_refs,omitempty"`
-	AggregateMetadataStorageBytes      int64     `json:"aggregate_metadata_storage_bytes,omitempty"`
-	AggregateMetadataSidecarBytes      int64     `json:"aggregate_metadata_sidecar_bytes,omitempty"`
-	AggregateMetadataEmbeddedBytes     int64     `json:"aggregate_metadata_embedded_bytes,omitempty"`
-	MetadataCostStorageBytes           int64     `json:"metadata_cost_storage_bytes,omitempty"`
-	MetadataCostStorageBasis           string    `json:"metadata_cost_storage_basis,omitempty"`
-	MetadataCostInsertSec              float64   `json:"metadata_cost_insert_seconds,omitempty"`
-	MetadataCostInsertBasis            string    `json:"metadata_cost_insert_basis,omitempty"`
-	JSONReconstructionUsed             bool      `json:"json_reconstruction_used,omitempty"`
-	TypedColumnOneShotCacheHit         bool      `json:"typed_column_one_shot_cache_hit,omitempty"`
-	TypedColumnOneShotCacheMiss        bool      `json:"typed_column_one_shot_cache_miss,omitempty"`
-	TypedColumnOneShotCacheBuild       bool      `json:"typed_column_one_shot_cache_build,omitempty"`
-	TypedColumnOneShotBuildNanos       int64     `json:"typed_column_one_shot_build_nanos,omitempty"`
-	PrepareSetupNanos                  int64     `json:"prepare_setup_nanos,omitempty"`
-	RunNanos                           int64     `json:"run_nanos,omitempty"`
-	ResultRenderNanos                  int64     `json:"result_render_nanos,omitempty"`
-	HashNanos                          int64     `json:"hash_nanos,omitempty"`
-	RenderHashNanos                    int64     `json:"render_hash_nanos,omitempty"`
-	AttemptWallNanos                   int64     `json:"attempt_wall_nanos,omitempty"`
-	TotalQueryNanos                    int64     `json:"total_query_nanos,omitempty"`
-	PhysicalQueryCount                 int       `json:"physical_query_count,omitempty"`
-	StorageBytes                       int64     `json:"storage_bytes,omitempty"`
-	StorageGrossBytes                  int64     `json:"storage_gross_bytes,omitempty"`
-	StorageExcludedBytes               int64     `json:"storage_excluded_bytes,omitempty"`
-	StorageDurableBytesWALExcluded     int64     `json:"storage_durable_bytes_wal_excluded"`
-	StorageWALBytesExcludedFromDurable int64     `json:"storage_wal_bytes_excluded_from_durable_storage"`
-	StorageWALExcludedNote             string    `json:"storage_durable_bytes_wal_excluded_note,omitempty"`
-	StorageColumnAssetBytes            int64     `json:"storage_column_asset_bytes,omitempty"`
-	StorageTypedColumnPartBytes        int64     `json:"storage_typed_column_part_bytes,omitempty"`
-	StorageTypedColumnSectionBytes     int64     `json:"storage_typed_column_section_bytes,omitempty"`
-	StoragePrimaryIndexBytes           int64     `json:"storage_primary_index_bytes,omitempty"`
-	StorageLeafVLogBytes               int64     `json:"storage_leaf_vlog_bytes,omitempty"`
-	StorageWALBytes                    int64     `json:"storage_wal_bytes,omitempty"`
-	BaselineDataBytes                  int64     `json:"baseline_data_bytes,omitempty"`
-	BaselineIndexBytes                 int64     `json:"baseline_index_bytes,omitempty"`
-	StorageAccountingScope             string    `json:"storage_accounting_scope,omitempty"`
-	StorageMeasurementPhase            string    `json:"storage_measurement_phase,omitempty"`
-	LoadSec                            float64   `json:"load_seconds,omitempty"`
-	InsertSec                          float64   `json:"insert_seconds,omitempty"`
-	CompactionSec                      float64   `json:"compaction_seconds,omitempty"`
-	Compacted                          bool      `json:"compacted,omitempty"`
-	RetainsJSON                        *bool     `json:"retains_json_structure,omitempty"`
-	ReconstructionValid                *bool     `json:"reconstruction_valid,omitempty"`
-	Source                             string    `json:"source"`
+	System                                string    `json:"system"`
+	Engine                                string    `json:"engine,omitempty"`
+	Scale                                 string    `json:"scale"`
+	RequestedRows                         int       `json:"requested_rows,omitempty"`
+	DatasetSize                           int       `json:"dataset_size"`
+	RowCount                              int       `json:"row_count"`
+	InputRows                             int       `json:"input_rows,omitempty"`
+	SkippedInvalidJSONRows                int       `json:"skipped_invalid_json_rows,omitempty"`
+	Format                                string    `json:"format,omitempty"`
+	StorageLayout                         string    `json:"storage_layout,omitempty"`
+	Projection                            string    `json:"projection,omitempty"`
+	QueryMode                             string    `json:"query_mode,omitempty"`
+	MetadataMode                          string    `json:"metadata_mode,omitempty"`
+	Profile                               string    `json:"profile,omitempty"`
+	DataRoot                              string    `json:"data_root,omitempty"`
+	DataShape                             string    `json:"data_shape,omitempty"`
+	ExecutionMode                         string    `json:"execution_mode,omitempty"`
+	QueryPath                             string    `json:"query_path,omitempty"`
+	StorageSource                         string    `json:"storage_source,omitempty"`
+	FallbackReason                        string    `json:"fallback_reason,omitempty"`
+	MetadataDataScanPath                  string    `json:"metadata_data_scan_path,omitempty"`
+	SortLayout                            string    `json:"sort_layout,omitempty"`
+	CompressionMode                       string    `json:"compression_mode,omitempty"`
+	MutationMode                          string    `json:"mutation_mode,omitempty"`
+	DocumentScanFallback                  bool      `json:"document_scan_fallback"`
+	RetainedPayloadPolicy                 string    `json:"retained_payload_policy,omitempty"`
+	RetainedPayloadEncoding               string    `json:"retained_payload_encoding,omitempty"`
+	RetainedPayloadEncodingStatus         string    `json:"retained_payload_encoding_status,omitempty"`
+	ColumnReconstructionPolicy            string    `json:"column_reconstruction_policy,omitempty"`
+	TypedColumnOwner                      string    `json:"typed_column_owner,omitempty"`
+	ReconstructionStatus                  string    `json:"reconstruction_status,omitempty"`
+	Query                                 string    `json:"query"`
+	BestSec                               float64   `json:"best_seconds"`
+	MedianSec                             float64   `json:"median_seconds"`
+	AttemptsSec                           []float64 `json:"attempts_seconds"`
+	RowsScanned                           int       `json:"rows_scanned,omitempty"`
+	RowsMatched                           int       `json:"rows_matched,omitempty"`
+	ReduceRows                            int       `json:"reduce_rows,omitempty"`
+	ResultGroups                          int       `json:"result_groups,omitempty"`
+	PredicateCount                        int       `json:"predicate_count,omitempty"`
+	TopKLimit                             int       `json:"topk_limit,omitempty"`
+	TopKCandidates                        int       `json:"topk_candidates,omitempty"`
+	BoundedTopKUsed                       bool      `json:"bounded_topk_used,omitempty"`
+	TimeOrderTopKUsed                     bool      `json:"time_order_topk_used,omitempty"`
+	SortKeyMarkChecks                     int       `json:"sort_key_mark_checks,omitempty"`
+	SortKeyMarkMatches                    int       `json:"sort_key_mark_matches,omitempty"`
+	SortKeyMarkSkips                      int       `json:"sort_key_mark_skips,omitempty"`
+	SortKeyMarkFallbackReason             string    `json:"sort_key_mark_fallback_reason,omitempty"`
+	SortedGroupedDistinctReady            bool      `json:"sorted_grouped_distinct_ready,omitempty"`
+	SortedGroupedDistinctUsed             bool      `json:"sorted_grouped_distinct_used,omitempty"`
+	SortedGroupedDistinctFallback         string    `json:"sorted_grouped_distinct_fallback_reason,omitempty"`
+	DenseGroupCountUsed                   bool      `json:"dense_group_count_used,omitempty"`
+	DenseGroupCountDistinctUsed           bool      `json:"dense_group_count_distinct_used,omitempty"`
+	DenseGroupHourCountUsed               bool      `json:"dense_group_hour_count_used,omitempty"`
+	DenseInt64SpanUsed                    bool      `json:"dense_int64_span_used,omitempty"`
+	DictionaryCodeHits                    int       `json:"dictionary_code_hits,omitempty"`
+	PredicateDictionaryCodeHits           int       `json:"predicate_dictionary_code_hits,omitempty"`
+	Int64ValueHits                        int       `json:"int64_value_hits,omitempty"`
+	DecodedPayloadBytes                   uint64    `json:"decoded_payload_bytes,omitempty"`
+	DecodedMetadataBytes                  uint64    `json:"decoded_metadata_bytes,omitempty"`
+	PhysicalBytesScanned                  int64     `json:"physical_bytes_scanned,omitempty"`
+	MappedBytes                           uint64    `json:"mapped_bytes,omitempty"`
+	HeapCopyBytes                         uint64    `json:"heap_copy_bytes,omitempty"`
+	RowMaterializations                   int       `json:"row_materializations,omitempty"`
+	DocumentMaterializations              int       `json:"document_materializations,omitempty"`
+	FallbackReads                         int       `json:"fallback_reads,omitempty"`
+	AggregateMetadataUsed                 bool      `json:"aggregate_metadata_used,omitempty"`
+	AggregateMetadataRefs                 int       `json:"aggregate_metadata_refs,omitempty"`
+	AggregateMetadataStorageBytes         int64     `json:"aggregate_metadata_storage_bytes,omitempty"`
+	AggregateMetadataSidecarBytes         int64     `json:"aggregate_metadata_sidecar_bytes,omitempty"`
+	AggregateMetadataEmbeddedBytes        int64     `json:"aggregate_metadata_embedded_bytes,omitempty"`
+	MetadataCostStorageBytes              int64     `json:"metadata_cost_storage_bytes,omitempty"`
+	MetadataCostStorageBasis              string    `json:"metadata_cost_storage_basis,omitempty"`
+	MetadataCostInsertSec                 float64   `json:"metadata_cost_insert_seconds,omitempty"`
+	MetadataCostInsertBasis               string    `json:"metadata_cost_insert_basis,omitempty"`
+	JSONReconstructionUsed                bool      `json:"json_reconstruction_used,omitempty"`
+	TypedColumnOneShotCacheHit            bool      `json:"typed_column_one_shot_cache_hit,omitempty"`
+	TypedColumnOneShotCacheMiss           bool      `json:"typed_column_one_shot_cache_miss,omitempty"`
+	TypedColumnOneShotCacheBuild          bool      `json:"typed_column_one_shot_cache_build,omitempty"`
+	TypedColumnOneShotBuildNanos          int64     `json:"typed_column_one_shot_build_nanos,omitempty"`
+	TypedColumnPreparePlanNanos           int64     `json:"typed_column_prepare_plan_nanos,omitempty"`
+	TypedColumnPrepareRefsNanos           int64     `json:"typed_column_prepare_refs_nanos,omitempty"`
+	TypedColumnPreparePairingNanos        int64     `json:"typed_column_prepare_pairing_nanos,omitempty"`
+	TypedColumnPreparePartDecodeNanos     int64     `json:"typed_column_prepare_part_decode_nanos,omitempty"`
+	TypedColumnPreparePostPrepareNanos    int64     `json:"typed_column_prepare_post_prepare_nanos,omitempty"`
+	TypedColumnPrepareSummaryNanos        int64     `json:"typed_column_prepare_summary_nanos,omitempty"`
+	TypedColumnOneShotCacheStoreNanos     int64     `json:"typed_column_one_shot_cache_store_nanos,omitempty"`
+	TypedColumnPrepareReadImageNanos      int64     `json:"typed_column_prepare_read_image_nanos,omitempty"`
+	TypedColumnPrepareStateBuildNanos     int64     `json:"typed_column_prepare_state_build_nanos,omitempty"`
+	TypedColumnPrepareDictionaryNanos     int64     `json:"typed_column_prepare_dictionary_nanos,omitempty"`
+	TypedColumnPreparePruningNanos        int64     `json:"typed_column_prepare_pruning_nanos,omitempty"`
+	TypedColumnPrepareSortKeyNanos        int64     `json:"typed_column_prepare_sort_key_nanos,omitempty"`
+	TypedColumnPrepareStatsNanos          int64     `json:"typed_column_prepare_stats_nanos,omitempty"`
+	TypedColumnPrepareRangeReadNanos      int64     `json:"typed_column_prepare_range_read_nanos,omitempty"`
+	TypedColumnPrepareRangeReadBytes      int64     `json:"typed_column_prepare_range_read_bytes,omitempty"`
+	TypedColumnPrepareAdapterNanos        int64     `json:"typed_column_prepare_adapter_nanos,omitempty"`
+	TypedColumnPrepareDenseGroupNanos     int64     `json:"typed_column_prepare_dense_group_nanos,omitempty"`
+	TypedColumnPrepareDenseValueNanos     int64     `json:"typed_column_prepare_dense_value_nanos,omitempty"`
+	TypedColumnPrepareDensePredicateNanos int64     `json:"typed_column_prepare_dense_predicate_nanos,omitempty"`
+	TypedColumnPrepareDensePreapplyNanos  int64     `json:"typed_column_prepare_dense_preapply_nanos,omitempty"`
+	PrepareSetupNanos                     int64     `json:"prepare_setup_nanos,omitempty"`
+	RunNanos                              int64     `json:"run_nanos,omitempty"`
+	ResultRenderNanos                     int64     `json:"result_render_nanos,omitempty"`
+	HashNanos                             int64     `json:"hash_nanos,omitempty"`
+	RenderHashNanos                       int64     `json:"render_hash_nanos,omitempty"`
+	AttemptWallNanos                      int64     `json:"attempt_wall_nanos,omitempty"`
+	TotalQueryNanos                       int64     `json:"total_query_nanos,omitempty"`
+	PhysicalQueryCount                    int       `json:"physical_query_count,omitempty"`
+	StorageBytes                          int64     `json:"storage_bytes,omitempty"`
+	StorageGrossBytes                     int64     `json:"storage_gross_bytes,omitempty"`
+	StorageExcludedBytes                  int64     `json:"storage_excluded_bytes,omitempty"`
+	StorageDurableBytesWALExcluded        int64     `json:"storage_durable_bytes_wal_excluded"`
+	StorageWALBytesExcludedFromDurable    int64     `json:"storage_wal_bytes_excluded_from_durable_storage"`
+	StorageWALExcludedNote                string    `json:"storage_durable_bytes_wal_excluded_note,omitempty"`
+	StorageColumnAssetBytes               int64     `json:"storage_column_asset_bytes,omitempty"`
+	StorageTypedColumnPartBytes           int64     `json:"storage_typed_column_part_bytes,omitempty"`
+	StorageTypedColumnSectionBytes        int64     `json:"storage_typed_column_section_bytes,omitempty"`
+	StoragePrimaryIndexBytes              int64     `json:"storage_primary_index_bytes,omitempty"`
+	StorageLeafVLogBytes                  int64     `json:"storage_leaf_vlog_bytes,omitempty"`
+	StorageWALBytes                       int64     `json:"storage_wal_bytes,omitempty"`
+	BaselineDataBytes                     int64     `json:"baseline_data_bytes,omitempty"`
+	BaselineIndexBytes                    int64     `json:"baseline_index_bytes,omitempty"`
+	StorageAccountingScope                string    `json:"storage_accounting_scope,omitempty"`
+	StorageMeasurementPhase               string    `json:"storage_measurement_phase,omitempty"`
+	LoadSec                               float64   `json:"load_seconds,omitempty"`
+	InsertSec                             float64   `json:"insert_seconds,omitempty"`
+	CompactionSec                         float64   `json:"compaction_seconds,omitempty"`
+	Compacted                             bool      `json:"compacted,omitempty"`
+	RetainsJSON                           *bool     `json:"retains_json_structure,omitempty"`
+	ReconstructionValid                   *bool     `json:"reconstruction_valid,omitempty"`
+	Source                                string    `json:"source"`
 }
 
 type jsonBenchBaselineResult struct {
@@ -351,115 +371,135 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				metadataCostInsertBasis = "full_load_insert_seconds_current_upper_bound"
 			}
 			rows = append(rows, reportRow{
-				System:                             result.System,
-				Engine:                             result.Engine,
-				Scale:                              reportScaleLabel(result),
-				RequestedRows:                      result.RequestedRows,
-				DatasetSize:                        result.DatasetSize,
-				RowCount:                           result.DatasetSize,
-				InputRows:                          result.Load.InputRows,
-				SkippedInvalidJSONRows:             result.Load.SkippedInvalidJSONRows,
-				Format:                             result.Format,
-				StorageLayout:                      result.StorageLayout,
-				Projection:                         result.Projection,
-				QueryMode:                          queryMode,
-				MetadataMode:                       metadataMode,
-				Profile:                            result.Profile,
-				DataRoot:                           result.DataRoot,
-				DataShape:                          result.DataShape,
-				ExecutionMode:                      queryMode,
-				QueryPath:                          queryPath,
-				StorageSource:                      storageSource,
-				FallbackReason:                     fallbackReason,
-				MetadataDataScanPath:               scanPath,
-				SortLayout:                         reportRowSortLayout(result.StorageLayout, result.Projection),
-				CompressionMode:                    reportRowCompressionMode(result),
-				MutationMode:                       reportRowMutationMode(result),
-				DocumentScanFallback:               scanPath == "document_row_scan",
-				RetainedPayloadPolicy:              result.RetainedPayloadPolicy,
-				RetainedPayloadEncoding:            result.RetainedPayloadEncoding,
-				RetainedPayloadEncodingStatus:      result.RetainedPayloadEncodingStatus,
-				ColumnReconstructionPolicy:         result.ColumnReconstructionPolicy,
-				TypedColumnOwner:                   result.TypedColumnOwner,
-				ReconstructionStatus:               reportRowReconstructionStatus(result),
-				Query:                              q.Name,
-				BestSec:                            q.BestSec,
-				MedianSec:                          q.MedianSec,
-				AttemptsSec:                        q.AttemptsSec,
-				RowsScanned:                        rowsScanned,
-				RowsMatched:                        diagnostics.RowsMatched,
-				ReduceRows:                         diagnostics.ReduceRows,
-				ResultGroups:                       diagnostics.ResultGroups,
-				PredicateCount:                     diagnostics.PredicateCount,
-				TopKLimit:                          diagnostics.TopKLimit,
-				TopKCandidates:                     diagnostics.TopKCandidates,
-				BoundedTopKUsed:                    diagnostics.BoundedTopKUsed,
-				TimeOrderTopKUsed:                  diagnostics.TimeOrderTopKUsed,
-				SortKeyMarkChecks:                  diagnostics.SortKeyMarkChecks,
-				SortKeyMarkMatches:                 diagnostics.SortKeyMarkMatches,
-				SortKeyMarkSkips:                   diagnostics.SortKeyMarkSkips,
-				SortKeyMarkFallbackReason:          diagnostics.SortKeyMarkFallbackReason,
-				SortedGroupedDistinctReady:         diagnostics.SortedGroupedDistinctReady,
-				SortedGroupedDistinctUsed:          diagnostics.SortedGroupedDistinctUsed,
-				SortedGroupedDistinctFallback:      diagnostics.SortedGroupedDistinctFallback,
-				DenseGroupCountUsed:                diagnostics.DenseGroupCountUsed,
-				DenseGroupCountDistinctUsed:        diagnostics.DenseGroupCountDistinctUsed,
-				DenseGroupHourCountUsed:            diagnostics.DenseGroupHourCountUsed,
-				DenseInt64SpanUsed:                 diagnostics.DenseInt64SpanUsed,
-				DictionaryCodeHits:                 diagnostics.DictionaryCodeHits,
-				PredicateDictionaryCodeHits:        diagnostics.PredicateDictionaryCodeHits,
-				Int64ValueHits:                     diagnostics.Int64ValueHits,
-				DecodedPayloadBytes:                diagnostics.DecodedPayloadBytes,
-				DecodedMetadataBytes:               diagnostics.DecodedMetadataBytes,
-				PhysicalBytesScanned:               diagnostics.PhysicalBytesScanned,
-				MappedBytes:                        diagnostics.MappedBytes,
-				HeapCopyBytes:                      diagnostics.HeapCopyBytes,
-				RowMaterializations:                diagnostics.RowMaterializations,
-				DocumentMaterializations:           diagnostics.DocumentMaterializations,
-				FallbackReads:                      diagnostics.FallbackReads,
-				AggregateMetadataUsed:              diagnostics.AggregateMetadataUsed,
-				AggregateMetadataRefs:              aggregateMetadataRefs,
-				AggregateMetadataStorageBytes:      aggregateMetadataStorageBytes,
-				AggregateMetadataSidecarBytes:      aggregateMetadataSidecarBytes,
-				AggregateMetadataEmbeddedBytes:     aggregateMetadataEmbeddedBytes,
-				MetadataCostStorageBytes:           metadataCostStorageBytes,
-				MetadataCostStorageBasis:           metadataCostStorageBasis,
-				MetadataCostInsertSec:              metadataCostInsertSec,
-				MetadataCostInsertBasis:            metadataCostInsertBasis,
-				JSONReconstructionUsed:             diagnostics.JSONReconstructionUsed,
-				TypedColumnOneShotCacheHit:         diagnostics.TypedColumnOneShotCacheHit,
-				TypedColumnOneShotCacheMiss:        diagnostics.TypedColumnOneShotCacheMiss,
-				TypedColumnOneShotCacheBuild:       diagnostics.TypedColumnOneShotCacheBuild,
-				TypedColumnOneShotBuildNanos:       diagnostics.TypedColumnOneShotBuildNanos,
-				PrepareSetupNanos:                  diagnostics.PrepareSetupNanos,
-				RunNanos:                           diagnostics.RunNanos,
-				ResultRenderNanos:                  diagnostics.ResultRenderNanos,
-				HashNanos:                          diagnostics.HashNanos,
-				RenderHashNanos:                    diagnostics.RenderHashNanos,
-				AttemptWallNanos:                   diagnostics.AttemptWallNanos,
-				TotalQueryNanos:                    diagnostics.TotalQueryNanos,
-				PhysicalQueryCount:                 len(diagnostics.PhysicalQueries),
-				StorageBytes:                       result.Storage.TotalBytes,
-				StorageGrossBytes:                  result.Storage.GrossBytes,
-				StorageExcludedBytes:               result.Storage.ExcludedBytes,
-				StorageDurableBytesWALExcluded:     reportStorageDurableBytesWALExcluded(result.Storage),
-				StorageWALBytesExcludedFromDurable: result.Storage.WALBytesExcludedFromDurable,
-				StorageWALExcludedNote:             result.Storage.DurableStorageBytesWALExcludedNote,
-				StorageColumnAssetBytes:            columnAssetBytes,
-				StorageTypedColumnPartBytes:        typedColumnPartBytes,
-				StorageTypedColumnSectionBytes:     typedColumnSectionBytes,
-				StoragePrimaryIndexBytes:           storageCategoryBytes(result.Storage, "primary_index"),
-				StorageLeafVLogBytes:               storageCategoryBytes(result.Storage, "leaf_vlog"),
-				StorageWALBytes:                    storageCategoryBytes(result.Storage, "wal"),
-				StorageAccountingScope:             result.Storage.AccountingScope,
-				StorageMeasurementPhase:            result.Storage.MeasurementPhase,
-				LoadSec:                            result.Load.WallSec,
-				InsertSec:                          result.Load.InsertSec,
-				CompactionSec:                      compactionSec,
-				Compacted:                          compactionEnabled,
-				RetainsJSON:                        &retainsJSON,
-				ReconstructionValid:                reconstructionValid,
-				Source:                             path,
+				System:                                result.System,
+				Engine:                                result.Engine,
+				Scale:                                 reportScaleLabel(result),
+				RequestedRows:                         result.RequestedRows,
+				DatasetSize:                           result.DatasetSize,
+				RowCount:                              result.DatasetSize,
+				InputRows:                             result.Load.InputRows,
+				SkippedInvalidJSONRows:                result.Load.SkippedInvalidJSONRows,
+				Format:                                result.Format,
+				StorageLayout:                         result.StorageLayout,
+				Projection:                            result.Projection,
+				QueryMode:                             queryMode,
+				MetadataMode:                          metadataMode,
+				Profile:                               result.Profile,
+				DataRoot:                              result.DataRoot,
+				DataShape:                             result.DataShape,
+				ExecutionMode:                         queryMode,
+				QueryPath:                             queryPath,
+				StorageSource:                         storageSource,
+				FallbackReason:                        fallbackReason,
+				MetadataDataScanPath:                  scanPath,
+				SortLayout:                            reportRowSortLayout(result.StorageLayout, result.Projection),
+				CompressionMode:                       reportRowCompressionMode(result),
+				MutationMode:                          reportRowMutationMode(result),
+				DocumentScanFallback:                  scanPath == "document_row_scan",
+				RetainedPayloadPolicy:                 result.RetainedPayloadPolicy,
+				RetainedPayloadEncoding:               result.RetainedPayloadEncoding,
+				RetainedPayloadEncodingStatus:         result.RetainedPayloadEncodingStatus,
+				ColumnReconstructionPolicy:            result.ColumnReconstructionPolicy,
+				TypedColumnOwner:                      result.TypedColumnOwner,
+				ReconstructionStatus:                  reportRowReconstructionStatus(result),
+				Query:                                 q.Name,
+				BestSec:                               q.BestSec,
+				MedianSec:                             q.MedianSec,
+				AttemptsSec:                           q.AttemptsSec,
+				RowsScanned:                           rowsScanned,
+				RowsMatched:                           diagnostics.RowsMatched,
+				ReduceRows:                            diagnostics.ReduceRows,
+				ResultGroups:                          diagnostics.ResultGroups,
+				PredicateCount:                        diagnostics.PredicateCount,
+				TopKLimit:                             diagnostics.TopKLimit,
+				TopKCandidates:                        diagnostics.TopKCandidates,
+				BoundedTopKUsed:                       diagnostics.BoundedTopKUsed,
+				TimeOrderTopKUsed:                     diagnostics.TimeOrderTopKUsed,
+				SortKeyMarkChecks:                     diagnostics.SortKeyMarkChecks,
+				SortKeyMarkMatches:                    diagnostics.SortKeyMarkMatches,
+				SortKeyMarkSkips:                      diagnostics.SortKeyMarkSkips,
+				SortKeyMarkFallbackReason:             diagnostics.SortKeyMarkFallbackReason,
+				SortedGroupedDistinctReady:            diagnostics.SortedGroupedDistinctReady,
+				SortedGroupedDistinctUsed:             diagnostics.SortedGroupedDistinctUsed,
+				SortedGroupedDistinctFallback:         diagnostics.SortedGroupedDistinctFallback,
+				DenseGroupCountUsed:                   diagnostics.DenseGroupCountUsed,
+				DenseGroupCountDistinctUsed:           diagnostics.DenseGroupCountDistinctUsed,
+				DenseGroupHourCountUsed:               diagnostics.DenseGroupHourCountUsed,
+				DenseInt64SpanUsed:                    diagnostics.DenseInt64SpanUsed,
+				DictionaryCodeHits:                    diagnostics.DictionaryCodeHits,
+				PredicateDictionaryCodeHits:           diagnostics.PredicateDictionaryCodeHits,
+				Int64ValueHits:                        diagnostics.Int64ValueHits,
+				DecodedPayloadBytes:                   diagnostics.DecodedPayloadBytes,
+				DecodedMetadataBytes:                  diagnostics.DecodedMetadataBytes,
+				PhysicalBytesScanned:                  diagnostics.PhysicalBytesScanned,
+				MappedBytes:                           diagnostics.MappedBytes,
+				HeapCopyBytes:                         diagnostics.HeapCopyBytes,
+				RowMaterializations:                   diagnostics.RowMaterializations,
+				DocumentMaterializations:              diagnostics.DocumentMaterializations,
+				FallbackReads:                         diagnostics.FallbackReads,
+				AggregateMetadataUsed:                 diagnostics.AggregateMetadataUsed,
+				AggregateMetadataRefs:                 aggregateMetadataRefs,
+				AggregateMetadataStorageBytes:         aggregateMetadataStorageBytes,
+				AggregateMetadataSidecarBytes:         aggregateMetadataSidecarBytes,
+				AggregateMetadataEmbeddedBytes:        aggregateMetadataEmbeddedBytes,
+				MetadataCostStorageBytes:              metadataCostStorageBytes,
+				MetadataCostStorageBasis:              metadataCostStorageBasis,
+				MetadataCostInsertSec:                 metadataCostInsertSec,
+				MetadataCostInsertBasis:               metadataCostInsertBasis,
+				JSONReconstructionUsed:                diagnostics.JSONReconstructionUsed,
+				TypedColumnOneShotCacheHit:            diagnostics.TypedColumnOneShotCacheHit,
+				TypedColumnOneShotCacheMiss:           diagnostics.TypedColumnOneShotCacheMiss,
+				TypedColumnOneShotCacheBuild:          diagnostics.TypedColumnOneShotCacheBuild,
+				TypedColumnOneShotBuildNanos:          diagnostics.TypedColumnOneShotBuildNanos,
+				TypedColumnPreparePlanNanos:           diagnostics.TypedColumnPreparePlanNanos,
+				TypedColumnPrepareRefsNanos:           diagnostics.TypedColumnPrepareRefsNanos,
+				TypedColumnPreparePairingNanos:        diagnostics.TypedColumnPreparePairingNanos,
+				TypedColumnPreparePartDecodeNanos:     diagnostics.TypedColumnPreparePartDecodeNanos,
+				TypedColumnPreparePostPrepareNanos:    diagnostics.TypedColumnPreparePostPrepareNanos,
+				TypedColumnPrepareSummaryNanos:        diagnostics.TypedColumnPrepareSummaryNanos,
+				TypedColumnOneShotCacheStoreNanos:     diagnostics.TypedColumnOneShotCacheStoreNanos,
+				TypedColumnPrepareReadImageNanos:      diagnostics.TypedColumnPrepareReadImageNanos,
+				TypedColumnPrepareStateBuildNanos:     diagnostics.TypedColumnPrepareStateBuildNanos,
+				TypedColumnPrepareDictionaryNanos:     diagnostics.TypedColumnPrepareDictionaryNanos,
+				TypedColumnPreparePruningNanos:        diagnostics.TypedColumnPreparePruningNanos,
+				TypedColumnPrepareSortKeyNanos:        diagnostics.TypedColumnPrepareSortKeyNanos,
+				TypedColumnPrepareStatsNanos:          diagnostics.TypedColumnPrepareStatsNanos,
+				TypedColumnPrepareRangeReadNanos:      diagnostics.TypedColumnPrepareRangeReadNanos,
+				TypedColumnPrepareRangeReadBytes:      diagnostics.TypedColumnPrepareRangeReadBytes,
+				TypedColumnPrepareAdapterNanos:        diagnostics.TypedColumnPrepareAdapterNanos,
+				TypedColumnPrepareDenseGroupNanos:     diagnostics.TypedColumnPrepareDenseGroupNanos,
+				TypedColumnPrepareDenseValueNanos:     diagnostics.TypedColumnPrepareDenseValueNanos,
+				TypedColumnPrepareDensePredicateNanos: diagnostics.TypedColumnPrepareDensePredicateNanos,
+				TypedColumnPrepareDensePreapplyNanos:  diagnostics.TypedColumnPrepareDensePreapplyNanos,
+				PrepareSetupNanos:                     diagnostics.PrepareSetupNanos,
+				RunNanos:                              diagnostics.RunNanos,
+				ResultRenderNanos:                     diagnostics.ResultRenderNanos,
+				HashNanos:                             diagnostics.HashNanos,
+				RenderHashNanos:                       diagnostics.RenderHashNanos,
+				AttemptWallNanos:                      diagnostics.AttemptWallNanos,
+				TotalQueryNanos:                       diagnostics.TotalQueryNanos,
+				PhysicalQueryCount:                    len(diagnostics.PhysicalQueries),
+				StorageBytes:                          result.Storage.TotalBytes,
+				StorageGrossBytes:                     result.Storage.GrossBytes,
+				StorageExcludedBytes:                  result.Storage.ExcludedBytes,
+				StorageDurableBytesWALExcluded:        reportStorageDurableBytesWALExcluded(result.Storage),
+				StorageWALBytesExcludedFromDurable:    result.Storage.WALBytesExcludedFromDurable,
+				StorageWALExcludedNote:                result.Storage.DurableStorageBytesWALExcludedNote,
+				StorageColumnAssetBytes:               columnAssetBytes,
+				StorageTypedColumnPartBytes:           typedColumnPartBytes,
+				StorageTypedColumnSectionBytes:        typedColumnSectionBytes,
+				StoragePrimaryIndexBytes:              storageCategoryBytes(result.Storage, "primary_index"),
+				StorageLeafVLogBytes:                  storageCategoryBytes(result.Storage, "leaf_vlog"),
+				StorageWALBytes:                       storageCategoryBytes(result.Storage, "wal"),
+				StorageAccountingScope:                result.Storage.AccountingScope,
+				StorageMeasurementPhase:               result.Storage.MeasurementPhase,
+				LoadSec:                               result.Load.WallSec,
+				InsertSec:                             result.Load.InsertSec,
+				CompactionSec:                         compactionSec,
+				Compacted:                             compactionEnabled,
+				RetainsJSON:                           &retainsJSON,
+				ReconstructionValid:                   reconstructionValid,
+				Source:                                path,
 			})
 		}
 		return nil
@@ -892,6 +932,47 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.TotalQueryNanos,
 		)
 	}
+	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
+		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		for _, row := range doc.Rows {
+			if row.System != "TreeDB" || !reportRowHasTypedColumnSetupDiagnostics(row) {
+				continue
+			}
+			fmt.Fprintf(
+				&buf,
+				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+				row.Scale,
+				reportRowLayout(row),
+				row.Query,
+				row.QueryMode,
+				row.MetadataMode,
+				row.PrepareSetupNanos,
+				row.TypedColumnOneShotBuildNanos,
+				row.TypedColumnPreparePlanNanos,
+				row.TypedColumnPrepareRefsNanos,
+				row.TypedColumnPreparePairingNanos,
+				row.TypedColumnPreparePartDecodeNanos,
+				row.TypedColumnPreparePostPrepareNanos,
+				row.TypedColumnPrepareSummaryNanos,
+				row.TypedColumnOneShotCacheStoreNanos,
+				row.TypedColumnPrepareReadImageNanos,
+				row.TypedColumnPrepareStateBuildNanos,
+				row.TypedColumnPrepareDictionaryNanos,
+				row.TypedColumnPreparePruningNanos,
+				row.TypedColumnPrepareSortKeyNanos,
+				row.TypedColumnPrepareStatsNanos,
+				row.TypedColumnPrepareRangeReadNanos,
+				row.TypedColumnPrepareRangeReadBytes,
+				row.TypedColumnPrepareAdapterNanos,
+				row.TypedColumnPrepareDenseGroupNanos,
+				row.TypedColumnPrepareDenseValueNanos,
+				row.TypedColumnPrepareDensePredicateNanos,
+				row.TypedColumnPrepareDensePreapplyNanos,
+			)
+		}
+	}
 	fmt.Fprintf(&buf, "\n## Best Runtime By Query\n\n")
 	best := bestByScaleQuery(doc.Rows)
 	fmt.Fprintf(&buf, "| rows/scale | query | fastest system/layout | best | TreeDB best | DuckDB best | ClickHouse best | TreeDB / ClickHouse |\n")
@@ -1006,6 +1087,39 @@ func formatDensePath(row reportRow) string {
 		paths = append(paths, "int64_span")
 	}
 	return strings.Join(paths, ",")
+}
+
+func reportHasTypedColumnSetupDiagnostics(rows []reportRow) bool {
+	for _, row := range rows {
+		if row.System == "TreeDB" && reportRowHasTypedColumnSetupDiagnostics(row) {
+			return true
+		}
+	}
+	return false
+}
+
+func reportRowHasTypedColumnSetupDiagnostics(row reportRow) bool {
+	return row.TypedColumnOneShotBuildNanos != 0 ||
+		row.TypedColumnPreparePlanNanos != 0 ||
+		row.TypedColumnPrepareRefsNanos != 0 ||
+		row.TypedColumnPreparePairingNanos != 0 ||
+		row.TypedColumnPreparePartDecodeNanos != 0 ||
+		row.TypedColumnPreparePostPrepareNanos != 0 ||
+		row.TypedColumnPrepareSummaryNanos != 0 ||
+		row.TypedColumnOneShotCacheStoreNanos != 0 ||
+		row.TypedColumnPrepareReadImageNanos != 0 ||
+		row.TypedColumnPrepareStateBuildNanos != 0 ||
+		row.TypedColumnPrepareDictionaryNanos != 0 ||
+		row.TypedColumnPreparePruningNanos != 0 ||
+		row.TypedColumnPrepareSortKeyNanos != 0 ||
+		row.TypedColumnPrepareStatsNanos != 0 ||
+		row.TypedColumnPrepareRangeReadNanos != 0 ||
+		row.TypedColumnPrepareRangeReadBytes != 0 ||
+		row.TypedColumnPrepareAdapterNanos != 0 ||
+		row.TypedColumnPrepareDenseGroupNanos != 0 ||
+		row.TypedColumnPrepareDenseValueNanos != 0 ||
+		row.TypedColumnPrepareDensePredicateNanos != 0 ||
+		row.TypedColumnPrepareDensePreapplyNanos != 0
 }
 
 type bestGroup struct {

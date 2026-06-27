@@ -608,6 +608,41 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 	if got, want := query.Diagnostics.PrepareSetupNanos, query.Diagnostics.TypedColumnOneShotBuildNanos; got != want {
 		t.Fatalf("prepare_setup_nanos=%d want typed-column one-shot build %d diagnostics=%+v", got, want, query.Diagnostics)
 	}
+	prepareSubphaseNanos := query.Diagnostics.TypedColumnPreparePlanNanos +
+		query.Diagnostics.TypedColumnPrepareRefsNanos +
+		query.Diagnostics.TypedColumnPreparePairingNanos +
+		query.Diagnostics.TypedColumnPreparePartDecodeNanos +
+		query.Diagnostics.TypedColumnPreparePostPrepareNanos +
+		query.Diagnostics.TypedColumnPrepareSummaryNanos
+	prepareFineNanos := query.Diagnostics.TypedColumnPrepareReadImageNanos +
+		query.Diagnostics.TypedColumnPrepareStateBuildNanos +
+		query.Diagnostics.TypedColumnPrepareDictionaryNanos +
+		query.Diagnostics.TypedColumnPreparePruningNanos +
+		query.Diagnostics.TypedColumnPrepareSortKeyNanos +
+		query.Diagnostics.TypedColumnPrepareStatsNanos +
+		query.Diagnostics.TypedColumnPrepareRangeReadNanos +
+		query.Diagnostics.TypedColumnPrepareAdapterNanos +
+		query.Diagnostics.TypedColumnPrepareDenseGroupNanos +
+		query.Diagnostics.TypedColumnPrepareDenseValueNanos +
+		query.Diagnostics.TypedColumnPrepareDensePredicateNanos +
+		query.Diagnostics.TypedColumnPrepareDensePreapplyNanos
+	if prepareSubphaseNanos > 0 {
+		if query.Diagnostics.TypedColumnPreparePartDecodeNanos <= 0 {
+			t.Fatalf("typed_column_prepare_part_decode_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnPreparePartDecodeNanos, query.Diagnostics)
+		}
+		if query.Diagnostics.TypedColumnOneShotCacheStoreNanos <= 0 {
+			t.Fatalf("typed_column_one_shot_cache_store_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnOneShotCacheStoreNanos, query.Diagnostics)
+		}
+		if query.Diagnostics.PrepareSetupNanos < prepareSubphaseNanos {
+			t.Fatalf("prepare_setup_nanos=%d smaller than subphase sum %d diagnostics=%+v", query.Diagnostics.PrepareSetupNanos, prepareSubphaseNanos, query.Diagnostics)
+		}
+	}
+	if prepareFineNanos > 0 && query.Diagnostics.TypedColumnPrepareRangeReadNanos > 0 && query.Diagnostics.TypedColumnPrepareRangeReadBytes <= 0 {
+		t.Fatalf("typed_column_prepare_range_read_bytes=%d want >0 with range_read_nanos=%d diagnostics=%+v",
+			query.Diagnostics.TypedColumnPrepareRangeReadBytes,
+			query.Diagnostics.TypedColumnPrepareRangeReadNanos,
+			query.Diagnostics)
+	}
 	if query.Diagnostics.RunNanos <= 0 {
 		t.Fatalf("run_nanos=%d want >0", query.Diagnostics.RunNanos)
 	}
@@ -616,6 +651,90 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 	}
 	if query.Diagnostics.TotalQueryNanos < query.Diagnostics.PrepareSetupNanos+query.Diagnostics.RunNanos+query.Diagnostics.RenderHashNanos {
 		t.Fatalf("total_query_nanos=%d split prepare=%d run=%d render_hash=%d", query.Diagnostics.TotalQueryNanos, query.Diagnostics.PrepareSetupNanos, query.Diagnostics.RunNanos, query.Diagnostics.RenderHashNanos)
+	}
+}
+
+func TestHotPreparedReportsRunnerPrepareDiagnostics(t *testing.T) {
+	if !columnPhysicalRunnerPrepareDiagnosticsAvailableForTest() {
+		t.Skip("linked gomap does not expose ColumnPhysicalQueryRunner.PrepareDiagnostics")
+	}
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.Queries = []string{"q5"}
+	cfg.QueryMode = queryModeHotPreparedRun
+	cfg.MetadataMode = metadataModeNoAggregateMetadata
+	result := runJSONBenchConfig(t, cfg)
+	query := result.Queries[0]
+	if got, want := query.QueryMode, queryModeHotPreparedRun; got != want {
+		t.Fatalf("query_mode=%q want %q", got, want)
+	}
+	if query.Diagnostics.TypedColumnOneShotCacheBuild || query.Diagnostics.TypedColumnOneShotBuildNanos != 0 {
+		t.Fatalf("hot-prepared query reported one-shot setup diagnostics=%+v", query.Diagnostics)
+	}
+	if query.Diagnostics.PrepareSetupNanos <= 0 {
+		t.Fatalf("prepare_setup_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.PrepareSetupNanos, query.Diagnostics)
+	}
+	prepareSubphaseNanos := typedColumnPrepareDiagnosticNanos(query.Diagnostics)
+	if prepareSubphaseNanos == 0 {
+		t.Skipf("linked gomap exposes prepare diagnostics, but fixture timers rounded to zero: %+v", query.Diagnostics)
+	}
+	if query.Diagnostics.TypedColumnPreparePartDecodeNanos <= 0 {
+		t.Fatalf("typed_column_prepare_part_decode_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnPreparePartDecodeNanos, query.Diagnostics)
+	}
+	if got, want := len(query.Diagnostics.PhysicalQueries), 1; got != want {
+		t.Fatalf("physical query diagnostics=%d want %d: %+v", got, want, query.Diagnostics.PhysicalQueries)
+	}
+	if physSubphaseNanos := typedColumnPhysicalPrepareDiagnosticNanos(query.Diagnostics.PhysicalQueries[0]); physSubphaseNanos == 0 {
+		t.Fatalf("physical query prepare diagnostics were not merged: %+v", query.Diagnostics.PhysicalQueries[0])
+	}
+}
+
+func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T) {
+	diag := queryDiagnostics{
+		PhysicalQueries: []queryPhysicalDiagnostic{
+			{Name: "group_count", RowsScanned: 10},
+		},
+	}
+	prepared := preparedColumnQuery{
+		prepare: []queryPhysicalDiagnostic{
+			{
+				Name:                                  "group_count",
+				TypedColumnPreparePlanNanos:           1,
+				TypedColumnPrepareRefsNanos:           2,
+				TypedColumnPreparePairingNanos:        3,
+				TypedColumnPreparePartDecodeNanos:     4,
+				TypedColumnPreparePostPrepareNanos:    5,
+				TypedColumnPrepareSummaryNanos:        6,
+				TypedColumnPrepareReadImageNanos:      7,
+				TypedColumnPrepareStateBuildNanos:     8,
+				TypedColumnPrepareDictionaryNanos:     9,
+				TypedColumnPreparePruningNanos:        10,
+				TypedColumnPrepareSortKeyNanos:        11,
+				TypedColumnPrepareStatsNanos:          12,
+				TypedColumnPrepareRangeReadNanos:      13,
+				TypedColumnPrepareRangeReadBytes:      14,
+				TypedColumnPrepareAdapterNanos:        15,
+				TypedColumnPrepareDenseGroupNanos:     16,
+				TypedColumnPrepareDenseValueNanos:     17,
+				TypedColumnPrepareDensePredicateNanos: 18,
+				TypedColumnPrepareDensePreapplyNanos:  19,
+			},
+		},
+	}
+	prepared.applyPrepareDiagnostics(&diag)
+	if got, want := len(diag.PhysicalQueries), 1; got != want {
+		t.Fatalf("physical query diagnostics=%d want %d: %+v", got, want, diag.PhysicalQueries)
+	}
+	if got, want := diag.TypedColumnPreparePlanNanos, int64(1); got != want {
+		t.Fatalf("typed_column_prepare_plan_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareRangeReadBytes, int64(14); got != want {
+		t.Fatalf("typed_column_prepare_range_read_bytes=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].RowsScanned, 10; got != want {
+		t.Fatalf("physical rows_scanned=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareDensePreapplyNanos, int64(19); got != want {
+		t.Fatalf("physical typed_column_prepare_dense_preapply_nanos=%d want %d", got, want)
 	}
 }
 
@@ -637,6 +756,53 @@ func TestOneShotEndToEndRequiresSingleAttempt(t *testing.T) {
 	if _, err := runTreeDBBenchmark(cfg); err == nil || !strings.Contains(err.Error(), "one submitted execution") {
 		t.Fatalf("runTreeDBBenchmark one-shot tries=2 error=%v want one-shot tries error", err)
 	}
+}
+
+func columnPhysicalRunnerPrepareDiagnosticsAvailableForTest() bool {
+	_, ok := reflect.TypeOf((*collections.ColumnPhysicalQueryRunner)(nil)).MethodByName("PrepareDiagnostics")
+	return ok
+}
+
+func typedColumnPrepareDiagnosticNanos(diag queryDiagnostics) int64 {
+	return diag.TypedColumnPreparePlanNanos +
+		diag.TypedColumnPrepareRefsNanos +
+		diag.TypedColumnPreparePairingNanos +
+		diag.TypedColumnPreparePartDecodeNanos +
+		diag.TypedColumnPreparePostPrepareNanos +
+		diag.TypedColumnPrepareSummaryNanos +
+		diag.TypedColumnPrepareReadImageNanos +
+		diag.TypedColumnPrepareStateBuildNanos +
+		diag.TypedColumnPrepareDictionaryNanos +
+		diag.TypedColumnPreparePruningNanos +
+		diag.TypedColumnPrepareSortKeyNanos +
+		diag.TypedColumnPrepareStatsNanos +
+		diag.TypedColumnPrepareRangeReadNanos +
+		diag.TypedColumnPrepareAdapterNanos +
+		diag.TypedColumnPrepareDenseGroupNanos +
+		diag.TypedColumnPrepareDenseValueNanos +
+		diag.TypedColumnPrepareDensePredicateNanos +
+		diag.TypedColumnPrepareDensePreapplyNanos
+}
+
+func typedColumnPhysicalPrepareDiagnosticNanos(diag queryPhysicalDiagnostic) int64 {
+	return diag.TypedColumnPreparePlanNanos +
+		diag.TypedColumnPrepareRefsNanos +
+		diag.TypedColumnPreparePairingNanos +
+		diag.TypedColumnPreparePartDecodeNanos +
+		diag.TypedColumnPreparePostPrepareNanos +
+		diag.TypedColumnPrepareSummaryNanos +
+		diag.TypedColumnPrepareReadImageNanos +
+		diag.TypedColumnPrepareStateBuildNanos +
+		diag.TypedColumnPrepareDictionaryNanos +
+		diag.TypedColumnPreparePruningNanos +
+		diag.TypedColumnPrepareSortKeyNanos +
+		diag.TypedColumnPrepareStatsNanos +
+		diag.TypedColumnPrepareRangeReadNanos +
+		diag.TypedColumnPrepareAdapterNanos +
+		diag.TypedColumnPrepareDenseGroupNanos +
+		diag.TypedColumnPrepareDenseValueNanos +
+		diag.TypedColumnPrepareDensePredicateNanos +
+		diag.TypedColumnPrepareDensePreapplyNanos
 }
 
 func runFixtureConfig(layout, query string) runConfig {
