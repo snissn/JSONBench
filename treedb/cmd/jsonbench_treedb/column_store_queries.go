@@ -123,6 +123,7 @@ type preparedColumnQuery struct {
 	count          *collections.ColumnPhysicalQueryRunner
 	distinct       *collections.ColumnPhysicalQueryRunner
 	int64Aggregate *collections.TypedColumnInt64PredicateAggregateSession
+	prepare        []queryPhysicalDiagnostic
 }
 
 func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfig, name string) (*preparedColumnQuery, error) {
@@ -132,37 +133,44 @@ func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfi
 	prepare := func(req collections.ColumnPhysicalQueryRequest) (*collections.ColumnPhysicalQueryRunner, error) {
 		return collection.PrepareColumnPhysicalQuery(req)
 	}
+	preparedPhysical := func(physicalName string, runner *collections.ColumnPhysicalQueryRunner) *preparedColumnQuery {
+		prepared := &preparedColumnQuery{name: name, count: runner}
+		if diag, ok := columnPhysicalRunnerPrepareDiagnostic(physicalName, runner); ok {
+			prepared.prepare = append(prepared.prepare, diag)
+		}
+		return prepared
+	}
 	switch name {
 	case "q1":
 		runner, err := prepare(columnPhysicalRequest(cfg, "q1", collections.ColumnPhysicalQueryGroupCount, "event", "", ""))
 		if err != nil {
 			return nil, err
 		}
-		return &preparedColumnQuery{name: name, count: runner}, nil
+		return preparedPhysical("group_count", runner), nil
 	case "q2":
 		runner, err := prepare(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountAndDistinct, "event", "", "did"))
 		if err != nil {
 			return nil, err
 		}
-		return &preparedColumnQuery{name: name, count: runner}, nil
+		return preparedPhysical("group_count_and_distinct", runner), nil
 	case "q3":
 		runner, err := prepare(columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", ""))
 		if err != nil {
 			return nil, err
 		}
-		return &preparedColumnQuery{name: name, count: runner}, nil
+		return preparedPhysical("group_hour_count", runner), nil
 	case "q4", "q4a", "q4b":
 		runner, err := prepare(columnPhysicalRequest(cfg, name, collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", ""))
 		if err != nil {
 			return nil, err
 		}
-		return &preparedColumnQuery{name: name, count: runner}, nil
+		return preparedPhysical("group_min_int64", runner), nil
 	case "q5":
 		runner, err := prepare(columnPhysicalRequest(cfg, "q5", collections.ColumnPhysicalQueryGroupInt64Span, "did", "time_us", ""))
 		if err != nil {
 			return nil, err
 		}
-		return &preparedColumnQuery{name: name, count: runner}, nil
+		return preparedPhysical("group_int64_span", runner), nil
 	case "qexpr":
 		runner, err := collection.PrepareTypedColumnInt64PredicateAggregate(qexprTypedInt64AggregateRequest())
 		if err != nil {
@@ -206,7 +214,9 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 		if err != nil {
 			return queryComputation{}, err
 		}
-		return renderColumnQExpr(rows, result), nil
+		computed := renderColumnQExpr(rows, result)
+		p.applyPrepareDiagnostics(&computed.Diagnostics)
+		return computed, nil
 	}
 	if p.count == nil {
 		return queryComputation{}, errors.New("prepared column query is not initialized")
@@ -217,17 +227,36 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 	}
 	switch p.name {
 	case "q1":
-		return renderColumnQ1(rows, countResult), nil
+		computed := renderColumnQ1(rows, countResult)
+		p.applyPrepareDiagnostics(&computed.Diagnostics)
+		return computed, nil
 	case "q2":
-		return renderColumnQ2(rows, countResult), nil
+		computed := renderColumnQ2(rows, countResult)
+		p.applyPrepareDiagnostics(&computed.Diagnostics)
+		return computed, nil
 	case "q3":
-		return renderColumnQ3(rows, countResult), nil
+		computed := renderColumnQ3(rows, countResult)
+		p.applyPrepareDiagnostics(&computed.Diagnostics)
+		return computed, nil
 	case "q4", "q4a", "q4b":
-		return renderColumnQ4(rows, countResult), nil
+		computed := renderColumnQ4(rows, countResult)
+		p.applyPrepareDiagnostics(&computed.Diagnostics)
+		return computed, nil
 	case "q5":
-		return renderColumnQ5(rows, countResult), nil
+		computed := renderColumnQ5(rows, countResult)
+		p.applyPrepareDiagnostics(&computed.Diagnostics)
+		return computed, nil
 	default:
 		return queryComputation{}, fmt.Errorf("prepared column query %q is unsupported", p.name)
+	}
+}
+
+func (p *preparedColumnQuery) applyPrepareDiagnostics(diag *queryDiagnostics) {
+	if p == nil || diag == nil {
+		return
+	}
+	for _, prepare := range p.prepare {
+		mergeColumnPhysicalPrepareDiagnostics(diag, prepare)
 	}
 }
 

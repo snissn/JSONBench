@@ -458,6 +458,108 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 	}
 }
 
+func columnPhysicalRunnerPrepareDiagnostic(name string, runner *collections.ColumnPhysicalQueryRunner) (queryPhysicalDiagnostic, bool) {
+	if runner == nil {
+		return queryPhysicalDiagnostic{}, false
+	}
+	method := reflect.ValueOf(runner).MethodByName("PrepareDiagnostics")
+	if !method.IsValid() || method.Type().NumIn() != 0 || method.Type().NumOut() != 1 {
+		return queryPhysicalDiagnostic{}, false
+	}
+	values := method.Call(nil)
+	if len(values) != 1 {
+		return queryPhysicalDiagnostic{}, false
+	}
+	diagnostics, ok := values[0].Interface().(collections.ColumnPhysicalQueryDiagnostics)
+	if !ok {
+		return queryPhysicalDiagnostic{}, false
+	}
+	phys := physicalQueryDiagnostic(namedColumnPhysicalResult{
+		Name: name,
+		Result: collections.ColumnPhysicalQueryResult{
+			Diagnostics: diagnostics,
+		},
+	})
+	return phys, columnPhysicalPrepareDiagnosticsHasData(phys)
+}
+
+func columnPhysicalPrepareDiagnosticsHasData(phys queryPhysicalDiagnostic) bool {
+	return phys.TypedColumnPreparePlanNanos > 0 ||
+		phys.TypedColumnPrepareRefsNanos > 0 ||
+		phys.TypedColumnPreparePairingNanos > 0 ||
+		phys.TypedColumnPreparePartDecodeNanos > 0 ||
+		phys.TypedColumnPreparePostPrepareNanos > 0 ||
+		phys.TypedColumnPrepareSummaryNanos > 0 ||
+		phys.TypedColumnPrepareReadImageNanos > 0 ||
+		phys.TypedColumnPrepareStateBuildNanos > 0 ||
+		phys.TypedColumnPrepareDictionaryNanos > 0 ||
+		phys.TypedColumnPreparePruningNanos > 0 ||
+		phys.TypedColumnPrepareSortKeyNanos > 0 ||
+		phys.TypedColumnPrepareStatsNanos > 0 ||
+		phys.TypedColumnPrepareRangeReadNanos > 0 ||
+		phys.TypedColumnPrepareRangeReadBytes > 0 ||
+		phys.TypedColumnPrepareAdapterNanos > 0 ||
+		phys.TypedColumnPrepareDenseGroupNanos > 0 ||
+		phys.TypedColumnPrepareDenseValueNanos > 0 ||
+		phys.TypedColumnPrepareDensePredicateNanos > 0 ||
+		phys.TypedColumnPrepareDensePreapplyNanos > 0
+}
+
+func mergeColumnPhysicalPrepareDiagnostics(diag *queryDiagnostics, phys queryPhysicalDiagnostic) {
+	mergeColumnPhysicalPrepareDiagnosticFields(diag, phys)
+	for i := range diag.PhysicalQueries {
+		if diag.PhysicalQueries[i].Name == phys.Name {
+			mergeQueryPhysicalPrepareDiagnosticFields(&diag.PhysicalQueries[i], phys)
+			return
+		}
+	}
+	diag.PhysicalQueries = append(diag.PhysicalQueries, phys)
+}
+
+func mergeColumnPhysicalPrepareDiagnosticFields(diag *queryDiagnostics, phys queryPhysicalDiagnostic) {
+	diag.TypedColumnPreparePlanNanos += phys.TypedColumnPreparePlanNanos
+	diag.TypedColumnPrepareRefsNanos += phys.TypedColumnPrepareRefsNanos
+	diag.TypedColumnPreparePairingNanos += phys.TypedColumnPreparePairingNanos
+	diag.TypedColumnPreparePartDecodeNanos += phys.TypedColumnPreparePartDecodeNanos
+	diag.TypedColumnPreparePostPrepareNanos += phys.TypedColumnPreparePostPrepareNanos
+	diag.TypedColumnPrepareSummaryNanos += phys.TypedColumnPrepareSummaryNanos
+	diag.TypedColumnPrepareReadImageNanos += phys.TypedColumnPrepareReadImageNanos
+	diag.TypedColumnPrepareStateBuildNanos += phys.TypedColumnPrepareStateBuildNanos
+	diag.TypedColumnPrepareDictionaryNanos += phys.TypedColumnPrepareDictionaryNanos
+	diag.TypedColumnPreparePruningNanos += phys.TypedColumnPreparePruningNanos
+	diag.TypedColumnPrepareSortKeyNanos += phys.TypedColumnPrepareSortKeyNanos
+	diag.TypedColumnPrepareStatsNanos += phys.TypedColumnPrepareStatsNanos
+	diag.TypedColumnPrepareRangeReadNanos += phys.TypedColumnPrepareRangeReadNanos
+	diag.TypedColumnPrepareRangeReadBytes += phys.TypedColumnPrepareRangeReadBytes
+	diag.TypedColumnPrepareAdapterNanos += phys.TypedColumnPrepareAdapterNanos
+	diag.TypedColumnPrepareDenseGroupNanos += phys.TypedColumnPrepareDenseGroupNanos
+	diag.TypedColumnPrepareDenseValueNanos += phys.TypedColumnPrepareDenseValueNanos
+	diag.TypedColumnPrepareDensePredicateNanos += phys.TypedColumnPrepareDensePredicateNanos
+	diag.TypedColumnPrepareDensePreapplyNanos += phys.TypedColumnPrepareDensePreapplyNanos
+}
+
+func mergeQueryPhysicalPrepareDiagnosticFields(dst *queryPhysicalDiagnostic, src queryPhysicalDiagnostic) {
+	dst.TypedColumnPreparePlanNanos += src.TypedColumnPreparePlanNanos
+	dst.TypedColumnPrepareRefsNanos += src.TypedColumnPrepareRefsNanos
+	dst.TypedColumnPreparePairingNanos += src.TypedColumnPreparePairingNanos
+	dst.TypedColumnPreparePartDecodeNanos += src.TypedColumnPreparePartDecodeNanos
+	dst.TypedColumnPreparePostPrepareNanos += src.TypedColumnPreparePostPrepareNanos
+	dst.TypedColumnPrepareSummaryNanos += src.TypedColumnPrepareSummaryNanos
+	dst.TypedColumnPrepareReadImageNanos += src.TypedColumnPrepareReadImageNanos
+	dst.TypedColumnPrepareStateBuildNanos += src.TypedColumnPrepareStateBuildNanos
+	dst.TypedColumnPrepareDictionaryNanos += src.TypedColumnPrepareDictionaryNanos
+	dst.TypedColumnPreparePruningNanos += src.TypedColumnPreparePruningNanos
+	dst.TypedColumnPrepareSortKeyNanos += src.TypedColumnPrepareSortKeyNanos
+	dst.TypedColumnPrepareStatsNanos += src.TypedColumnPrepareStatsNanos
+	dst.TypedColumnPrepareRangeReadNanos += src.TypedColumnPrepareRangeReadNanos
+	dst.TypedColumnPrepareRangeReadBytes += src.TypedColumnPrepareRangeReadBytes
+	dst.TypedColumnPrepareAdapterNanos += src.TypedColumnPrepareAdapterNanos
+	dst.TypedColumnPrepareDenseGroupNanos += src.TypedColumnPrepareDenseGroupNanos
+	dst.TypedColumnPrepareDenseValueNanos += src.TypedColumnPrepareDenseValueNanos
+	dst.TypedColumnPrepareDensePredicateNanos += src.TypedColumnPrepareDensePredicateNanos
+	dst.TypedColumnPrepareDensePreapplyNanos += src.TypedColumnPrepareDensePreapplyNanos
+}
+
 func optionalColumnPhysicalDiagnosticInt64(d collections.ColumnPhysicalQueryDiagnostics, name string) int64 {
 	field := reflect.ValueOf(d).FieldByName(name)
 	if !field.IsValid() || field.Kind() != reflect.Int64 {
