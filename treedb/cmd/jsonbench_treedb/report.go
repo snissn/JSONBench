@@ -367,8 +367,13 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				if aggregateMetadataStorageBytes == 0 {
 					metadataCostStorageBasis = "aggregate_metadata_used_but_storage_bytes_not_reported"
 				}
-				metadataCostInsertSec = result.Load.InsertSec
-				metadataCostInsertBasis = "full_load_insert_seconds_current_upper_bound"
+				if splitSec, splitBasis, ok := aggregateMetadataSplitInsertCost(result.Load); ok {
+					metadataCostInsertSec = splitSec
+					metadataCostInsertBasis = splitBasis
+				} else {
+					metadataCostInsertSec = result.Load.InsertSec
+					metadataCostInsertBasis = metadataCostInsertBasisFullLoadUpperBound
+				}
 			}
 			rows = append(rows, reportRow{
 				System:                                result.System,

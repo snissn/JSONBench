@@ -103,20 +103,26 @@ type runResult struct {
 }
 
 type loadResult struct {
-	Rows                    int      `json:"rows"`
-	InputRows               int      `json:"input_rows,omitempty"`
-	SkippedInvalidJSONRows  int      `json:"skipped_invalid_json_rows,omitempty"`
-	Files                   []string `json:"files"`
-	Batches                 int      `json:"batches"`
-	GenerationSec           float64  `json:"generation_seconds"`
-	InsertSec               float64  `json:"insert_seconds"`
-	FlushSec                float64  `json:"flush_seconds"`
-	CheckpointSec           float64  `json:"checkpoint_seconds,omitempty"`
-	WallSec                 float64  `json:"wall_seconds"`
-	RowsPerSec              float64  `json:"rows_per_second"`
-	BytesRead               int64    `json:"bytes_read"`
-	CompressedBytes         int64    `json:"compressed_bytes"`
-	SourceCanonicalJSONHash string   `json:"source_canonical_json_hash,omitempty"`
+	Rows                               int      `json:"rows"`
+	InputRows                          int      `json:"input_rows,omitempty"`
+	SkippedInvalidJSONRows             int      `json:"skipped_invalid_json_rows,omitempty"`
+	Files                              []string `json:"files"`
+	Batches                            int      `json:"batches"`
+	GenerationSec                      float64  `json:"generation_seconds"`
+	InsertSec                          float64  `json:"insert_seconds"`
+	AggregateMetadataPrepareSec        float64  `json:"aggregate_metadata_prepare_seconds,omitempty"`
+	AggregateMetadataAppendShareSec    float64  `json:"aggregate_metadata_append_share_seconds,omitempty"`
+	AggregateMetadataInsertCostSec     float64  `json:"aggregate_metadata_insert_cost_seconds,omitempty"`
+	AggregateMetadataInsertCostBasis   string   `json:"aggregate_metadata_insert_cost_basis,omitempty"`
+	AggregateMetadataBytes             int64    `json:"aggregate_metadata_bytes,omitempty"`
+	AggregateMetadataSharedAppendBytes int64    `json:"aggregate_metadata_shared_append_bytes,omitempty"`
+	FlushSec                           float64  `json:"flush_seconds"`
+	CheckpointSec                      float64  `json:"checkpoint_seconds,omitempty"`
+	WallSec                            float64  `json:"wall_seconds"`
+	RowsPerSec                         float64  `json:"rows_per_second"`
+	BytesRead                          int64    `json:"bytes_read"`
+	CompressedBytes                    int64    `json:"compressed_bytes"`
+	SourceCanonicalJSONHash            string   `json:"source_canonical_json_hash,omitempty"`
 }
 
 type storageResult struct {
@@ -608,6 +614,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var batches int
 	var generationElapsed time.Duration
 	var insertElapsed time.Duration
+	var aggregateMetadataAccounting aggregateMetadataLoadAccounting
 	var flushElapsed time.Duration
 	var checkpointElapsed time.Duration
 	wallStart := time.Now()
@@ -631,6 +638,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		if _, err := collection.InsertBatch(ids, docs); err != nil {
 			return err
 		}
+		aggregateMetadataAccounting.addInsertStats(collection.LastInsertStats())
 		insertElapsed += time.Since(start)
 		batches++
 		ids = ids[:0]
@@ -706,6 +714,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	out.Batches = batches
 	out.GenerationSec = generationElapsed.Seconds()
 	out.InsertSec = insertElapsed.Seconds()
+	aggregateMetadataAccounting.apply(&out)
 	out.FlushSec = flushElapsed.Seconds()
 	out.CheckpointSec = checkpointElapsed.Seconds()
 	out.WallSec = wallElapsed.Seconds()

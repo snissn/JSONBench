@@ -154,7 +154,7 @@ func TestPreferredScriptUsesAttributionMetadataCostRow(t *testing.T) {
 {"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q4b","best_seconds":0.001,"dataset_size":6,"rows_scanned":9,"storage_bytes":1000},
 {"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q5","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
 {"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"qexpr","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
-{"system":"TreeDB","storage_layout":"column-store-prepared-metadata","data_shape":"query-shaped-projection","query":"q4","best_seconds":0.0001,"dataset_size":6,"aggregate_metadata_used":true,"aggregate_metadata_storage_bytes":5573853,"metadata_cost_storage_bytes":5573853,"aggregate_metadata_sidecar_bytes":5573853,"aggregate_metadata_refs":63,"metadata_cost_insert_seconds":3.25,"metadata_cost_insert_basis":"full_load_insert_seconds_current_upper_bound","metadata_cost_storage_basis":"active_manifest_aggregate_metadata_sidecars_plus_typed_column_embedded_sections"}
+{"system":"TreeDB","storage_layout":"column-store-prepared-metadata","data_shape":"query-shaped-projection","query":"q4","best_seconds":0.0001,"dataset_size":6,"aggregate_metadata_used":true,"aggregate_metadata_storage_bytes":5573853,"metadata_cost_storage_bytes":5573853,"aggregate_metadata_sidecar_bytes":5573853,"aggregate_metadata_refs":63,"metadata_cost_insert_seconds":0.25,"metadata_cost_insert_basis":"aggregate_metadata_prepare_duration_plus_byte_weighted_share_of_shared_batched_asset_append","metadata_cost_storage_basis":"active_manifest_aggregate_metadata_sidecars_plus_typed_column_embedded_sections"}
 ]}`
 	if err := os.WriteFile(treeResult, []byte(treeStub), 0o644); err != nil {
 		t.Fatalf("write treedb stub: %v", err)
@@ -184,7 +184,7 @@ func TestPreferredScriptUsesAttributionMetadataCostRow(t *testing.T) {
 		t.Fatalf("read preferred summary: %v", err)
 	}
 	summary := string(summaryBytes)
-	want := "| q4 | column-store-prepared-metadata/query-shaped-projection | yes | 5.32 MiB | 5.32 MiB | 5.32 MiB | 0 B | 63 | 3.250s | full_load_insert_seconds_current_upper_bound | active_manifest_aggregate_metadata_sidecars_plus_typed_column_embedded_sections |"
+	want := "| q4 | column-store-prepared-metadata/query-shaped-projection | yes | 5.32 MiB | 5.32 MiB | 5.32 MiB | 0 B | 63 | 0.2500s | aggregate_metadata_prepare_duration_plus_byte_weighted_share_of_shared_batched_asset_append | active_manifest_aggregate_metadata_sidecars_plus_typed_column_embedded_sections |"
 	if !strings.Contains(summary, want) {
 		t.Fatalf("preferred summary did not charge q4 attribution metadata cost row %q\n%s", want, summary)
 	}
