@@ -340,8 +340,9 @@ sort-key mark pruning counters, grouped-distinct readiness/use, dense reducer
 selection, decoded bytes, materialization counts, result-render time, and the
 timed attempt wall clock. Current runs also record `query_mode`,
 `metadata_mode`, `prepare_setup_nanos`, `run_nanos`, `hash_nanos`,
-`render_hash_nanos`, `total_query_nanos`, whether aggregate metadata was used,
-and whether JSON reconstruction occurred.
+`render_hash_nanos`, `total_query_nanos`, typed-column one-shot setup subphase
+nanos when exposed by TreeDB, whether aggregate metadata was used, and whether
+JSON reconstruction occurred.
 
 ## Notes
 

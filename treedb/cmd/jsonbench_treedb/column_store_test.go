@@ -608,6 +608,23 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 	if got, want := query.Diagnostics.PrepareSetupNanos, query.Diagnostics.TypedColumnOneShotBuildNanos; got != want {
 		t.Fatalf("prepare_setup_nanos=%d want typed-column one-shot build %d diagnostics=%+v", got, want, query.Diagnostics)
 	}
+	prepareSubphaseNanos := query.Diagnostics.TypedColumnPreparePlanNanos +
+		query.Diagnostics.TypedColumnPrepareRefsNanos +
+		query.Diagnostics.TypedColumnPreparePairingNanos +
+		query.Diagnostics.TypedColumnPreparePartDecodeNanos +
+		query.Diagnostics.TypedColumnPreparePostPrepareNanos +
+		query.Diagnostics.TypedColumnPrepareSummaryNanos
+	if prepareSubphaseNanos > 0 {
+		if query.Diagnostics.TypedColumnPreparePartDecodeNanos <= 0 {
+			t.Fatalf("typed_column_prepare_part_decode_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnPreparePartDecodeNanos, query.Diagnostics)
+		}
+		if query.Diagnostics.TypedColumnOneShotCacheStoreNanos <= 0 {
+			t.Fatalf("typed_column_one_shot_cache_store_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnOneShotCacheStoreNanos, query.Diagnostics)
+		}
+		if query.Diagnostics.PrepareSetupNanos < prepareSubphaseNanos {
+			t.Fatalf("prepare_setup_nanos=%d smaller than subphase sum %d diagnostics=%+v", query.Diagnostics.PrepareSetupNanos, prepareSubphaseNanos, query.Diagnostics)
+		}
+	}
 	if query.Diagnostics.RunNanos <= 0 {
 		t.Fatalf("run_nanos=%d want >0", query.Diagnostics.RunNanos)
 	}
