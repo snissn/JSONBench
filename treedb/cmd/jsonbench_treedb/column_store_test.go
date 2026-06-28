@@ -698,6 +698,7 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 		prepare: []queryPhysicalDiagnostic{
 			{
 				Name:                                  "group_count",
+				TypedColumnPrepareWorkerCount:         8,
 				TypedColumnPreparePlanNanos:           1,
 				TypedColumnPrepareRefsNanos:           2,
 				TypedColumnPreparePairingNanos:        3,
@@ -730,8 +731,14 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 	if got, want := diag.TypedColumnPrepareRangeReadBytes, int64(14); got != want {
 		t.Fatalf("typed_column_prepare_range_read_bytes=%d want %d", got, want)
 	}
+	if got, want := diag.TypedColumnPrepareWorkerCount, 8; got != want {
+		t.Fatalf("typed_column_prepare_worker_count=%d want %d", got, want)
+	}
 	if got, want := diag.PhysicalQueries[0].RowsScanned, 10; got != want {
 		t.Fatalf("physical rows_scanned=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareWorkerCount, 8; got != want {
+		t.Fatalf("physical typed_column_prepare_worker_count=%d want %d", got, want)
 	}
 	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareDensePreapplyNanos, int64(19); got != want {
 		t.Fatalf("physical typed_column_prepare_dense_preapply_nanos=%d want %d", got, want)
