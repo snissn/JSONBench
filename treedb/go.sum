@@ -38,6 +38,8 @@ github.com/snissn/gomap v0.5.1-0.20260627234813-6b9d690d9297 h1:MTb39R2fd1XAQ/d7
 github.com/snissn/gomap v0.5.1-0.20260627234813-6b9d690d9297/go.mod h1:WSaOg+m8hiLvRpKSqn3ylr0H4ZMKOHghhJqIg1/RO/4=
 github.com/snissn/gomap v0.5.1-0.20260628010201-735e3e8eed49 h1:13TKl799qcAiuwdFCyacZH3SEQ6L8B5CCMx5zZi2l/s=
 github.com/snissn/gomap v0.5.1-0.20260628010201-735e3e8eed49/go.mod h1:WSaOg+m8hiLvRpKSqn3ylr0H4ZMKOHghhJqIg1/RO/4=
+github.com/snissn/gomap v0.5.1-0.20260628203100-aa3279ae2452 h1:AeRjxYB+ShjBtz4yap4SYGgaJfuPbjwzdAakgYWSdBE=
+github.com/snissn/gomap v0.5.1-0.20260628203100-aa3279ae2452/go.mod h1:WSaOg+m8hiLvRpKSqn3ylr0H4ZMKOHghhJqIg1/RO/4=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tidwall/btree v1.8.1 h1:27ehoXvm5AG/g+1VxLS1SD3vRhp/H7LuEfwNvddEdmA=
