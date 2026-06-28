@@ -62,6 +62,7 @@ type queryDiagnostics struct {
 	VisibilityRows                        int                       `json:"visibility_rows,omitempty"`
 	ReconstructionRows                    int                       `json:"reconstruction_rows,omitempty"`
 	WorkerCount                           int                       `json:"worker_count,omitempty"`
+	TypedColumnPrepareWorkerCount         int                       `json:"typed_column_prepare_worker_count,omitempty"`
 	SegmentFileCacheHits                  uint64                    `json:"segment_file_cache_hits,omitempty"`
 	SegmentFileCacheMisses                uint64                    `json:"segment_file_cache_misses,omitempty"`
 	TypedColumnOneShotCacheHit            bool                      `json:"typed_column_one_shot_cache_hit,omitempty"`
@@ -161,6 +162,7 @@ type queryPhysicalDiagnostic struct {
 	VisibilityRows                        int      `json:"visibility_rows,omitempty"`
 	ReconstructionRows                    int      `json:"reconstruction_rows,omitempty"`
 	WorkerCount                           int      `json:"worker_count,omitempty"`
+	TypedColumnPrepareWorkerCount         int      `json:"typed_column_prepare_worker_count,omitempty"`
 	SegmentFileCacheHits                  uint64   `json:"segment_file_cache_hits,omitempty"`
 	SegmentFileCacheMisses                uint64   `json:"segment_file_cache_misses,omitempty"`
 	TypedColumnOneShotCacheHit            bool     `json:"typed_column_one_shot_cache_hit,omitempty"`
@@ -287,6 +289,7 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.VisibilityRows = maxInt(out.VisibilityRows, phys.VisibilityRows)
 		out.ReconstructionRows += phys.ReconstructionRows
 		out.WorkerCount = maxInt(out.WorkerCount, phys.WorkerCount)
+		out.TypedColumnPrepareWorkerCount = maxInt(out.TypedColumnPrepareWorkerCount, phys.TypedColumnPrepareWorkerCount)
 		out.SegmentFileCacheHits += phys.SegmentFileCacheHits
 		out.SegmentFileCacheMisses += phys.SegmentFileCacheMisses
 		out.TypedColumnOneShotCacheHit = out.TypedColumnOneShotCacheHit || phys.TypedColumnOneShotCacheHit
@@ -422,6 +425,7 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		VisibilityRows:                        d.VisibilityRows,
 		ReconstructionRows:                    d.ReconstructionRows,
 		WorkerCount:                           d.WorkerCount,
+		TypedColumnPrepareWorkerCount:         optionalColumnPhysicalDiagnosticInt(d, "TypedColumnPrepareWorkerCount"),
 		SegmentFileCacheHits:                  d.SegmentFileCacheHits,
 		SegmentFileCacheMisses:                d.SegmentFileCacheMisses,
 		TypedColumnOneShotCacheHit:            d.TypedColumnOneShotCacheHit,
@@ -484,7 +488,8 @@ func columnPhysicalRunnerPrepareDiagnostic(name string, runner *collections.Colu
 }
 
 func columnPhysicalPrepareDiagnosticsHasData(phys queryPhysicalDiagnostic) bool {
-	return phys.TypedColumnPreparePlanNanos > 0 ||
+	return phys.TypedColumnPrepareWorkerCount > 0 ||
+		phys.TypedColumnPreparePlanNanos > 0 ||
 		phys.TypedColumnPrepareRefsNanos > 0 ||
 		phys.TypedColumnPreparePairingNanos > 0 ||
 		phys.TypedColumnPreparePartDecodeNanos > 0 ||
@@ -517,6 +522,7 @@ func mergeColumnPhysicalPrepareDiagnostics(diag *queryDiagnostics, phys queryPhy
 }
 
 func mergeColumnPhysicalPrepareDiagnosticFields(diag *queryDiagnostics, phys queryPhysicalDiagnostic) {
+	diag.TypedColumnPrepareWorkerCount = maxInt(diag.TypedColumnPrepareWorkerCount, phys.TypedColumnPrepareWorkerCount)
 	diag.TypedColumnPreparePlanNanos += phys.TypedColumnPreparePlanNanos
 	diag.TypedColumnPrepareRefsNanos += phys.TypedColumnPrepareRefsNanos
 	diag.TypedColumnPreparePairingNanos += phys.TypedColumnPreparePairingNanos
@@ -539,6 +545,7 @@ func mergeColumnPhysicalPrepareDiagnosticFields(diag *queryDiagnostics, phys que
 }
 
 func mergeQueryPhysicalPrepareDiagnosticFields(dst *queryPhysicalDiagnostic, src queryPhysicalDiagnostic) {
+	dst.TypedColumnPrepareWorkerCount = maxInt(dst.TypedColumnPrepareWorkerCount, src.TypedColumnPrepareWorkerCount)
 	dst.TypedColumnPreparePlanNanos += src.TypedColumnPreparePlanNanos
 	dst.TypedColumnPrepareRefsNanos += src.TypedColumnPrepareRefsNanos
 	dst.TypedColumnPreparePairingNanos += src.TypedColumnPreparePairingNanos
@@ -558,6 +565,19 @@ func mergeQueryPhysicalPrepareDiagnosticFields(dst *queryPhysicalDiagnostic, src
 	dst.TypedColumnPrepareDenseValueNanos += src.TypedColumnPrepareDenseValueNanos
 	dst.TypedColumnPrepareDensePredicateNanos += src.TypedColumnPrepareDensePredicateNanos
 	dst.TypedColumnPrepareDensePreapplyNanos += src.TypedColumnPrepareDensePreapplyNanos
+}
+
+func optionalColumnPhysicalDiagnosticInt(d collections.ColumnPhysicalQueryDiagnostics, name string) int {
+	field := reflect.ValueOf(d).FieldByName(name)
+	if !field.IsValid() {
+		return 0
+	}
+	switch field.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
+		return int(field.Int())
+	default:
+		return 0
+	}
 }
 
 func optionalColumnPhysicalDiagnosticInt64(d collections.ColumnPhysicalQueryDiagnostics, name string) int64 {

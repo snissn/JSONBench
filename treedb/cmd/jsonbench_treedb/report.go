@@ -111,6 +111,7 @@ type reportRow struct {
 	TypedColumnOneShotCacheMiss                     bool      `json:"typed_column_one_shot_cache_miss,omitempty"`
 	TypedColumnOneShotCacheBuild                    bool      `json:"typed_column_one_shot_cache_build,omitempty"`
 	TypedColumnOneShotBuildNanos                    int64     `json:"typed_column_one_shot_build_nanos,omitempty"`
+	TypedColumnPrepareWorkerCount                   int       `json:"typed_column_prepare_worker_count,omitempty"`
 	TypedColumnPreparePlanNanos                     int64     `json:"typed_column_prepare_plan_nanos,omitempty"`
 	TypedColumnPrepareRefsNanos                     int64     `json:"typed_column_prepare_refs_nanos,omitempty"`
 	TypedColumnPreparePairingNanos                  int64     `json:"typed_column_prepare_pairing_nanos,omitempty"`
@@ -489,6 +490,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				TypedColumnOneShotCacheMiss:            diagnostics.TypedColumnOneShotCacheMiss,
 				TypedColumnOneShotCacheBuild:           diagnostics.TypedColumnOneShotCacheBuild,
 				TypedColumnOneShotBuildNanos:           diagnostics.TypedColumnOneShotBuildNanos,
+				TypedColumnPrepareWorkerCount:          diagnostics.TypedColumnPrepareWorkerCount,
 				TypedColumnPreparePlanNanos:            diagnostics.TypedColumnPreparePlanNanos,
 				TypedColumnPrepareRefsNanos:            diagnostics.TypedColumnPrepareRefsNanos,
 				TypedColumnPreparePairingNanos:         diagnostics.TypedColumnPreparePairingNanos,
@@ -1049,15 +1051,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasTypedColumnSetupDiagnostics(row) {
 				continue
 			}
 			fmt.Fprintf(
 				&buf,
-				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
 				row.Scale,
 				reportRowLayout(row),
 				row.Query,
@@ -1065,6 +1067,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				row.MetadataMode,
 				row.PrepareSetupNanos,
 				row.TypedColumnOneShotBuildNanos,
+				row.TypedColumnPrepareWorkerCount,
 				row.TypedColumnPreparePlanNanos,
 				row.TypedColumnPrepareRefsNanos,
 				row.TypedColumnPreparePairingNanos,
@@ -1215,6 +1218,7 @@ func reportHasTypedColumnSetupDiagnostics(rows []reportRow) bool {
 
 func reportRowHasTypedColumnSetupDiagnostics(row reportRow) bool {
 	return row.TypedColumnOneShotBuildNanos != 0 ||
+		row.TypedColumnPrepareWorkerCount != 0 ||
 		row.TypedColumnPreparePlanNanos != 0 ||
 		row.TypedColumnPrepareRefsNanos != 0 ||
 		row.TypedColumnPreparePairingNanos != 0 ||
