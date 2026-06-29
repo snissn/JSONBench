@@ -95,12 +95,12 @@ func renderColumnStoreCompactSummary(doc reportDocument) []byte {
 		fmt.Fprintf(&buf, "No TreeDB column-store rows found.\n")
 		return buf.Bytes()
 	}
-	fmt.Fprintf(&buf, "| layout | shape | mode | query | best | loaded rows/s | scanned rows | storage | load |\n")
-	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| layout | shape | mode | query | best | loaded rows/s | scanned rows | storage | load | expression evidence |\n")
+	fmt.Fprintf(&buf, "|---|---|---|---:|---:|---:|---:|---:|---:|---|\n")
 	for _, row := range rows {
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s |\n",
 			row.StorageLayout,
 			columnSummaryDataShape(row),
 			columnSummaryExecutionMode(row),
@@ -110,9 +110,10 @@ func renderColumnStoreCompactSummary(doc reportDocument) []byte {
 			formatColumnSummaryCount(row.RowsScanned),
 			formatBytes(row.StorageBytes),
 			formatSeconds(row.LoadSec),
+			formatExpressionEvidence(row),
 		)
 	}
-	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. `full-retained-json` rows store enough JSON payload to reconstruct every loaded document; `query-shaped-projection` rows are smaller benchmark projections and are not full-storage baselines. `prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5 and answers from aggregate metadata with `scanned rows` = 0; `full-prepared aggregate metadata` applies to full-retained q1/q3/q5; `full-prepared bounded top-k` applies to full-retained q4/q4a/q4b and scans typed-column data with a bounded TopK request; `qexpr` is an arbitrary-expression typed-column scan/evaluation lane.\n")
+	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. `full-retained-json` rows store enough JSON payload to reconstruct every loaded document; `query-shaped-projection` rows are smaller benchmark projections and are not full-storage baselines. `prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5 and answers from aggregate metadata with `scanned rows` = 0; `full-prepared aggregate metadata` applies to full-retained q1/q3/q5; `full-prepared bounded top-k` applies to full-retained q4/q4a/q4b and scans typed-column data with a bounded TopK request; `qexpr` is an arbitrary-expression typed-column scan/evaluation lane with explicit typed-cell evidence and `precomputed_expression_used=false` unless a separate expression summary is reported.\n")
 	return buf.Bytes()
 }
 

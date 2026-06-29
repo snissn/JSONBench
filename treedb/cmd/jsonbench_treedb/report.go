@@ -67,6 +67,10 @@ type reportRow struct {
 	MedianSec                                        float64   `json:"median_seconds"`
 	AttemptsSec                                      []float64 `json:"attempts_seconds"`
 	RowsScanned                                      int       `json:"rows_scanned,omitempty"`
+	TypedCellsVisited                                *int      `json:"typed_cells_visited,omitempty"`
+	TypedCellsBasis                                  string    `json:"typed_cells_basis,omitempty"`
+	ExpressionKind                                   string    `json:"expression_kind,omitempty"`
+	PrecomputedExpressionUsed                        *bool     `json:"precomputed_expression_used,omitempty"`
 	RowsMatched                                      int       `json:"rows_matched,omitempty"`
 	ReduceRows                                       int       `json:"reduce_rows,omitempty"`
 	ResultGroups                                     int       `json:"result_groups,omitempty"`
@@ -571,12 +575,60 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				ReconstructionValid:                   reconstructionValid,
 				Source:                                path,
 			}
+			applyQExprTypedScanEvidence(&row, q, diagnostics)
 			applyReportRowInsertStats(&row, insertStats)
 			rows = append(rows, row)
 		}
 		return nil
 	})
 	return rows, err
+}
+
+const (
+	qexprExpressionKind = "sum(second_of_day_square)"
+	qexprTypedCellBasis = "rows_scanned"
+)
+
+func applyQExprTypedScanEvidence(row *reportRow, query queryRun, diagnostics queryDiagnostics) {
+	if row == nil || query.Name != "qexpr" {
+		return
+	}
+	if diagnostics.QueryPath != "typed_column_int64_aggregate" || diagnostics.AggregateMetadataUsed {
+		return
+	}
+	if !qexprUsesTypedColumnPath(diagnostics) {
+		return
+	}
+	cells := qexprTypedCellsVisited(query, diagnostics)
+	precomputed := false
+	row.TypedCellsVisited = &cells
+	row.TypedCellsBasis = qexprTypedCellBasis
+	row.ExpressionKind = qexprExpressionKind
+	row.PrecomputedExpressionUsed = &precomputed
+}
+
+func qexprUsesTypedColumnPath(diagnostics queryDiagnostics) bool {
+	if diagnostics.StorageSource == "typed_column_part" {
+		return true
+	}
+	for _, physical := range diagnostics.PhysicalQueries {
+		if physical.StorageSource == "typed_column_part" {
+			return true
+		}
+	}
+	return false
+}
+
+func qexprTypedCellsVisited(query queryRun, diagnostics queryDiagnostics) int {
+	for _, physical := range diagnostics.PhysicalQueries {
+		if physical.Name == "second_of_day_square_sum" && physical.RowsScanned > 0 {
+			return physical.RowsScanned
+		}
+	}
+	if diagnostics.RowsScanned > 0 {
+		return diagnostics.RowsScanned
+	}
+	return query.RowsScanned
 }
 
 func reportScaleLabel(result runResult) string {
@@ -1259,6 +1311,30 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.TotalQueryNanos,
 		)
 	}
+	if reportHasExpressionEvidence(doc.Rows) {
+		fmt.Fprintf(&buf, "\n## TreeDB Expression Evidence\n\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | expression | typed cells visited | basis | precomputed expression | aggregate metadata | path | source |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---:|---|---|---|---|---|\n")
+		for _, row := range doc.Rows {
+			if row.System != "TreeDB" || !reportRowHasExpressionEvidence(row) {
+				continue
+			}
+			fmt.Fprintf(
+				&buf,
+				"| %s | %s | %s | %s | %s | %s | %s | %t | %s | %s |\n",
+				row.Scale,
+				reportRowLayout(row),
+				row.Query,
+				row.ExpressionKind,
+				formatOptionalInt(row.TypedCellsVisited),
+				row.TypedCellsBasis,
+				formatOptionalBool(row.PrecomputedExpressionUsed),
+				row.AggregateMetadataUsed,
+				nonEmpty(row.QueryPath, row.MetadataDataScanPath),
+				row.StorageSource,
+			)
+		}
+	}
 	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
 		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
@@ -1418,6 +1494,59 @@ func formatDensePath(row reportRow) string {
 		paths = append(paths, "int64_span")
 	}
 	return strings.Join(paths, ",")
+}
+
+func reportHasExpressionEvidence(rows []reportRow) bool {
+	for _, row := range rows {
+		if row.System == "TreeDB" && reportRowHasExpressionEvidence(row) {
+			return true
+		}
+	}
+	return false
+}
+
+func reportRowHasExpressionEvidence(row reportRow) bool {
+	return row.ExpressionKind != "" ||
+		row.TypedCellsVisited != nil ||
+		row.TypedCellsBasis != "" ||
+		row.PrecomputedExpressionUsed != nil
+}
+
+func formatOptionalInt(value *int) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.Itoa(*value)
+}
+
+func formatOptionalBool(value *bool) string {
+	if value == nil {
+		return ""
+	}
+	return strconv.FormatBool(*value)
+}
+
+func formatExpressionEvidence(row reportRow) string {
+	if !reportRowHasExpressionEvidence(row) {
+		return "n/a"
+	}
+	parts := make([]string, 0, 3)
+	if row.ExpressionKind != "" {
+		parts = append(parts, row.ExpressionKind)
+	}
+	if row.TypedCellsVisited != nil {
+		cells := formatColumnSummaryCount(*row.TypedCellsVisited)
+		if row.TypedCellsBasis != "" {
+			cells += " typed cells (" + row.TypedCellsBasis + ")"
+		} else {
+			cells += " typed cells"
+		}
+		parts = append(parts, cells)
+	}
+	if row.PrecomputedExpressionUsed != nil {
+		parts = append(parts, "precomputed_expression_used="+strconv.FormatBool(*row.PrecomputedExpressionUsed))
+	}
+	return strings.Join(parts, "; ")
 }
 
 func reportHasTypedColumnSetupDiagnostics(rows []reportRow) bool {
