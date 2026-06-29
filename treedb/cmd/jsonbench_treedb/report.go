@@ -99,10 +99,10 @@ type reportRow struct {
 	PhysicalBytesScanned                             int64     `json:"physical_bytes_scanned,omitempty"`
 	MappedBytes                                      uint64    `json:"mapped_bytes,omitempty"`
 	HeapCopyBytes                                    uint64    `json:"heap_copy_bytes,omitempty"`
-	RowMaterializations                              int       `json:"row_materializations,omitempty"`
-	DocumentMaterializations                         int       `json:"document_materializations,omitempty"`
+	RowMaterializations                              int       `json:"row_materializations"`
+	DocumentMaterializations                         int       `json:"document_materializations"`
 	FallbackReads                                    int       `json:"fallback_reads,omitempty"`
-	AggregateMetadataUsed                            bool      `json:"aggregate_metadata_used,omitempty"`
+	AggregateMetadataUsed                            bool      `json:"aggregate_metadata_used"`
 	AggregateMetadataRefs                            int       `json:"aggregate_metadata_refs,omitempty"`
 	AggregateMetadataStorageBytes                    int64     `json:"aggregate_metadata_storage_bytes,omitempty"`
 	AggregateMetadataSidecarBytes                    int64     `json:"aggregate_metadata_sidecar_bytes,omitempty"`
@@ -111,7 +111,7 @@ type reportRow struct {
 	MetadataCostStorageBasis                         string    `json:"metadata_cost_storage_basis,omitempty"`
 	MetadataCostInsertSec                            float64   `json:"metadata_cost_insert_seconds,omitempty"`
 	MetadataCostInsertBasis                          string    `json:"metadata_cost_insert_basis,omitempty"`
-	JSONReconstructionUsed                           bool      `json:"json_reconstruction_used,omitempty"`
+	JSONReconstructionUsed                           bool      `json:"json_reconstruction_used"`
 	TypedColumnOneShotCacheHit                       bool      `json:"typed_column_one_shot_cache_hit,omitempty"`
 	TypedColumnOneShotCacheMiss                      bool      `json:"typed_column_one_shot_cache_miss,omitempty"`
 	TypedColumnOneShotCacheBuild                     bool      `json:"typed_column_one_shot_cache_build,omitempty"`
