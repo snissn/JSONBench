@@ -93,6 +93,10 @@ func TestQExprReportRowsExposeTypedExpressionEvidence(t *testing.T) {
 		`"typed_cells_basis":"rows_scanned"`,
 		`"expression_kind":"sum(second_of_day_square)"`,
 		`"precomputed_expression_used":false`,
+		`"row_materializations":0`,
+		`"document_materializations":0`,
+		`"aggregate_metadata_used":false`,
+		`"json_reconstruction_used":false`,
 	} {
 		if !strings.Contains(string(reportJSON), want) {
 			t.Fatalf("qexpr report JSON missing %s\n%s", want, reportJSON)
