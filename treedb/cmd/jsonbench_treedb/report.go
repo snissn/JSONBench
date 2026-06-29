@@ -132,6 +132,9 @@ type reportRow struct {
 	TypedColumnPrepareDenseValueNanos                int64     `json:"typed_column_prepare_dense_value_nanos,omitempty"`
 	TypedColumnPrepareDensePredicateNanos            int64     `json:"typed_column_prepare_dense_predicate_nanos,omitempty"`
 	TypedColumnPrepareDensePreapplyNanos             int64     `json:"typed_column_prepare_dense_preapply_nanos,omitempty"`
+	TypedColumnPrepareQ2GroupRankNanos               int64     `json:"typed_column_prepare_q2_group_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2DistinctRankNanos            int64     `json:"typed_column_prepare_q2_distinct_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2LocalRankNanos               int64     `json:"typed_column_prepare_q2_local_rank_nanos,omitempty"`
 	PrepareSetupNanos                                int64     `json:"prepare_setup_nanos,omitempty"`
 	RunNanos                                         int64     `json:"run_nanos,omitempty"`
 	ResultRenderNanos                                int64     `json:"result_render_nanos,omitempty"`
@@ -535,6 +538,9 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				TypedColumnPrepareDenseValueNanos:     diagnostics.TypedColumnPrepareDenseValueNanos,
 				TypedColumnPrepareDensePredicateNanos: diagnostics.TypedColumnPrepareDensePredicateNanos,
 				TypedColumnPrepareDensePreapplyNanos:  diagnostics.TypedColumnPrepareDensePreapplyNanos,
+				TypedColumnPrepareQ2GroupRankNanos:    diagnostics.TypedColumnPrepareQ2GroupRankNanos,
+				TypedColumnPrepareQ2DistinctRankNanos: diagnostics.TypedColumnPrepareQ2DistinctRankNanos,
+				TypedColumnPrepareQ2LocalRankNanos:    diagnostics.TypedColumnPrepareQ2LocalRankNanos,
 				PrepareSetupNanos:                     diagnostics.PrepareSetupNanos,
 				RunNanos:                              diagnostics.RunNanos,
 				ResultRenderNanos:                     diagnostics.ResultRenderNanos,
@@ -1255,15 +1261,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasTypedColumnSetupDiagnostics(row) {
 				continue
 			}
 			fmt.Fprintf(
 				&buf,
-				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
 				row.Scale,
 				reportRowLayout(row),
 				row.Query,
@@ -1277,6 +1283,9 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				row.TypedColumnPreparePairingNanos,
 				row.TypedColumnPreparePartDecodeNanos,
 				row.TypedColumnPreparePostPrepareNanos,
+				row.TypedColumnPrepareQ2GroupRankNanos,
+				row.TypedColumnPrepareQ2DistinctRankNanos,
+				row.TypedColumnPrepareQ2LocalRankNanos,
 				row.TypedColumnPrepareSummaryNanos,
 				row.TypedColumnOneShotCacheStoreNanos,
 				row.TypedColumnPrepareReadImageNanos,
@@ -1442,7 +1451,10 @@ func reportRowHasTypedColumnSetupDiagnostics(row reportRow) bool {
 		row.TypedColumnPrepareDenseGroupNanos != 0 ||
 		row.TypedColumnPrepareDenseValueNanos != 0 ||
 		row.TypedColumnPrepareDensePredicateNanos != 0 ||
-		row.TypedColumnPrepareDensePreapplyNanos != 0
+		row.TypedColumnPrepareDensePreapplyNanos != 0 ||
+		row.TypedColumnPrepareQ2GroupRankNanos != 0 ||
+		row.TypedColumnPrepareQ2DistinctRankNanos != 0 ||
+		row.TypedColumnPrepareQ2LocalRankNanos != 0
 }
 
 type bestGroup struct {
