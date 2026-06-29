@@ -1,7 +1,6 @@
 package main
 
 import (
-	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -61,53 +60,53 @@ func TestInsertStatsAccountingReportsRetainedValueLogPointerization(t *testing.T
 func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 	var accounting insertStatsAccounting
 	stats := collections.CollectionInsertStats{
-		Publish:                               90 * time.Millisecond,
-		ColumnPublishBuildColumnDelta:         10 * time.Millisecond,
-		ColumnPublishBuildSystemDelta:         11 * time.Millisecond,
-		ColumnPublishCommit:                   12 * time.Millisecond,
-		ColumnPublishDocumentExtraction:       13 * time.Millisecond,
-		ColumnPublishDeclaredColumnEncoding:   14 * time.Millisecond,
-		ColumnPublishAssetPreparation:         15 * time.Millisecond,
-		ColumnPublishRowAssetPreparation:      16 * time.Millisecond,
-		ColumnPublishTypedColumnPreparation:   17 * time.Millisecond,
-		ColumnPublishDictionaryPreparation:    22 * time.Millisecond,
-		ColumnPublishInt64Preparation:         23 * time.Millisecond,
-		ColumnPublishAggregateMetadataPrepare: 24 * time.Millisecond,
-		ColumnPublishRowSidecarSharedBuild:    25 * time.Millisecond,
-		ColumnPublishAssetAppend:              26 * time.Millisecond,
-		ColumnPublishAssetAppendOpen:          27 * time.Millisecond,
-		ColumnPublishAssetAppendWrite:         28 * time.Millisecond,
-		ColumnPublishAssetAppendClose:         29 * time.Millisecond,
-		ColumnPublishAssetAppendFileSync:      30 * time.Millisecond,
-		ColumnPublishAssetAppendFileClose:     31 * time.Millisecond,
-		ColumnPublishAssetAppendDirSync:       32 * time.Millisecond,
-		ColumnPublishAssetAppendCleanup:       33 * time.Millisecond,
-		ColumnPublishManifestEncode:           34 * time.Millisecond,
-		ColumnPublishAssetClosureValidation:   35 * time.Millisecond,
-		ColumnPublishRootDeltaConstruction:    36 * time.Millisecond,
-		ColumnPublishSystemDeltaConstruction:  37 * time.Millisecond,
-		ColumnPublishRootDeltaMaterialization: 38 * time.Millisecond,
-		ColumnPublishRows:                     100,
-		ColumnPublishPreparedAssets:           7,
-		ColumnPublishRowAssetBytes:            101,
-		ColumnPublishRowAssetCount:            1,
-		ColumnPublishTypedColumnBytes:         202,
-		ColumnPublishTypedColumnCount:         2,
-		ColumnPublishDictionaryBytes:          303,
-		ColumnPublishDictionaryCount:          3,
-		ColumnPublishInt64Bytes:               404,
-		ColumnPublishInt64Count:               4,
-		ColumnPublishAggregateMetadataBytes:   505,
-		ColumnPublishAggregateMetadataCount:   5,
-		ColumnPublishSharedAppendBytes:        606,
-		ColumnPublishSharedAppendCount:        6,
-		ColumnPublishRequiredAssetBytes:       707,
-		ColumnPublishManifestBytes:            808,
+		Publish:                                    90 * time.Millisecond,
+		ColumnPublishBuildColumnDelta:              10 * time.Millisecond,
+		ColumnPublishBuildSystemDelta:              11 * time.Millisecond,
+		ColumnPublishCommit:                        12 * time.Millisecond,
+		ColumnPublishDocumentExtraction:            13 * time.Millisecond,
+		ColumnPublishDeclaredColumnEncoding:        14 * time.Millisecond,
+		ColumnPublishAssetPreparation:              15 * time.Millisecond,
+		ColumnPublishRowAssetPreparation:           16 * time.Millisecond,
+		ColumnPublishTypedColumnPreparation:        17 * time.Millisecond,
+		ColumnPublishTypedColumnDictionaryBuild:    18 * time.Millisecond,
+		ColumnPublishTypedColumnRowMaterialization: 19 * time.Millisecond,
+		ColumnPublishTypedColumnPartBuild:          20 * time.Millisecond,
+		ColumnPublishTypedColumnImageBuild:         21 * time.Millisecond,
+		ColumnPublishDictionaryPreparation:         22 * time.Millisecond,
+		ColumnPublishInt64Preparation:              23 * time.Millisecond,
+		ColumnPublishAggregateMetadataPrepare:      24 * time.Millisecond,
+		ColumnPublishRowSidecarSharedBuild:         25 * time.Millisecond,
+		ColumnPublishAssetAppend:                   26 * time.Millisecond,
+		ColumnPublishAssetAppendOpen:               27 * time.Millisecond,
+		ColumnPublishAssetAppendWrite:              28 * time.Millisecond,
+		ColumnPublishAssetAppendClose:              29 * time.Millisecond,
+		ColumnPublishAssetAppendFileSync:           30 * time.Millisecond,
+		ColumnPublishAssetAppendFileClose:          31 * time.Millisecond,
+		ColumnPublishAssetAppendDirSync:            32 * time.Millisecond,
+		ColumnPublishAssetAppendCleanup:            33 * time.Millisecond,
+		ColumnPublishManifestEncode:                34 * time.Millisecond,
+		ColumnPublishAssetClosureValidation:        35 * time.Millisecond,
+		ColumnPublishRootDeltaConstruction:         36 * time.Millisecond,
+		ColumnPublishSystemDeltaConstruction:       37 * time.Millisecond,
+		ColumnPublishRootDeltaMaterialization:      38 * time.Millisecond,
+		ColumnPublishRows:                          100,
+		ColumnPublishPreparedAssets:                7,
+		ColumnPublishRowAssetBytes:                 101,
+		ColumnPublishRowAssetCount:                 1,
+		ColumnPublishTypedColumnBytes:              202,
+		ColumnPublishTypedColumnCount:              2,
+		ColumnPublishDictionaryBytes:               303,
+		ColumnPublishDictionaryCount:               3,
+		ColumnPublishInt64Bytes:                    404,
+		ColumnPublishInt64Count:                    4,
+		ColumnPublishAggregateMetadataBytes:        505,
+		ColumnPublishAggregateMetadataCount:        5,
+		ColumnPublishSharedAppendBytes:             606,
+		ColumnPublishSharedAppendCount:             6,
+		ColumnPublishRequiredAssetBytes:            707,
+		ColumnPublishManifestBytes:                 808,
 	}
-	setOptionalDurationField(&stats, "ColumnPublishTypedColumnDictionaryBuild", 18*time.Millisecond)
-	setOptionalDurationField(&stats, "ColumnPublishTypedColumnRowMaterialization", 19*time.Millisecond)
-	setOptionalDurationField(&stats, "ColumnPublishTypedColumnPartBuild", 20*time.Millisecond)
-	setOptionalDurationField(&stats, "ColumnPublishTypedColumnImageBuild", 21*time.Millisecond)
 	accounting.add(stats)
 	accounting.add(collections.CollectionInsertStats{
 		Publish:                             10 * time.Millisecond,
@@ -126,8 +125,7 @@ func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 	if got.ColumnPublishAssetAppendFileSyncSec != 0.034 || got.ColumnPublishAssetAppendFileCloseSec != 0.031 || got.ColumnPublishAssetAppendDirSyncSec != 0.032 {
 		t.Fatalf("column publish durable append timings mismatch: %+v", got)
 	}
-	if optionalDurationField(stats, "ColumnPublishTypedColumnDictionaryBuild") > 0 &&
-		(got.ColumnPublishTypedDictionarySec != 0.018 || got.ColumnPublishTypedRowsSec != 0.019 || got.ColumnPublishTypedPartSec != 0.02 || got.ColumnPublishTypedImageSec != 0.021) {
+	if got.ColumnPublishTypedDictionarySec != 0.018 || got.ColumnPublishTypedRowsSec != 0.019 || got.ColumnPublishTypedPartSec != 0.02 || got.ColumnPublishTypedImageSec != 0.021 {
 		t.Fatalf("column publish typed-column subphase timings mismatch: %+v", got)
 	}
 	if got.ColumnPublishRows != 100 || got.ColumnPublishPreparedAssets != 7 || got.ColumnPublishRequiredAssetBytes != 707 || got.ColumnPublishManifestBytes != 808 {
@@ -136,30 +134,6 @@ func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 	if got.ColumnPublishAggregateMetadataBytes != 555 || got.ColumnPublishSharedAppendBytes != 666 {
 		t.Fatalf("column publish byte counters mismatch: %+v", got)
 	}
-}
-
-func TestOptionalDurationField(t *testing.T) {
-	type sample struct {
-		Duration time.Duration
-		Count    int64
-	}
-	if got := optionalDurationField(sample{Duration: 12 * time.Millisecond}, "Duration"); got != 12*time.Millisecond {
-		t.Fatalf("duration field=%s want 12ms", got)
-	}
-	if got := optionalDurationField(sample{Count: 12}, "Count"); got != 0 {
-		t.Fatalf("non-duration field=%s want 0", got)
-	}
-	if got := optionalDurationField(collections.CollectionInsertStats{}, "ColumnPublishTypedColumnDictionaryBuild"); got < 0 {
-		t.Fatalf("optional duration should never be negative: %s", got)
-	}
-}
-
-func setOptionalDurationField(v any, name string, value time.Duration) {
-	field := reflect.ValueOf(v).Elem().FieldByName(name)
-	if !field.IsValid() || !field.CanSet() || field.Type() != reflect.TypeOf(time.Duration(0)) {
-		return
-	}
-	field.SetInt(int64(value))
 }
 
 func TestRenderMarkdownReportIncludesTreeDBInsertStats(t *testing.T) {

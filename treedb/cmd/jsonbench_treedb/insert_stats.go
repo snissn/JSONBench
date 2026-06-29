@@ -1,7 +1,6 @@
 package main
 
 import (
-	"reflect"
 	"time"
 
 	"github.com/snissn/gomap/TreeDB/collections"
@@ -145,10 +144,10 @@ func (a *insertStatsAccounting) add(stats collections.CollectionInsertStats) {
 	a.columnPublishAssetPreparation += stats.ColumnPublishAssetPreparation
 	a.columnPublishRowAssetPrepare += stats.ColumnPublishRowAssetPreparation
 	a.columnPublishTypedColumnPrepare += stats.ColumnPublishTypedColumnPreparation
-	a.columnPublishTypedDictionary += optionalDurationField(stats, "ColumnPublishTypedColumnDictionaryBuild")
-	a.columnPublishTypedRows += optionalDurationField(stats, "ColumnPublishTypedColumnRowMaterialization")
-	a.columnPublishTypedPart += optionalDurationField(stats, "ColumnPublishTypedColumnPartBuild")
-	a.columnPublishTypedImage += optionalDurationField(stats, "ColumnPublishTypedColumnImageBuild")
+	a.columnPublishTypedDictionary += stats.ColumnPublishTypedColumnDictionaryBuild
+	a.columnPublishTypedRows += stats.ColumnPublishTypedColumnRowMaterialization
+	a.columnPublishTypedPart += stats.ColumnPublishTypedColumnPartBuild
+	a.columnPublishTypedImage += stats.ColumnPublishTypedColumnImageBuild
 	a.columnPublishDictionaryPrepare += stats.ColumnPublishDictionaryPreparation
 	a.columnPublishInt64Prepare += stats.ColumnPublishInt64Preparation
 	a.columnPublishAggregateMetadata += stats.ColumnPublishAggregateMetadataPrepare
@@ -308,12 +307,4 @@ func (a insertStatsAccounting) hasColumnPublishStats() bool {
 		a.columnPublishSharedAppendCount > 0 ||
 		a.columnPublishRequiredAssetBytes > 0 ||
 		a.columnPublishManifestBytes > 0
-}
-
-func optionalDurationField(v any, name string) time.Duration {
-	field := reflect.ValueOf(v).FieldByName(name)
-	if !field.IsValid() || field.Type() != reflect.TypeOf(time.Duration(0)) {
-		return 0
-	}
-	return time.Duration(field.Int())
 }
