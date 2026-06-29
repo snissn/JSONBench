@@ -697,31 +697,35 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 	prepared := preparedColumnQuery{
 		prepare: []queryPhysicalDiagnostic{
 			{
-				Name:                                  "group_count",
-				DenseInt64SpanPredicateBlocksSkipped:  7,
-				TypedColumnPrepareWorkerCount:         8,
-				TypedColumnPreparePlanNanos:           1,
-				TypedColumnPrepareRefsNanos:           2,
-				TypedColumnPreparePairingNanos:        3,
-				TypedColumnPreparePartDecodeNanos:     4,
-				TypedColumnPreparePostPrepareNanos:    5,
-				TypedColumnPrepareSummaryNanos:        6,
-				TypedColumnPrepareReadImageNanos:      7,
-				TypedColumnPrepareStateBuildNanos:     8,
-				TypedColumnPrepareDictionaryNanos:     9,
-				TypedColumnPreparePruningNanos:        10,
-				TypedColumnPrepareSortKeyNanos:        11,
-				TypedColumnPrepareStatsNanos:          12,
-				TypedColumnPrepareRangeReadNanos:      13,
-				TypedColumnPrepareRangeReadBytes:      14,
-				TypedColumnPrepareAdapterNanos:        15,
-				TypedColumnPrepareDenseGroupNanos:     16,
-				TypedColumnPrepareDenseValueNanos:     17,
-				TypedColumnPrepareDensePredicateNanos: 18,
-				TypedColumnPrepareDensePreapplyNanos:  19,
-				TypedColumnPrepareQ2GroupRankNanos:    20,
-				TypedColumnPrepareQ2DistinctRankNanos: 21,
-				TypedColumnPrepareQ2LocalRankNanos:    22,
+				Name:                                                  "group_count",
+				DenseInt64SpanPredicateBlocksSkipped:                  7,
+				TypedColumnPrepareWorkerCount:                         8,
+				TypedColumnPreparePlanNanos:                           1,
+				TypedColumnPrepareRefsNanos:                           2,
+				TypedColumnPreparePairingNanos:                        3,
+				TypedColumnPreparePartDecodeNanos:                     4,
+				TypedColumnPreparePostPrepareNanos:                    5,
+				TypedColumnPrepareSummaryNanos:                        6,
+				TypedColumnPrepareReadImageNanos:                      7,
+				TypedColumnPrepareStateBuildNanos:                     8,
+				TypedColumnPrepareDictionaryNanos:                     9,
+				TypedColumnPreparePruningNanos:                        10,
+				TypedColumnPrepareSortKeyNanos:                        11,
+				TypedColumnPrepareStatsNanos:                          12,
+				TypedColumnPrepareRangeReadNanos:                      13,
+				TypedColumnPrepareRangeReadBytes:                      14,
+				TypedColumnPrepareAdapterNanos:                        15,
+				TypedColumnPrepareDenseGroupNanos:                     16,
+				TypedColumnPrepareDenseValueNanos:                     17,
+				TypedColumnPrepareDensePredicateNanos:                 18,
+				TypedColumnPrepareDensePreapplyNanos:                  19,
+				TypedColumnPrepareQ2GroupRankNanos:                    20,
+				TypedColumnPrepareQ2DistinctRankNanos:                 21,
+				TypedColumnPrepareQ2LocalRankNanos:                    22,
+				TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    23,
+				TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: 24,
+				TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         25,
+				TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      26,
 			},
 		},
 	}
@@ -762,8 +766,23 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 	if got, want := diag.TypedColumnPrepareQ2LocalRankNanos, int64(22); got != want {
 		t.Fatalf("typed_column_prepare_q2_local_rank_nanos=%d want %d", got, want)
 	}
+	if got, want := diag.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos, int64(23); got != want {
+		t.Fatalf("typed_column_prepare_q2_group_global_dictionary_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos, int64(24); got != want {
+		t.Fatalf("typed_column_prepare_q2_distinct_global_dictionary_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos, int64(25); got != want {
+		t.Fatalf("typed_column_prepare_q2_group_global_code_remap_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos, int64(26); got != want {
+		t.Fatalf("typed_column_prepare_q2_distinct_global_code_remap_nanos=%d want %d", got, want)
+	}
 	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2LocalRankNanos, int64(22); got != want {
 		t.Fatalf("physical typed_column_prepare_q2_local_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos, int64(26); got != want {
+		t.Fatalf("physical typed_column_prepare_q2_distinct_global_code_remap_nanos=%d want %d", got, want)
 	}
 }
 
