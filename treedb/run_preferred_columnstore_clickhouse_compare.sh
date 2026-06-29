@@ -514,6 +514,12 @@ def yes_no(value):
     return "yes" if value else "no"
 
 def rows_or_cells_visited(row):
+    typed_cells = row.get("typed_cells_visited", None)
+    if typed_cells is not None:
+        basis = row.get("typed_cells_basis", "")
+        if basis:
+            return f"{count(typed_cells)} typed cells ({basis})"
+        return f"{count(typed_cells)} typed cells"
     scanned = row.get("rows_scanned", 0)
     if scanned:
         return count(scanned)
@@ -548,6 +554,23 @@ def aggregate_metadata_status(row):
         parts.append(f"available {byte_count(available)}")
         parts.append(f"refs {count(refs)}")
     return "; ".join(parts)
+
+def expression_evidence(row):
+    expression = row.get("expression_kind", "")
+    typed_cells = row.get("typed_cells_visited", None)
+    precomputed = row.get("precomputed_expression_used", None)
+    parts = []
+    if expression:
+        parts.append(expression)
+    if typed_cells is not None:
+        basis = row.get("typed_cells_basis", "")
+        if basis:
+            parts.append(f"{count(typed_cells)} typed cells ({basis})")
+        else:
+            parts.append(f"{count(typed_cells)} typed cells")
+    if precomputed is not None:
+        parts.append(f"precomputed {yes_no(precomputed)}")
+    return "; ".join(parts) if parts else "n/a"
 
 def topk_sort_status(row):
     parts = []
@@ -637,8 +660,8 @@ print(f"- measurement phase: `{sample_storage.get('storage_measurement_phase', '
 print()
 print("## Standard comparison detail")
 print()
-print("| system/layout | query | rows loaded | load | insert | storage (TreeDB WAL-excl) | query mode | metadata mode | prepare/setup | run | render/hash | total query | rows/cells visited | bytes read/decoded | row/doc materializations | aggregate metadata | TopK/sort pruning | JSON reconstruction | ClickHouse comparison mode |")
-print("|---|---:|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|---|")
+print("| system/layout | query | rows loaded | load | insert | storage (TreeDB WAL-excl) | query mode | metadata mode | prepare/setup | run | render/hash | total query | rows/cells visited | expression evidence | bytes read/decoded | row/doc materializations | aggregate metadata | TopK/sort pruning | JSON reconstruction | ClickHouse comparison mode |")
+print("|---|---:|---:|---:|---:|---:|---|---|---:|---:|---:|---:|---:|---|---|---|---|---|---|---|")
 for query in queries:
     tree = tree_storage_rows[query]
     ch_best = best(ch_times[clickhouse_query_index[query]])
@@ -650,14 +673,14 @@ for query in queries:
         f"{text_or_na(tree.get('query_mode', ''))} | {text_or_na(tree.get('metadata_mode', ''))} | "
         f"{nanos_or_na(tree, 'prepare_setup_nanos')} | {nanos_or_na(tree, 'run_nanos')} | "
         f"{render_hash_or_na(tree)} | {total_query_time(tree)} | {rows_or_cells_visited(tree)} | "
-        f"{bytes_read_decoded(tree)} | {materializations(tree)} | {aggregate_metadata_status(tree)} | "
+        f"{expression_evidence(tree)} | {bytes_read_decoded(tree)} | {materializations(tree)} | {aggregate_metadata_status(tree)} | "
         f"{topk_sort_status(tree)} | {yes_no(tree.get('json_reconstruction_used', False))} | n/a |"
     )
     print(
         f"| ClickHouse JSON | {query} | {count(clickhouse_loaded_rows)} | "
         f"{seconds_or_na(ch_doc.get('load_seconds', 0))} | n/a | {byte_count(ch_doc.get('total_size', 0))} | "
         f"clickhouse_local_sql_end_to_end | {clickhouse_metadata_mode} | n/a | n/a | n/a | "
-        f"{seconds(ch_best)} | {count(clickhouse_loaded_rows)} | n/a | n/a | no | no | "
+        f"{seconds(ch_best)} | {count(clickhouse_loaded_rows)} | n/a | n/a | n/a | no | no | "
         f"JSONAsObject | {clickhouse_mode} |"
     )
 print()
@@ -680,8 +703,8 @@ print()
 if tree_attribution_rows:
     print("## Query-shaped attribution rows")
     print()
-    print("| layout | query | best | scanned rows | storage | typed owner | note |")
-    print("|---|---:|---:|---:|---:|---|---|")
+    print("| layout | query | best | scanned rows | rows/cells visited | expression evidence | storage | typed owner | note |")
+    print("|---|---:|---:|---:|---:|---|---:|---|---|")
     for query in queries:
         tree = tree_attribution_rows.get(query)
         if tree is None:
@@ -689,7 +712,8 @@ if tree_attribution_rows:
         scanned = tree.get("rows_scanned", 0)
         print(
             f"| {tree.get('storage_layout', '')} | {query} | {seconds(tree['best_seconds'])} | "
-            f"{count(scanned) if scanned else '0'} | {byte_count(tree.get('storage_bytes', 0))} | "
+            f"{count(scanned) if scanned else '0'} | {rows_or_cells_visited(tree)} | {expression_evidence(tree)} | "
+            f"{byte_count(tree.get('storage_bytes', 0))} | "
             f"{tree.get('typed_column_owner', '')} | attribution only |"
         )
 print()
@@ -716,7 +740,7 @@ print("- The full-data TreeDB headline uses `column-store-full`/`column-store-fu
 print("- Query-shaped `column-store*` rows are attribution rows only; their storage is not compared to ClickHouse as apples-to-apples storage.")
 print("- q4/q4a/q4b/q5 aggregate-metadata Top-K attribution rows may still report scanned rows as 0; the full-data headline reports the full-data scan path unless a full-data metadata layout is added.")
 print("- q4a/q4b TreeDB rows use the same q4 grouped-min physical query; the preferred summary maps them to the q4 ClickHouse query unless a separate ClickHouse q4 fairness artifact is supplied.")
-print("- qexpr is an arbitrary-expression typed-column scan/evaluation lane and should not be answered from aggregate metadata unless an explicit expression summary is added and reported separately.")
+print("- qexpr is an arbitrary-expression typed-column scan/evaluation lane; qexpr rows report `typed_cells_visited` and `precomputed_expression_used=false` unless an explicit expression summary is added and reported separately.")
 print("- ClickHouse uses `JSONAsObject`; with `CLICKHOUSE_ALLOW_ERRORS=1`, rows ClickHouse rejects as invalid JSON are skipped and reflected in the ClickHouse loaded-row count.")
 print("- TreeDB uses `TREEDB_ALLOW_ERRORS=1` in this preferred comparison by default when ClickHouse allow-errors is enabled; skipped malformed JSON rows are reflected in the TreeDB loaded-row count and result JSON counters.")
 print()

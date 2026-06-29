@@ -124,6 +124,75 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 	}
 }
 
+func TestPreferredSummaryIncludesQExprExpressionEvidence(t *testing.T) {
+	if _, err := exec.LookPath("bash"); err != nil {
+		t.Skipf("bash not found: %v", err)
+	}
+	if _, err := exec.LookPath("python3"); err != nil {
+		t.Skipf("python3 not found: %v", err)
+	}
+
+	tmp := t.TempDir()
+	outDir := filepath.Join(tmp, "preferred")
+	treeResult := filepath.Join(tmp, "treedb", "report.json")
+	clickHouseResult := filepath.Join(tmp, "clickhouse", "result.json")
+	if err := os.MkdirAll(filepath.Dir(treeResult), 0o755); err != nil {
+		t.Fatalf("mkdir treedb stub: %v", err)
+	}
+	if err := os.MkdirAll(filepath.Dir(clickHouseResult), 0o755); err != nil {
+		t.Fatalf("mkdir clickhouse stub: %v", err)
+	}
+	const treeStub = `{"rows":[
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q1","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q2","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q3","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q4","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q4a","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q4b","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"q5","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"storage_bytes":1000},
+{"system":"TreeDB","storage_layout":"column-store-full-prepared","data_shape":"full-retained-json","query":"qexpr","best_seconds":0.001,"dataset_size":6,"rows_scanned":6,"typed_cells_visited":6,"typed_cells_basis":"rows_scanned","expression_kind":"sum(second_of_day_square)","precomputed_expression_used":false,"storage_bytes":1000}
+]}`
+	if err := os.WriteFile(treeResult, []byte(treeStub), 0o644); err != nil {
+		t.Fatalf("write treedb stub: %v", err)
+	}
+	const clickHouseStub = `{"system":"ClickHouse","dataset_size":6,"num_loaded_documents":6,"total_size":1234,"load_seconds":0.001,"result":[[0.001],[0.001],[0.001],[0.001],[0.001],[0.001]]}`
+	if err := os.WriteFile(clickHouseResult, []byte(clickHouseStub), 0o644); err != nil {
+		t.Fatalf("write clickhouse stub: %v", err)
+	}
+
+	cmd := exec.Command("bash", "./run_preferred_columnstore_clickhouse_compare.sh")
+	cmd.Dir = filepath.Join("..", "..")
+	cmd.Env = append(os.Environ(),
+		"ROWS=6",
+		"TRIES=1",
+		"RUN_TREEDB=0",
+		"RUN_CLICKHOUSE=0",
+		"TREEDB_RESULT="+treeResult,
+		"CLICKHOUSE_RESULT="+clickHouseResult,
+		"OUT_DIR="+outDir,
+	)
+	if output, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("preferred script failed: %v\n%s", err, output)
+	}
+
+	summaryBytes, err := os.ReadFile(filepath.Join(outDir, "preferred_summary.md"))
+	if err != nil {
+		t.Fatalf("read preferred summary: %v", err)
+	}
+	summary := string(summaryBytes)
+	for _, want := range []string{
+		"| system/layout | query | rows loaded | load | insert | storage (TreeDB WAL-excl) | query mode | metadata mode | prepare/setup | run | render/hash | total query | rows/cells visited | expression evidence |",
+		"| TreeDB column-store-full-prepared | qexpr | 6 |",
+		"6 typed cells (rows_scanned)",
+		"sum(second_of_day_square); 6 typed cells (rows_scanned); precomputed no",
+		"qexpr rows report `typed_cells_visited` and `precomputed_expression_used=false`",
+	} {
+		if !strings.Contains(summary, want) {
+			t.Fatalf("preferred summary missing %q\n%s", want, summary)
+		}
+	}
+}
+
 func TestPreferredScriptUsesAttributionMetadataCostRow(t *testing.T) {
 	if testing.Short() {
 		t.Skip("preferred script smoke test shells out to bash")
