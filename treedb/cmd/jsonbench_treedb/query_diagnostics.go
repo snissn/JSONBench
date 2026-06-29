@@ -38,6 +38,7 @@ type queryDiagnostics struct {
 	DenseGroupCountDistinctUsed           bool                      `json:"dense_group_count_distinct_used,omitempty"`
 	DenseGroupHourCountUsed               bool                      `json:"dense_group_hour_count_used,omitempty"`
 	DenseInt64SpanUsed                    bool                      `json:"dense_int64_span_used,omitempty"`
+	DenseInt64SpanPredicateBlocksSkipped  int                       `json:"dense_int64_span_predicate_blocks_skipped"`
 	MetadataHits                          int                       `json:"metadata_hits,omitempty"`
 	MetadataEntries                       int                       `json:"metadata_entries,omitempty"`
 	MetadataMisses                        int                       `json:"metadata_misses,omitempty"`
@@ -141,6 +142,7 @@ type queryPhysicalDiagnostic struct {
 	DenseGroupCountDistinctUsed           bool     `json:"dense_group_count_distinct_used,omitempty"`
 	DenseGroupHourCountUsed               bool     `json:"dense_group_hour_count_used,omitempty"`
 	DenseInt64SpanUsed                    bool     `json:"dense_int64_span_used,omitempty"`
+	DenseInt64SpanPredicateBlocksSkipped  int      `json:"dense_int64_span_predicate_blocks_skipped"`
 	MetadataHits                          int      `json:"metadata_hits,omitempty"`
 	MetadataEntries                       int      `json:"metadata_entries,omitempty"`
 	MetadataMisses                        int      `json:"metadata_misses,omitempty"`
@@ -271,6 +273,7 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.DenseGroupCountDistinctUsed = out.DenseGroupCountDistinctUsed || phys.DenseGroupCountDistinctUsed
 		out.DenseGroupHourCountUsed = out.DenseGroupHourCountUsed || phys.DenseGroupHourCountUsed
 		out.DenseInt64SpanUsed = out.DenseInt64SpanUsed || phys.DenseInt64SpanUsed
+		out.DenseInt64SpanPredicateBlocksSkipped += phys.DenseInt64SpanPredicateBlocksSkipped
 		out.MetadataHits += phys.MetadataHits
 		out.MetadataEntries += phys.MetadataEntries
 		out.MetadataMisses += phys.MetadataMisses
@@ -410,6 +413,7 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		DenseGroupCountDistinctUsed:           d.DenseGroupCountDistinctUsed,
 		DenseGroupHourCountUsed:               d.DenseGroupHourCountUsed,
 		DenseInt64SpanUsed:                    d.DenseInt64SpanUsed,
+		DenseInt64SpanPredicateBlocksSkipped:  optionalColumnPhysicalDiagnosticInt(d, "DenseInt64SpanPredicateBlocksSkipped"),
 		MetadataHits:                          d.MetadataHits,
 		MetadataEntries:                       d.MetadataEntries,
 		MetadataMisses:                        d.MetadataMisses,
@@ -500,7 +504,8 @@ func columnPhysicalRunnerPrepareDiagnostic(name string, runner *collections.Colu
 }
 
 func columnPhysicalPrepareDiagnosticsHasData(phys queryPhysicalDiagnostic) bool {
-	return phys.TypedColumnPrepareWorkerCount > 0 ||
+	return phys.DenseInt64SpanPredicateBlocksSkipped > 0 ||
+		phys.TypedColumnPrepareWorkerCount > 0 ||
 		phys.TypedColumnPreparePlanNanos > 0 ||
 		phys.TypedColumnPrepareRefsNanos > 0 ||
 		phys.TypedColumnPreparePairingNanos > 0 ||
@@ -537,6 +542,7 @@ func mergeColumnPhysicalPrepareDiagnostics(diag *queryDiagnostics, phys queryPhy
 }
 
 func mergeColumnPhysicalPrepareDiagnosticFields(diag *queryDiagnostics, phys queryPhysicalDiagnostic) {
+	diag.DenseInt64SpanPredicateBlocksSkipped += phys.DenseInt64SpanPredicateBlocksSkipped
 	diag.TypedColumnPrepareWorkerCount = maxInt(diag.TypedColumnPrepareWorkerCount, phys.TypedColumnPrepareWorkerCount)
 	diag.TypedColumnPreparePlanNanos += phys.TypedColumnPreparePlanNanos
 	diag.TypedColumnPrepareRefsNanos += phys.TypedColumnPrepareRefsNanos
@@ -563,6 +569,7 @@ func mergeColumnPhysicalPrepareDiagnosticFields(diag *queryDiagnostics, phys que
 }
 
 func mergeQueryPhysicalPrepareDiagnosticFields(dst *queryPhysicalDiagnostic, src queryPhysicalDiagnostic) {
+	dst.DenseInt64SpanPredicateBlocksSkipped += src.DenseInt64SpanPredicateBlocksSkipped
 	dst.TypedColumnPrepareWorkerCount = maxInt(dst.TypedColumnPrepareWorkerCount, src.TypedColumnPrepareWorkerCount)
 	dst.TypedColumnPreparePlanNanos += src.TypedColumnPreparePlanNanos
 	dst.TypedColumnPrepareRefsNanos += src.TypedColumnPrepareRefsNanos

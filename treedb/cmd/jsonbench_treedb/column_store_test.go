@@ -698,6 +698,7 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 		prepare: []queryPhysicalDiagnostic{
 			{
 				Name:                                  "group_count",
+				DenseInt64SpanPredicateBlocksSkipped:  7,
 				TypedColumnPrepareWorkerCount:         8,
 				TypedColumnPreparePlanNanos:           1,
 				TypedColumnPrepareRefsNanos:           2,
@@ -737,11 +738,17 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 	if got, want := diag.TypedColumnPrepareWorkerCount, 8; got != want {
 		t.Fatalf("typed_column_prepare_worker_count=%d want %d", got, want)
 	}
+	if got, want := diag.DenseInt64SpanPredicateBlocksSkipped, 7; got != want {
+		t.Fatalf("dense_int64_span_predicate_blocks_skipped=%d want %d", got, want)
+	}
 	if got, want := diag.PhysicalQueries[0].RowsScanned, 10; got != want {
 		t.Fatalf("physical rows_scanned=%d want %d", got, want)
 	}
 	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareWorkerCount, 8; got != want {
 		t.Fatalf("physical typed_column_prepare_worker_count=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].DenseInt64SpanPredicateBlocksSkipped, 7; got != want {
+		t.Fatalf("physical dense_int64_span_predicate_blocks_skipped=%d want %d", got, want)
 	}
 	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareDensePreapplyNanos, int64(19); got != want {
 		t.Fatalf("physical typed_column_prepare_dense_preapply_nanos=%d want %d", got, want)

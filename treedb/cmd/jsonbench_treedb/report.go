@@ -90,6 +90,7 @@ type reportRow struct {
 	DenseGroupCountDistinctUsed                      bool      `json:"dense_group_count_distinct_used,omitempty"`
 	DenseGroupHourCountUsed                          bool      `json:"dense_group_hour_count_used,omitempty"`
 	DenseInt64SpanUsed                               bool      `json:"dense_int64_span_used,omitempty"`
+	DenseInt64SpanPredicateBlocksSkipped             int       `json:"dense_int64_span_predicate_blocks_skipped"`
 	DictionaryCodeHits                               int       `json:"dictionary_code_hits,omitempty"`
 	PredicateDictionaryCodeHits                      int       `json:"predicate_dictionary_code_hits,omitempty"`
 	Int64ValueHits                                   int       `json:"int64_value_hits,omitempty"`
@@ -496,6 +497,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				DenseGroupCountDistinctUsed:           diagnostics.DenseGroupCountDistinctUsed,
 				DenseGroupHourCountUsed:               diagnostics.DenseGroupHourCountUsed,
 				DenseInt64SpanUsed:                    diagnostics.DenseInt64SpanUsed,
+				DenseInt64SpanPredicateBlocksSkipped:  diagnostics.DenseInt64SpanPredicateBlocksSkipped,
 				DictionaryCodeHits:                    diagnostics.DictionaryCodeHits,
 				PredicateDictionaryCodeHits:           diagnostics.PredicateDictionaryCodeHits,
 				Int64ValueHits:                        diagnostics.Int64ValueHits,
@@ -1337,15 +1339,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns | dense predicate blocks skipped |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasTypedColumnSetupDiagnostics(row) {
 				continue
 			}
 			fmt.Fprintf(
 				&buf,
-				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
 				row.Scale,
 				reportRowLayout(row),
 				row.Query,
@@ -1377,6 +1379,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				row.TypedColumnPrepareDenseValueNanos,
 				row.TypedColumnPrepareDensePredicateNanos,
 				row.TypedColumnPrepareDensePreapplyNanos,
+				row.DenseInt64SpanPredicateBlocksSkipped,
 			)
 		}
 	}
@@ -1560,6 +1563,7 @@ func reportHasTypedColumnSetupDiagnostics(rows []reportRow) bool {
 
 func reportRowHasTypedColumnSetupDiagnostics(row reportRow) bool {
 	return row.TypedColumnOneShotBuildNanos != 0 ||
+		row.DenseInt64SpanPredicateBlocksSkipped != 0 ||
 		row.TypedColumnPrepareWorkerCount != 0 ||
 		row.TypedColumnPreparePlanNanos != 0 ||
 		row.TypedColumnPrepareRefsNanos != 0 ||
