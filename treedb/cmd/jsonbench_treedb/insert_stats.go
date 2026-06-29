@@ -26,6 +26,10 @@ type insertStatsResult struct {
 	ColumnPublishAssetPreparationSec      float64 `json:"column_publish_asset_preparation_seconds,omitempty"`
 	ColumnPublishRowAssetPrepareSec       float64 `json:"column_publish_row_asset_prepare_seconds,omitempty"`
 	ColumnPublishTypedColumnPrepareSec    float64 `json:"column_publish_typed_column_prepare_seconds,omitempty"`
+	ColumnPublishTypedDictionarySec       float64 `json:"column_publish_typed_column_dictionary_build_seconds,omitempty"`
+	ColumnPublishTypedRowsSec             float64 `json:"column_publish_typed_column_row_materialization_seconds,omitempty"`
+	ColumnPublishTypedPartSec             float64 `json:"column_publish_typed_column_part_build_seconds,omitempty"`
+	ColumnPublishTypedImageSec            float64 `json:"column_publish_typed_column_image_build_seconds,omitempty"`
 	ColumnPublishDictionaryPrepareSec     float64 `json:"column_publish_dictionary_sidecar_prepare_seconds,omitempty"`
 	ColumnPublishInt64PrepareSec          float64 `json:"column_publish_int64_sidecar_prepare_seconds,omitempty"`
 	ColumnPublishAggregateMetadataSec     float64 `json:"column_publish_aggregate_metadata_prepare_seconds,omitempty"`
@@ -81,6 +85,10 @@ type insertStatsAccounting struct {
 	columnPublishAssetPreparation       time.Duration
 	columnPublishRowAssetPrepare        time.Duration
 	columnPublishTypedColumnPrepare     time.Duration
+	columnPublishTypedDictionary        time.Duration
+	columnPublishTypedRows              time.Duration
+	columnPublishTypedPart              time.Duration
+	columnPublishTypedImage             time.Duration
 	columnPublishDictionaryPrepare      time.Duration
 	columnPublishInt64Prepare           time.Duration
 	columnPublishAggregateMetadata      time.Duration
@@ -136,6 +144,10 @@ func (a *insertStatsAccounting) add(stats collections.CollectionInsertStats) {
 	a.columnPublishAssetPreparation += stats.ColumnPublishAssetPreparation
 	a.columnPublishRowAssetPrepare += stats.ColumnPublishRowAssetPreparation
 	a.columnPublishTypedColumnPrepare += stats.ColumnPublishTypedColumnPreparation
+	a.columnPublishTypedDictionary += stats.ColumnPublishTypedColumnDictionaryBuild
+	a.columnPublishTypedRows += stats.ColumnPublishTypedColumnRowMaterialization
+	a.columnPublishTypedPart += stats.ColumnPublishTypedColumnPartBuild
+	a.columnPublishTypedImage += stats.ColumnPublishTypedColumnImageBuild
 	a.columnPublishDictionaryPrepare += stats.ColumnPublishDictionaryPreparation
 	a.columnPublishInt64Prepare += stats.ColumnPublishInt64Preparation
 	a.columnPublishAggregateMetadata += stats.ColumnPublishAggregateMetadataPrepare
@@ -195,6 +207,10 @@ func (a insertStatsAccounting) result() *insertStatsResult {
 		ColumnPublishAssetPreparationSec:      a.columnPublishAssetPreparation.Seconds(),
 		ColumnPublishRowAssetPrepareSec:       a.columnPublishRowAssetPrepare.Seconds(),
 		ColumnPublishTypedColumnPrepareSec:    a.columnPublishTypedColumnPrepare.Seconds(),
+		ColumnPublishTypedDictionarySec:       a.columnPublishTypedDictionary.Seconds(),
+		ColumnPublishTypedRowsSec:             a.columnPublishTypedRows.Seconds(),
+		ColumnPublishTypedPartSec:             a.columnPublishTypedPart.Seconds(),
+		ColumnPublishTypedImageSec:            a.columnPublishTypedImage.Seconds(),
 		ColumnPublishDictionaryPrepareSec:     a.columnPublishDictionaryPrepare.Seconds(),
 		ColumnPublishInt64PrepareSec:          a.columnPublishInt64Prepare.Seconds(),
 		ColumnPublishAggregateMetadataSec:     a.columnPublishAggregateMetadata.Seconds(),
@@ -254,6 +270,10 @@ func (a insertStatsAccounting) hasColumnPublishStats() bool {
 		a.columnPublishAssetPreparation > 0 ||
 		a.columnPublishRowAssetPrepare > 0 ||
 		a.columnPublishTypedColumnPrepare > 0 ||
+		a.columnPublishTypedDictionary > 0 ||
+		a.columnPublishTypedRows > 0 ||
+		a.columnPublishTypedPart > 0 ||
+		a.columnPublishTypedImage > 0 ||
 		a.columnPublishDictionaryPrepare > 0 ||
 		a.columnPublishInt64Prepare > 0 ||
 		a.columnPublishAggregateMetadata > 0 ||
