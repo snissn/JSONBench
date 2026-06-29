@@ -177,6 +177,10 @@ type reportRow struct {
 	InsertStatsColumnPublishAssetPreparationSec      float64   `json:"insert_stats_column_publish_asset_preparation_seconds,omitempty"`
 	InsertStatsColumnPublishRowAssetPrepareSec       float64   `json:"insert_stats_column_publish_row_asset_prepare_seconds,omitempty"`
 	InsertStatsColumnPublishTypedColumnPrepareSec    float64   `json:"insert_stats_column_publish_typed_column_prepare_seconds,omitempty"`
+	InsertStatsColumnPublishTypedDictionarySec       float64   `json:"insert_stats_column_publish_typed_column_dictionary_build_seconds,omitempty"`
+	InsertStatsColumnPublishTypedRowsSec             float64   `json:"insert_stats_column_publish_typed_column_row_materialization_seconds,omitempty"`
+	InsertStatsColumnPublishTypedPartSec             float64   `json:"insert_stats_column_publish_typed_column_part_build_seconds,omitempty"`
+	InsertStatsColumnPublishTypedImageSec            float64   `json:"insert_stats_column_publish_typed_column_image_build_seconds,omitempty"`
 	InsertStatsColumnPublishDictionaryPrepareSec     float64   `json:"insert_stats_column_publish_dictionary_sidecar_prepare_seconds,omitempty"`
 	InsertStatsColumnPublishInt64PrepareSec          float64   `json:"insert_stats_column_publish_int64_sidecar_prepare_seconds,omitempty"`
 	InsertStatsColumnPublishAggregateMetadataSec     float64   `json:"insert_stats_column_publish_aggregate_metadata_prepare_seconds,omitempty"`
@@ -814,6 +818,10 @@ func reportRowHasColumnPublishInsertStats(row reportRow) bool {
 		row.InsertStatsColumnPublishAssetPreparationSec > 0 ||
 		row.InsertStatsColumnPublishRowAssetPrepareSec > 0 ||
 		row.InsertStatsColumnPublishTypedColumnPrepareSec > 0 ||
+		row.InsertStatsColumnPublishTypedDictionarySec > 0 ||
+		row.InsertStatsColumnPublishTypedRowsSec > 0 ||
+		row.InsertStatsColumnPublishTypedPartSec > 0 ||
+		row.InsertStatsColumnPublishTypedImageSec > 0 ||
 		row.InsertStatsColumnPublishDictionaryPrepareSec > 0 ||
 		row.InsertStatsColumnPublishInt64PrepareSec > 0 ||
 		row.InsertStatsColumnPublishAggregateMetadataSec > 0 ||
@@ -872,6 +880,10 @@ func applyReportRowInsertStats(row *reportRow, stats *insertStatsResult) {
 	row.InsertStatsColumnPublishAssetPreparationSec = stats.ColumnPublishAssetPreparationSec
 	row.InsertStatsColumnPublishRowAssetPrepareSec = stats.ColumnPublishRowAssetPrepareSec
 	row.InsertStatsColumnPublishTypedColumnPrepareSec = stats.ColumnPublishTypedColumnPrepareSec
+	row.InsertStatsColumnPublishTypedDictionarySec = stats.ColumnPublishTypedDictionarySec
+	row.InsertStatsColumnPublishTypedRowsSec = stats.ColumnPublishTypedRowsSec
+	row.InsertStatsColumnPublishTypedPartSec = stats.ColumnPublishTypedPartSec
+	row.InsertStatsColumnPublishTypedImageSec = stats.ColumnPublishTypedImageSec
 	row.InsertStatsColumnPublishDictionaryPrepareSec = stats.ColumnPublishDictionaryPrepareSec
 	row.InsertStatsColumnPublishInt64PrepareSec = stats.ColumnPublishInt64PrepareSec
 	row.InsertStatsColumnPublishAggregateMetadataSec = stats.ColumnPublishAggregateMetadataSec
@@ -1144,8 +1156,8 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTreeDBColumnPublishInsertStats(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Column Publish Insert Stats\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | load | insert | publish | build column delta | commit | asset prepare | row asset | typed column | dictionary | int64 | aggregate metadata | shared build | asset append | append open | append write | append close | file sync | file close | dir sync | rows | assets | row asset bytes | typed column bytes | dictionary bytes | int64 bytes | aggregate metadata bytes | shared append bytes | required asset bytes | manifest bytes |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | load | insert | publish | build column delta | commit | asset prepare | row asset | typed column | typed dictionary | typed rows | typed part | typed image | dictionary | int64 | aggregate metadata | shared build | asset append | append open | append write | append close | file sync | file close | dir sync | rows | assets | row asset bytes | typed column bytes | dictionary bytes | int64 bytes | aggregate metadata bytes | shared append bytes | required asset bytes | manifest bytes |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 		seen := make(map[string]struct{})
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasColumnPublishInsertStats(row) {
@@ -1158,7 +1170,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			seen[key] = struct{}{}
 			fmt.Fprintf(
 				&buf,
-				"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+				"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s |\n",
 				row.Scale,
 				reportRowLayout(row),
 				formatSeconds(row.LoadSec),
@@ -1169,6 +1181,10 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				formatSeconds(row.InsertStatsColumnPublishAssetPreparationSec),
 				formatSeconds(row.InsertStatsColumnPublishRowAssetPrepareSec),
 				formatSeconds(row.InsertStatsColumnPublishTypedColumnPrepareSec),
+				formatSeconds(row.InsertStatsColumnPublishTypedDictionarySec),
+				formatSeconds(row.InsertStatsColumnPublishTypedRowsSec),
+				formatSeconds(row.InsertStatsColumnPublishTypedPartSec),
+				formatSeconds(row.InsertStatsColumnPublishTypedImageSec),
 				formatSeconds(row.InsertStatsColumnPublishDictionaryPrepareSec),
 				formatSeconds(row.InsertStatsColumnPublishInt64PrepareSec),
 				formatSeconds(row.InsertStatsColumnPublishAggregateMetadataSec),
