@@ -722,10 +722,13 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 				TypedColumnPrepareQ2GroupRankNanos:                    20,
 				TypedColumnPrepareQ2DistinctRankNanos:                 21,
 				TypedColumnPrepareQ2LocalRankNanos:                    22,
-				TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    23,
-				TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: 24,
-				TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         25,
-				TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      26,
+				TypedColumnPrepareQ2DenseGroupGlobalRankNanos:         23,
+				TypedColumnPrepareQ2DenseDistinctGlobalRankNanos:      24,
+				TypedColumnPrepareQ2DensePartLocalRankNanos:           25,
+				TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    26,
+				TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: 27,
+				TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         28,
+				TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      29,
 			},
 		},
 	}
@@ -766,23 +769,95 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 	if got, want := diag.TypedColumnPrepareQ2LocalRankNanos, int64(22); got != want {
 		t.Fatalf("typed_column_prepare_q2_local_rank_nanos=%d want %d", got, want)
 	}
-	if got, want := diag.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos, int64(23); got != want {
+	if got, want := diag.TypedColumnPrepareQ2DenseGroupGlobalRankNanos, int64(23); got != want {
+		t.Fatalf("typed_column_prepare_q2_dense_group_global_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos, int64(24); got != want {
+		t.Fatalf("typed_column_prepare_q2_dense_distinct_global_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareQ2DensePartLocalRankNanos, int64(25); got != want {
+		t.Fatalf("typed_column_prepare_q2_dense_part_local_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos, int64(26); got != want {
 		t.Fatalf("typed_column_prepare_q2_group_global_dictionary_rank_nanos=%d want %d", got, want)
 	}
-	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos, int64(24); got != want {
+	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos, int64(27); got != want {
 		t.Fatalf("typed_column_prepare_q2_distinct_global_dictionary_rank_nanos=%d want %d", got, want)
 	}
-	if got, want := diag.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos, int64(25); got != want {
+	if got, want := diag.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos, int64(28); got != want {
 		t.Fatalf("typed_column_prepare_q2_group_global_code_remap_nanos=%d want %d", got, want)
 	}
-	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos, int64(26); got != want {
+	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos, int64(29); got != want {
 		t.Fatalf("typed_column_prepare_q2_distinct_global_code_remap_nanos=%d want %d", got, want)
 	}
 	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2LocalRankNanos, int64(22); got != want {
 		t.Fatalf("physical typed_column_prepare_q2_local_rank_nanos=%d want %d", got, want)
 	}
-	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos, int64(26); got != want {
+	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2DenseDistinctGlobalRankNanos, int64(24); got != want {
+		t.Fatalf("physical typed_column_prepare_q2_dense_distinct_global_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos, int64(29); got != want {
 		t.Fatalf("physical typed_column_prepare_q2_distinct_global_code_remap_nanos=%d want %d", got, want)
+	}
+}
+
+func TestPhysicalQueryDiagnosticMapsOptionalQ2DenseRankDiagnostics(t *testing.T) {
+	var upstream collections.ColumnPhysicalQueryDiagnostics
+	upstreamValue := reflect.ValueOf(&upstream).Elem()
+	fields := []struct {
+		name    string
+		want    int64
+		read    func(queryPhysicalDiagnostic) int64
+		present bool
+	}{
+		{
+			name: "TypedColumnPrepareQ2DenseGroupGlobalRankNanos",
+			want: 31,
+			read: func(phys queryPhysicalDiagnostic) int64 {
+				return phys.TypedColumnPrepareQ2DenseGroupGlobalRankNanos
+			},
+		},
+		{
+			name: "TypedColumnPrepareQ2DenseDistinctGlobalRankNanos",
+			want: 32,
+			read: func(phys queryPhysicalDiagnostic) int64 {
+				return phys.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos
+			},
+		},
+		{
+			name: "TypedColumnPrepareQ2DensePartLocalRankNanos",
+			want: 33,
+			read: func(phys queryPhysicalDiagnostic) int64 {
+				return phys.TypedColumnPrepareQ2DensePartLocalRankNanos
+			},
+		},
+	}
+	for i := range fields {
+		field := upstreamValue.FieldByName(fields[i].name)
+		if !field.IsValid() {
+			continue
+		}
+		if !field.CanSet() || field.Kind() != reflect.Int64 {
+			t.Fatalf("%s kind=%s canSet=%t, want settable int64", fields[i].name, field.Kind(), field.CanSet())
+		}
+		field.SetInt(fields[i].want)
+		fields[i].present = true
+	}
+
+	phys := physicalQueryDiagnostic(namedColumnPhysicalResult{
+		Name: "q2_dense_rank",
+		Result: collections.ColumnPhysicalQueryResult{
+			Diagnostics: upstream,
+		},
+	})
+	for _, tc := range fields {
+		want := int64(0)
+		if tc.present {
+			want = tc.want
+		}
+		if got := tc.read(phys); got != want {
+			t.Fatalf("%s mapped value=%d want %d", tc.name, got, want)
+		}
 	}
 }
 
