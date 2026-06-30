@@ -143,6 +143,13 @@ type reportRow struct {
 	TypedColumnPrepareQ2DenseGroupGlobalRankNanos         int64     `json:"typed_column_prepare_q2_dense_group_global_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DenseDistinctGlobalRankNanos      int64     `json:"typed_column_prepare_q2_dense_distinct_global_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DensePartLocalRankNanos           int64     `json:"typed_column_prepare_q2_dense_part_local_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankPlanNanos        int64     `json:"typed_column_prepare_q2_dense_distinct_rank_plan_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos int64     `json:"typed_column_prepare_q2_dense_distinct_rank_collect_refs_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos int64     `json:"typed_column_prepare_q2_dense_distinct_rank_build_shards_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankShardCount       int       `json:"typed_column_prepare_q2_dense_distinct_rank_shard_count,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankRefs             int       `json:"typed_column_prepare_q2_dense_distinct_rank_refs,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs     int       `json:"typed_column_prepare_q2_dense_distinct_rank_max_shard_refs,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctGlobalRanks          int       `json:"typed_column_prepare_q2_dense_distinct_global_ranks,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos    int64     `json:"typed_column_prepare_q2_group_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos int64     `json:"typed_column_prepare_q2_distinct_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalCodeRemapNanos         int64     `json:"typed_column_prepare_q2_group_global_code_remap_nanos,omitempty"`
@@ -557,6 +564,13 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				TypedColumnPrepareQ2DenseGroupGlobalRankNanos: diagnostics.TypedColumnPrepareQ2DenseGroupGlobalRankNanos,
 				TypedColumnPrepareQ2DenseDistinctGlobalRankNanos:      diagnostics.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos,
 				TypedColumnPrepareQ2DensePartLocalRankNanos:           diagnostics.TypedColumnPrepareQ2DensePartLocalRankNanos,
+				TypedColumnPrepareQ2DenseDistinctRankPlanNanos:        diagnostics.TypedColumnPrepareQ2DenseDistinctRankPlanNanos,
+				TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos: diagnostics.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos,
+				TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos: diagnostics.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos,
+				TypedColumnPrepareQ2DenseDistinctRankShardCount:       diagnostics.TypedColumnPrepareQ2DenseDistinctRankShardCount,
+				TypedColumnPrepareQ2DenseDistinctRankRefs:             diagnostics.TypedColumnPrepareQ2DenseDistinctRankRefs,
+				TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs:     diagnostics.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs,
+				TypedColumnPrepareQ2DenseDistinctGlobalRanks:          diagnostics.TypedColumnPrepareQ2DenseDistinctGlobalRanks,
 				TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    diagnostics.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos,
 				TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: diagnostics.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos,
 				TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         diagnostics.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos,
@@ -1353,15 +1367,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | q2 dense group global rank ns | q2 dense distinct global rank ns | q2 dense part local rank ns | q2 group global dict/rank ns | q2 distinct global dict/rank ns | q2 group global-code remap ns | q2 distinct global-code remap ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns | dense predicate blocks skipped |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | q2 dense group global rank ns | q2 dense distinct global rank ns | q2 dense part local rank ns | q2 dense distinct rank plan ns | q2 dense distinct rank collect refs ns | q2 dense distinct rank build shards ns | q2 dense distinct rank shards | q2 dense distinct rank refs | q2 dense distinct rank max shard refs | q2 dense distinct global ranks | q2 group global dict/rank ns | q2 distinct global dict/rank ns | q2 group global-code remap ns | q2 distinct global-code remap ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns | dense predicate blocks skipped |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasTypedColumnSetupDiagnostics(row) {
 				continue
 			}
 			fmt.Fprintf(
 				&buf,
-				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
 				row.Scale,
 				reportRowLayout(row),
 				row.Query,
@@ -1381,6 +1395,13 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				row.TypedColumnPrepareQ2DenseGroupGlobalRankNanos,
 				row.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos,
 				row.TypedColumnPrepareQ2DensePartLocalRankNanos,
+				row.TypedColumnPrepareQ2DenseDistinctRankPlanNanos,
+				row.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos,
+				row.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos,
+				row.TypedColumnPrepareQ2DenseDistinctRankShardCount,
+				row.TypedColumnPrepareQ2DenseDistinctRankRefs,
+				row.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs,
+				row.TypedColumnPrepareQ2DenseDistinctGlobalRanks,
 				row.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos,
 				row.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos,
 				row.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos,
@@ -1612,6 +1633,13 @@ func reportRowHasTypedColumnSetupDiagnostics(row reportRow) bool {
 		row.TypedColumnPrepareQ2DenseGroupGlobalRankNanos != 0 ||
 		row.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos != 0 ||
 		row.TypedColumnPrepareQ2DensePartLocalRankNanos != 0 ||
+		row.TypedColumnPrepareQ2DenseDistinctRankPlanNanos != 0 ||
+		row.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos != 0 ||
+		row.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos != 0 ||
+		row.TypedColumnPrepareQ2DenseDistinctRankShardCount != 0 ||
+		row.TypedColumnPrepareQ2DenseDistinctRankRefs != 0 ||
+		row.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs != 0 ||
+		row.TypedColumnPrepareQ2DenseDistinctGlobalRanks != 0 ||
 		row.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos != 0 ||
 		row.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos != 0 ||
 		row.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos != 0 ||
