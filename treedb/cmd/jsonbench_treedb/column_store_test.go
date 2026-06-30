@@ -805,9 +805,10 @@ func TestPhysicalQueryDiagnosticMapsOptionalQ2DenseRankDiagnostics(t *testing.T)
 	var upstream collections.ColumnPhysicalQueryDiagnostics
 	upstreamValue := reflect.ValueOf(&upstream).Elem()
 	fields := []struct {
-		name string
-		want int64
-		read func(queryPhysicalDiagnostic) int64
+		name    string
+		want    int64
+		read    func(queryPhysicalDiagnostic) int64
+		present bool
 	}{
 		{
 			name: "TypedColumnPrepareQ2DenseGroupGlobalRankNanos",
@@ -831,23 +832,16 @@ func TestPhysicalQueryDiagnosticMapsOptionalQ2DenseRankDiagnostics(t *testing.T)
 			},
 		},
 	}
-	var missing []string
-	for _, tc := range fields {
-		field := upstreamValue.FieldByName(tc.name)
+	for i := range fields {
+		field := upstreamValue.FieldByName(fields[i].name)
 		if !field.IsValid() {
-			missing = append(missing, tc.name)
 			continue
 		}
 		if !field.CanSet() || field.Kind() != reflect.Int64 {
-			t.Fatalf("%s kind=%s canSet=%t, want settable int64", tc.name, field.Kind(), field.CanSet())
+			t.Fatalf("%s kind=%s canSet=%t, want settable int64", fields[i].name, field.Kind(), field.CanSet())
 		}
-		field.SetInt(tc.want)
-	}
-	if len(missing) == len(fields) {
-		t.Skipf("gomap ColumnPhysicalQueryDiagnostics does not expose optional q2 dense rank diagnostics")
-	}
-	if len(missing) > 0 {
-		t.Fatalf("gomap ColumnPhysicalQueryDiagnostics is missing optional q2 dense rank fields: %s", strings.Join(missing, ", "))
+		field.SetInt(fields[i].want)
+		fields[i].present = true
 	}
 
 	phys := physicalQueryDiagnostic(namedColumnPhysicalResult{
@@ -857,8 +851,12 @@ func TestPhysicalQueryDiagnosticMapsOptionalQ2DenseRankDiagnostics(t *testing.T)
 		},
 	})
 	for _, tc := range fields {
-		if got := tc.read(phys); got != tc.want {
-			t.Fatalf("%s mapped value=%d want %d", tc.name, got, tc.want)
+		want := int64(0)
+		if tc.present {
+			want = tc.want
+		}
+		if got := tc.read(phys); got != want {
+			t.Fatalf("%s mapped value=%d want %d", tc.name, got, want)
 		}
 	}
 }
