@@ -96,6 +96,13 @@ type queryDiagnostics struct {
 	TypedColumnPrepareQ2DenseGroupGlobalRankNanos         int64                     `json:"typed_column_prepare_q2_dense_group_global_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DenseDistinctGlobalRankNanos      int64                     `json:"typed_column_prepare_q2_dense_distinct_global_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DensePartLocalRankNanos           int64                     `json:"typed_column_prepare_q2_dense_part_local_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankPlanNanos        int64                     `json:"typed_column_prepare_q2_dense_distinct_rank_plan_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos int64                     `json:"typed_column_prepare_q2_dense_distinct_rank_collect_refs_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos int64                     `json:"typed_column_prepare_q2_dense_distinct_rank_build_shards_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankShardCount       int                       `json:"typed_column_prepare_q2_dense_distinct_rank_shard_count,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankRefs             int                       `json:"typed_column_prepare_q2_dense_distinct_rank_refs,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs     int                       `json:"typed_column_prepare_q2_dense_distinct_rank_max_shard_refs,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctGlobalRanks          int                       `json:"typed_column_prepare_q2_dense_distinct_global_ranks,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos    int64                     `json:"typed_column_prepare_q2_group_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos int64                     `json:"typed_column_prepare_q2_distinct_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalCodeRemapNanos         int64                     `json:"typed_column_prepare_q2_group_global_code_remap_nanos,omitempty"`
@@ -207,6 +214,13 @@ type queryPhysicalDiagnostic struct {
 	TypedColumnPrepareQ2DenseGroupGlobalRankNanos         int64    `json:"typed_column_prepare_q2_dense_group_global_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DenseDistinctGlobalRankNanos      int64    `json:"typed_column_prepare_q2_dense_distinct_global_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DensePartLocalRankNanos           int64    `json:"typed_column_prepare_q2_dense_part_local_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankPlanNanos        int64    `json:"typed_column_prepare_q2_dense_distinct_rank_plan_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos int64    `json:"typed_column_prepare_q2_dense_distinct_rank_collect_refs_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos int64    `json:"typed_column_prepare_q2_dense_distinct_rank_build_shards_nanos,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankShardCount       int      `json:"typed_column_prepare_q2_dense_distinct_rank_shard_count,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankRefs             int      `json:"typed_column_prepare_q2_dense_distinct_rank_refs,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs     int      `json:"typed_column_prepare_q2_dense_distinct_rank_max_shard_refs,omitempty"`
+	TypedColumnPrepareQ2DenseDistinctGlobalRanks          int      `json:"typed_column_prepare_q2_dense_distinct_global_ranks,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos    int64    `json:"typed_column_prepare_q2_group_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos int64    `json:"typed_column_prepare_q2_distinct_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalCodeRemapNanos         int64    `json:"typed_column_prepare_q2_group_global_code_remap_nanos,omitempty"`
@@ -345,6 +359,13 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.TypedColumnPrepareQ2DenseGroupGlobalRankNanos += phys.TypedColumnPrepareQ2DenseGroupGlobalRankNanos
 		out.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos += phys.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos
 		out.TypedColumnPrepareQ2DensePartLocalRankNanos += phys.TypedColumnPrepareQ2DensePartLocalRankNanos
+		out.TypedColumnPrepareQ2DenseDistinctRankPlanNanos += phys.TypedColumnPrepareQ2DenseDistinctRankPlanNanos
+		out.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos += phys.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos
+		out.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos += phys.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos
+		out.TypedColumnPrepareQ2DenseDistinctRankShardCount = maxInt(out.TypedColumnPrepareQ2DenseDistinctRankShardCount, phys.TypedColumnPrepareQ2DenseDistinctRankShardCount)
+		out.TypedColumnPrepareQ2DenseDistinctRankRefs += phys.TypedColumnPrepareQ2DenseDistinctRankRefs
+		out.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs = maxInt(out.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs, phys.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs)
+		out.TypedColumnPrepareQ2DenseDistinctGlobalRanks = maxInt(out.TypedColumnPrepareQ2DenseDistinctGlobalRanks, phys.TypedColumnPrepareQ2DenseDistinctGlobalRanks)
 		out.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos
 		out.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos
 		out.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos += phys.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos
@@ -503,6 +524,14 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		ResultShapeNanos:                                      d.ResultShapeNanos,
 		ReconstructionNanos:                                   d.ReconstructionNanos,
 		FallbackRowsUsed:                                      fallbackRowsUsed,
+
+		TypedColumnPrepareQ2DenseDistinctRankPlanNanos:        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DenseDistinctRankPlanNanos"),
+		TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos: optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos"),
+		TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos: optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos"),
+		TypedColumnPrepareQ2DenseDistinctRankShardCount:       optionalColumnPhysicalDiagnosticInt(d, "TypedColumnPrepareQ2DenseDistinctRankShardCount"),
+		TypedColumnPrepareQ2DenseDistinctRankRefs:             optionalColumnPhysicalDiagnosticInt(d, "TypedColumnPrepareQ2DenseDistinctRankRefs"),
+		TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs:     optionalColumnPhysicalDiagnosticInt(d, "TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs"),
+		TypedColumnPrepareQ2DenseDistinctGlobalRanks:          optionalColumnPhysicalDiagnosticInt(d, "TypedColumnPrepareQ2DenseDistinctGlobalRanks"),
 	}
 }
 
@@ -559,6 +588,13 @@ func columnPhysicalPrepareDiagnosticsHasData(phys queryPhysicalDiagnostic) bool 
 		phys.TypedColumnPrepareQ2DenseGroupGlobalRankNanos > 0 ||
 		phys.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos > 0 ||
 		phys.TypedColumnPrepareQ2DensePartLocalRankNanos > 0 ||
+		phys.TypedColumnPrepareQ2DenseDistinctRankPlanNanos > 0 ||
+		phys.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos > 0 ||
+		phys.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos > 0 ||
+		phys.TypedColumnPrepareQ2DenseDistinctRankShardCount > 0 ||
+		phys.TypedColumnPrepareQ2DenseDistinctRankRefs > 0 ||
+		phys.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs > 0 ||
+		phys.TypedColumnPrepareQ2DenseDistinctGlobalRanks > 0 ||
 		phys.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos > 0 ||
 		phys.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos > 0 ||
 		phys.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos > 0 ||
@@ -604,6 +640,13 @@ func mergeColumnPhysicalPrepareDiagnosticFields(diag *queryDiagnostics, phys que
 	diag.TypedColumnPrepareQ2DenseGroupGlobalRankNanos += phys.TypedColumnPrepareQ2DenseGroupGlobalRankNanos
 	diag.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos += phys.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos
 	diag.TypedColumnPrepareQ2DensePartLocalRankNanos += phys.TypedColumnPrepareQ2DensePartLocalRankNanos
+	diag.TypedColumnPrepareQ2DenseDistinctRankPlanNanos += phys.TypedColumnPrepareQ2DenseDistinctRankPlanNanos
+	diag.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos += phys.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos
+	diag.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos += phys.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos
+	diag.TypedColumnPrepareQ2DenseDistinctRankShardCount = maxInt(diag.TypedColumnPrepareQ2DenseDistinctRankShardCount, phys.TypedColumnPrepareQ2DenseDistinctRankShardCount)
+	diag.TypedColumnPrepareQ2DenseDistinctRankRefs += phys.TypedColumnPrepareQ2DenseDistinctRankRefs
+	diag.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs = maxInt(diag.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs, phys.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs)
+	diag.TypedColumnPrepareQ2DenseDistinctGlobalRanks = maxInt(diag.TypedColumnPrepareQ2DenseDistinctGlobalRanks, phys.TypedColumnPrepareQ2DenseDistinctGlobalRanks)
 	diag.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos
 	diag.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos
 	diag.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos += phys.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos
@@ -638,6 +681,13 @@ func mergeQueryPhysicalPrepareDiagnosticFields(dst *queryPhysicalDiagnostic, src
 	dst.TypedColumnPrepareQ2DenseGroupGlobalRankNanos += src.TypedColumnPrepareQ2DenseGroupGlobalRankNanos
 	dst.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos += src.TypedColumnPrepareQ2DenseDistinctGlobalRankNanos
 	dst.TypedColumnPrepareQ2DensePartLocalRankNanos += src.TypedColumnPrepareQ2DensePartLocalRankNanos
+	dst.TypedColumnPrepareQ2DenseDistinctRankPlanNanos += src.TypedColumnPrepareQ2DenseDistinctRankPlanNanos
+	dst.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos += src.TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos
+	dst.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos += src.TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos
+	dst.TypedColumnPrepareQ2DenseDistinctRankShardCount = maxInt(dst.TypedColumnPrepareQ2DenseDistinctRankShardCount, src.TypedColumnPrepareQ2DenseDistinctRankShardCount)
+	dst.TypedColumnPrepareQ2DenseDistinctRankRefs += src.TypedColumnPrepareQ2DenseDistinctRankRefs
+	dst.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs = maxInt(dst.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs, src.TypedColumnPrepareQ2DenseDistinctRankMaxShardRefs)
+	dst.TypedColumnPrepareQ2DenseDistinctGlobalRanks = maxInt(dst.TypedColumnPrepareQ2DenseDistinctGlobalRanks, src.TypedColumnPrepareQ2DenseDistinctGlobalRanks)
 	dst.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos += src.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos
 	dst.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos += src.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos
 	dst.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos += src.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos
