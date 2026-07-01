@@ -1,68 +1,78 @@
 package main
 
 import (
+	"reflect"
 	"time"
 
 	"github.com/snissn/gomap/TreeDB/collections"
 )
 
 type insertStatsResult struct {
-	RetainedPayloadPrepareSec             float64 `json:"retained_payload_prepare_seconds,omitempty"`
-	RetainedPayloadRows                   int     `json:"retained_payload_rows,omitempty"`
-	RetainedPayloadDeclaredRows           int     `json:"retained_payload_declared_rows,omitempty"`
-	RetainedPayloadSemanticStreamBlocks   int     `json:"retained_payload_semantic_stream_blocks,omitempty"`
-	RetainedPayloadValueLogPointerizeSec  float64 `json:"retained_payload_value_log_pointerize_seconds,omitempty"`
-	RetainedPayloadValueLogValues         int     `json:"retained_payload_value_log_values,omitempty"`
-	RetainedPayloadValueLogBytes          int64   `json:"retained_payload_value_log_bytes,omitempty"`
-	RetainedStreamValueLogPointerizeSec   float64 `json:"retained_stream_value_log_pointerize_seconds,omitempty"`
-	RetainedStreamValueLogValues          int     `json:"retained_stream_value_log_values,omitempty"`
-	RetainedStreamValueLogBytes           int64   `json:"retained_stream_value_log_bytes,omitempty"`
-	PublishSec                            float64 `json:"publish_seconds,omitempty"`
-	ColumnPublishBuildColumnDeltaSec      float64 `json:"column_publish_build_column_delta_seconds,omitempty"`
-	ColumnPublishBuildSystemDeltaSec      float64 `json:"column_publish_build_system_delta_seconds,omitempty"`
-	ColumnPublishCommitSec                float64 `json:"column_publish_commit_seconds,omitempty"`
-	ColumnPublishDocumentExtractionSec    float64 `json:"column_publish_document_extraction_seconds,omitempty"`
-	ColumnPublishDeclaredColumnSec        float64 `json:"column_publish_declared_column_encoding_seconds,omitempty"`
-	ColumnPublishAssetPreparationSec      float64 `json:"column_publish_asset_preparation_seconds,omitempty"`
-	ColumnPublishRowAssetPrepareSec       float64 `json:"column_publish_row_asset_prepare_seconds,omitempty"`
-	ColumnPublishTypedColumnPrepareSec    float64 `json:"column_publish_typed_column_prepare_seconds,omitempty"`
-	ColumnPublishTypedDictionarySec       float64 `json:"column_publish_typed_column_dictionary_build_seconds,omitempty"`
-	ColumnPublishTypedRowsSec             float64 `json:"column_publish_typed_column_row_materialization_seconds,omitempty"`
-	ColumnPublishTypedPartSec             float64 `json:"column_publish_typed_column_part_build_seconds,omitempty"`
-	ColumnPublishTypedImageSec            float64 `json:"column_publish_typed_column_image_build_seconds,omitempty"`
-	ColumnPublishDictionaryPrepareSec     float64 `json:"column_publish_dictionary_sidecar_prepare_seconds,omitempty"`
-	ColumnPublishInt64PrepareSec          float64 `json:"column_publish_int64_sidecar_prepare_seconds,omitempty"`
-	ColumnPublishAggregateMetadataSec     float64 `json:"column_publish_aggregate_metadata_prepare_seconds,omitempty"`
-	ColumnPublishRowSidecarSharedBuildSec float64 `json:"column_publish_row_sidecar_shared_build_seconds,omitempty"`
-	ColumnPublishAssetAppendSec           float64 `json:"column_publish_asset_append_seconds,omitempty"`
-	ColumnPublishAssetAppendOpenSec       float64 `json:"column_publish_asset_append_open_seconds,omitempty"`
-	ColumnPublishAssetAppendWriteSec      float64 `json:"column_publish_asset_append_write_seconds,omitempty"`
-	ColumnPublishAssetAppendCloseSec      float64 `json:"column_publish_asset_append_close_seconds,omitempty"`
-	ColumnPublishAssetAppendFileSyncSec   float64 `json:"column_publish_asset_append_file_sync_seconds,omitempty"`
-	ColumnPublishAssetAppendFileCloseSec  float64 `json:"column_publish_asset_append_file_close_seconds,omitempty"`
-	ColumnPublishAssetAppendDirSyncSec    float64 `json:"column_publish_asset_append_dir_sync_seconds,omitempty"`
-	ColumnPublishAssetAppendCleanupSec    float64 `json:"column_publish_asset_append_cleanup_seconds,omitempty"`
-	ColumnPublishManifestEncodeSec        float64 `json:"column_publish_manifest_encode_seconds,omitempty"`
-	ColumnPublishAssetClosureSec          float64 `json:"column_publish_asset_closure_validation_seconds,omitempty"`
-	ColumnPublishRootDeltaSec             float64 `json:"column_publish_root_delta_construction_seconds,omitempty"`
-	ColumnPublishSystemDeltaSec           float64 `json:"column_publish_system_delta_construction_seconds,omitempty"`
-	ColumnPublishRootDeltaMaterializeSec  float64 `json:"column_publish_root_delta_materialization_seconds,omitempty"`
-	ColumnPublishRows                     int     `json:"column_publish_rows,omitempty"`
-	ColumnPublishPreparedAssets           int     `json:"column_publish_prepared_assets,omitempty"`
-	ColumnPublishRowAssetBytes            int64   `json:"column_publish_row_asset_bytes,omitempty"`
-	ColumnPublishRowAssetCount            int     `json:"column_publish_row_asset_count,omitempty"`
-	ColumnPublishTypedColumnBytes         int64   `json:"column_publish_typed_column_bytes,omitempty"`
-	ColumnPublishTypedColumnCount         int     `json:"column_publish_typed_column_count,omitempty"`
-	ColumnPublishDictionaryBytes          int64   `json:"column_publish_dictionary_sidecar_bytes,omitempty"`
-	ColumnPublishDictionaryCount          int     `json:"column_publish_dictionary_sidecar_count,omitempty"`
-	ColumnPublishInt64Bytes               int64   `json:"column_publish_int64_sidecar_bytes,omitempty"`
-	ColumnPublishInt64Count               int     `json:"column_publish_int64_sidecar_count,omitempty"`
-	ColumnPublishAggregateMetadataBytes   int64   `json:"column_publish_aggregate_metadata_bytes,omitempty"`
-	ColumnPublishAggregateMetadataCount   int     `json:"column_publish_aggregate_metadata_count,omitempty"`
-	ColumnPublishSharedAppendBytes        int64   `json:"column_publish_shared_asset_append_bytes,omitempty"`
-	ColumnPublishSharedAppendCount        int     `json:"column_publish_shared_asset_append_count,omitempty"`
-	ColumnPublishRequiredAssetBytes       int64   `json:"column_publish_required_asset_bytes,omitempty"`
-	ColumnPublishManifestBytes            int64   `json:"column_publish_manifest_bytes,omitempty"`
+	RetainedPayloadPrepareSec                          float64 `json:"retained_payload_prepare_seconds,omitempty"`
+	RetainedPayloadRows                                int     `json:"retained_payload_rows,omitempty"`
+	RetainedPayloadDeclaredRows                        int     `json:"retained_payload_declared_rows,omitempty"`
+	RetainedPayloadSemanticStreamBlocks                int     `json:"retained_payload_semantic_stream_blocks,omitempty"`
+	RetainedPayloadSemanticStreamWorkerCount           int     `json:"retained_payload_semantic_stream_worker_count,omitempty"`
+	RetainedPayloadSemanticStreamDeclaredRowPrepareSec float64 `json:"retained_payload_semantic_stream_declared_row_prepare_seconds,omitempty"`
+	RetainedPayloadSemanticStreamBlockPrepareWallSec   float64 `json:"retained_payload_semantic_stream_block_prepare_wall_seconds,omitempty"`
+	RetainedPayloadSemanticStreamBlockCollectSec       float64 `json:"retained_payload_semantic_stream_block_collect_seconds,omitempty"`
+	RetainedPayloadSemanticStreamBlockEncoderSetupSec  float64 `json:"retained_payload_semantic_stream_block_encoder_setup_seconds,omitempty"`
+	RetainedPayloadSemanticStreamBlockRawEncodeSec     float64 `json:"retained_payload_semantic_stream_block_raw_encode_seconds,omitempty"`
+	RetainedPayloadSemanticStreamBlockStoredEncodeSec  float64 `json:"retained_payload_semantic_stream_block_stored_encode_seconds,omitempty"`
+	RetainedPayloadSemanticStreamBlockFinalizeSec      float64 `json:"retained_payload_semantic_stream_block_finalize_seconds,omitempty"`
+	RetainedPayloadSemanticStreamTableBuildSec         float64 `json:"retained_payload_semantic_stream_table_build_seconds,omitempty"`
+	RetainedPayloadValueLogPointerizeSec               float64 `json:"retained_payload_value_log_pointerize_seconds,omitempty"`
+	RetainedPayloadValueLogValues                      int     `json:"retained_payload_value_log_values,omitempty"`
+	RetainedPayloadValueLogBytes                       int64   `json:"retained_payload_value_log_bytes,omitempty"`
+	RetainedStreamValueLogPointerizeSec                float64 `json:"retained_stream_value_log_pointerize_seconds,omitempty"`
+	RetainedStreamValueLogValues                       int     `json:"retained_stream_value_log_values,omitempty"`
+	RetainedStreamValueLogBytes                        int64   `json:"retained_stream_value_log_bytes,omitempty"`
+	PublishSec                                         float64 `json:"publish_seconds,omitempty"`
+	ColumnPublishBuildColumnDeltaSec                   float64 `json:"column_publish_build_column_delta_seconds,omitempty"`
+	ColumnPublishBuildSystemDeltaSec                   float64 `json:"column_publish_build_system_delta_seconds,omitempty"`
+	ColumnPublishCommitSec                             float64 `json:"column_publish_commit_seconds,omitempty"`
+	ColumnPublishDocumentExtractionSec                 float64 `json:"column_publish_document_extraction_seconds,omitempty"`
+	ColumnPublishDeclaredColumnSec                     float64 `json:"column_publish_declared_column_encoding_seconds,omitempty"`
+	ColumnPublishAssetPreparationSec                   float64 `json:"column_publish_asset_preparation_seconds,omitempty"`
+	ColumnPublishRowAssetPrepareSec                    float64 `json:"column_publish_row_asset_prepare_seconds,omitempty"`
+	ColumnPublishTypedColumnPrepareSec                 float64 `json:"column_publish_typed_column_prepare_seconds,omitempty"`
+	ColumnPublishTypedDictionarySec                    float64 `json:"column_publish_typed_column_dictionary_build_seconds,omitempty"`
+	ColumnPublishTypedRowsSec                          float64 `json:"column_publish_typed_column_row_materialization_seconds,omitempty"`
+	ColumnPublishTypedPartSec                          float64 `json:"column_publish_typed_column_part_build_seconds,omitempty"`
+	ColumnPublishTypedImageSec                         float64 `json:"column_publish_typed_column_image_build_seconds,omitempty"`
+	ColumnPublishDictionaryPrepareSec                  float64 `json:"column_publish_dictionary_sidecar_prepare_seconds,omitempty"`
+	ColumnPublishInt64PrepareSec                       float64 `json:"column_publish_int64_sidecar_prepare_seconds,omitempty"`
+	ColumnPublishAggregateMetadataSec                  float64 `json:"column_publish_aggregate_metadata_prepare_seconds,omitempty"`
+	ColumnPublishRowSidecarSharedBuildSec              float64 `json:"column_publish_row_sidecar_shared_build_seconds,omitempty"`
+	ColumnPublishAssetAppendSec                        float64 `json:"column_publish_asset_append_seconds,omitempty"`
+	ColumnPublishAssetAppendOpenSec                    float64 `json:"column_publish_asset_append_open_seconds,omitempty"`
+	ColumnPublishAssetAppendWriteSec                   float64 `json:"column_publish_asset_append_write_seconds,omitempty"`
+	ColumnPublishAssetAppendCloseSec                   float64 `json:"column_publish_asset_append_close_seconds,omitempty"`
+	ColumnPublishAssetAppendFileSyncSec                float64 `json:"column_publish_asset_append_file_sync_seconds,omitempty"`
+	ColumnPublishAssetAppendFileCloseSec               float64 `json:"column_publish_asset_append_file_close_seconds,omitempty"`
+	ColumnPublishAssetAppendDirSyncSec                 float64 `json:"column_publish_asset_append_dir_sync_seconds,omitempty"`
+	ColumnPublishAssetAppendCleanupSec                 float64 `json:"column_publish_asset_append_cleanup_seconds,omitempty"`
+	ColumnPublishManifestEncodeSec                     float64 `json:"column_publish_manifest_encode_seconds,omitempty"`
+	ColumnPublishAssetClosureSec                       float64 `json:"column_publish_asset_closure_validation_seconds,omitempty"`
+	ColumnPublishRootDeltaSec                          float64 `json:"column_publish_root_delta_construction_seconds,omitempty"`
+	ColumnPublishSystemDeltaSec                        float64 `json:"column_publish_system_delta_construction_seconds,omitempty"`
+	ColumnPublishRootDeltaMaterializeSec               float64 `json:"column_publish_root_delta_materialization_seconds,omitempty"`
+	ColumnPublishRows                                  int     `json:"column_publish_rows,omitempty"`
+	ColumnPublishPreparedAssets                        int     `json:"column_publish_prepared_assets,omitempty"`
+	ColumnPublishRowAssetBytes                         int64   `json:"column_publish_row_asset_bytes,omitempty"`
+	ColumnPublishRowAssetCount                         int     `json:"column_publish_row_asset_count,omitempty"`
+	ColumnPublishTypedColumnBytes                      int64   `json:"column_publish_typed_column_bytes,omitempty"`
+	ColumnPublishTypedColumnCount                      int     `json:"column_publish_typed_column_count,omitempty"`
+	ColumnPublishDictionaryBytes                       int64   `json:"column_publish_dictionary_sidecar_bytes,omitempty"`
+	ColumnPublishDictionaryCount                       int     `json:"column_publish_dictionary_sidecar_count,omitempty"`
+	ColumnPublishInt64Bytes                            int64   `json:"column_publish_int64_sidecar_bytes,omitempty"`
+	ColumnPublishInt64Count                            int     `json:"column_publish_int64_sidecar_count,omitempty"`
+	ColumnPublishAggregateMetadataBytes                int64   `json:"column_publish_aggregate_metadata_bytes,omitempty"`
+	ColumnPublishAggregateMetadataCount                int     `json:"column_publish_aggregate_metadata_count,omitempty"`
+	ColumnPublishSharedAppendBytes                     int64   `json:"column_publish_shared_asset_append_bytes,omitempty"`
+	ColumnPublishSharedAppendCount                     int     `json:"column_publish_shared_asset_append_count,omitempty"`
+	ColumnPublishRequiredAssetBytes                    int64   `json:"column_publish_required_asset_bytes,omitempty"`
+	ColumnPublishManifestBytes                         int64   `json:"column_publish_manifest_bytes,omitempty"`
 }
 
 type insertStatsAccounting struct {
@@ -70,6 +80,15 @@ type insertStatsAccounting struct {
 	retainedPayloadRows                 int
 	retainedPayloadDeclaredRows         int
 	retainedPayloadSemanticBlocks       int
+	retainedPayloadSemanticWorkerCount  int
+	retainedPayloadSemanticDeclaredRows time.Duration
+	retainedPayloadSemanticBlockWall    time.Duration
+	retainedPayloadSemanticBlockCollect time.Duration
+	retainedPayloadSemanticEncoderSetup time.Duration
+	retainedPayloadSemanticRawEncode    time.Duration
+	retainedPayloadSemanticStoredEncode time.Duration
+	retainedPayloadSemanticFinalize     time.Duration
+	retainedPayloadSemanticTableBuild   time.Duration
 	retainedPayloadValueLogPointerize   time.Duration
 	retainedPayloadValueLogValues       int
 	retainedPayloadValueLogBytes        int64
@@ -129,6 +148,17 @@ func (a *insertStatsAccounting) add(stats collections.CollectionInsertStats) {
 	a.retainedPayloadRows += stats.RetainedPayloadRows
 	a.retainedPayloadDeclaredRows += stats.RetainedPayloadDeclaredRows
 	a.retainedPayloadSemanticBlocks += stats.RetainedPayloadSemanticStreamBlocks
+	if workers := insertStatIntField(stats, "RetainedPayloadSemanticStreamWorkerCount"); workers > a.retainedPayloadSemanticWorkerCount {
+		a.retainedPayloadSemanticWorkerCount = workers
+	}
+	a.retainedPayloadSemanticDeclaredRows += insertStatDurationField(stats, "RetainedPayloadSemanticStreamDeclaredRowPrepare")
+	a.retainedPayloadSemanticBlockWall += insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockPrepareWall")
+	a.retainedPayloadSemanticBlockCollect += insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockCollect")
+	a.retainedPayloadSemanticEncoderSetup += insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockEncoderSetup")
+	a.retainedPayloadSemanticRawEncode += insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockRawEncode")
+	a.retainedPayloadSemanticStoredEncode += insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockStoredEncode")
+	a.retainedPayloadSemanticFinalize += insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockFinalize")
+	a.retainedPayloadSemanticTableBuild += insertStatDurationField(stats, "RetainedPayloadSemanticStreamTableBuild")
 	a.retainedPayloadValueLogPointerize += stats.RetainedPayloadValueLogPointerize
 	a.retainedPayloadValueLogValues += stats.RetainedPayloadValueLogValues
 	a.retainedPayloadValueLogBytes += stats.RetainedPayloadValueLogBytes
@@ -188,62 +218,71 @@ func (a insertStatsAccounting) result() *insertStatsResult {
 		return nil
 	}
 	return &insertStatsResult{
-		RetainedPayloadPrepareSec:             a.retainedPayloadPrepare.Seconds(),
-		RetainedPayloadRows:                   a.retainedPayloadRows,
-		RetainedPayloadDeclaredRows:           a.retainedPayloadDeclaredRows,
-		RetainedPayloadSemanticStreamBlocks:   a.retainedPayloadSemanticBlocks,
-		RetainedPayloadValueLogPointerizeSec:  a.retainedPayloadValueLogPointerize.Seconds(),
-		RetainedPayloadValueLogValues:         a.retainedPayloadValueLogValues,
-		RetainedPayloadValueLogBytes:          a.retainedPayloadValueLogBytes,
-		RetainedStreamValueLogPointerizeSec:   a.retainedStreamValueLogPointerize.Seconds(),
-		RetainedStreamValueLogValues:          a.retainedStreamValueLogValues,
-		RetainedStreamValueLogBytes:           a.retainedStreamValueLogBytes,
-		PublishSec:                            a.publish.Seconds(),
-		ColumnPublishBuildColumnDeltaSec:      a.columnPublishBuildColumnDelta.Seconds(),
-		ColumnPublishBuildSystemDeltaSec:      a.columnPublishBuildSystemDelta.Seconds(),
-		ColumnPublishCommitSec:                a.columnPublishCommit.Seconds(),
-		ColumnPublishDocumentExtractionSec:    a.columnPublishDocumentExtraction.Seconds(),
-		ColumnPublishDeclaredColumnSec:        a.columnPublishDeclaredColumn.Seconds(),
-		ColumnPublishAssetPreparationSec:      a.columnPublishAssetPreparation.Seconds(),
-		ColumnPublishRowAssetPrepareSec:       a.columnPublishRowAssetPrepare.Seconds(),
-		ColumnPublishTypedColumnPrepareSec:    a.columnPublishTypedColumnPrepare.Seconds(),
-		ColumnPublishTypedDictionarySec:       a.columnPublishTypedDictionary.Seconds(),
-		ColumnPublishTypedRowsSec:             a.columnPublishTypedRows.Seconds(),
-		ColumnPublishTypedPartSec:             a.columnPublishTypedPart.Seconds(),
-		ColumnPublishTypedImageSec:            a.columnPublishTypedImage.Seconds(),
-		ColumnPublishDictionaryPrepareSec:     a.columnPublishDictionaryPrepare.Seconds(),
-		ColumnPublishInt64PrepareSec:          a.columnPublishInt64Prepare.Seconds(),
-		ColumnPublishAggregateMetadataSec:     a.columnPublishAggregateMetadata.Seconds(),
-		ColumnPublishRowSidecarSharedBuildSec: a.columnPublishRowSidecarSharedBuild.Seconds(),
-		ColumnPublishAssetAppendSec:           a.columnPublishAssetAppend.Seconds(),
-		ColumnPublishAssetAppendOpenSec:       a.columnPublishAssetAppendOpen.Seconds(),
-		ColumnPublishAssetAppendWriteSec:      a.columnPublishAssetAppendWrite.Seconds(),
-		ColumnPublishAssetAppendCloseSec:      a.columnPublishAssetAppendClose.Seconds(),
-		ColumnPublishAssetAppendFileSyncSec:   a.columnPublishAssetAppendFileSync.Seconds(),
-		ColumnPublishAssetAppendFileCloseSec:  a.columnPublishAssetAppendFileClose.Seconds(),
-		ColumnPublishAssetAppendDirSyncSec:    a.columnPublishAssetAppendDirSync.Seconds(),
-		ColumnPublishAssetAppendCleanupSec:    a.columnPublishAssetAppendCleanup.Seconds(),
-		ColumnPublishManifestEncodeSec:        a.columnPublishManifestEncode.Seconds(),
-		ColumnPublishAssetClosureSec:          a.columnPublishAssetClosure.Seconds(),
-		ColumnPublishRootDeltaSec:             a.columnPublishRootDelta.Seconds(),
-		ColumnPublishSystemDeltaSec:           a.columnPublishSystemDelta.Seconds(),
-		ColumnPublishRootDeltaMaterializeSec:  a.columnPublishRootDeltaMaterialize.Seconds(),
-		ColumnPublishRows:                     a.columnPublishRows,
-		ColumnPublishPreparedAssets:           a.columnPublishPreparedAssets,
-		ColumnPublishRowAssetBytes:            a.columnPublishRowAssetBytes,
-		ColumnPublishRowAssetCount:            a.columnPublishRowAssetCount,
-		ColumnPublishTypedColumnBytes:         a.columnPublishTypedColumnBytes,
-		ColumnPublishTypedColumnCount:         a.columnPublishTypedColumnCount,
-		ColumnPublishDictionaryBytes:          a.columnPublishDictionaryBytes,
-		ColumnPublishDictionaryCount:          a.columnPublishDictionaryCount,
-		ColumnPublishInt64Bytes:               a.columnPublishInt64Bytes,
-		ColumnPublishInt64Count:               a.columnPublishInt64Count,
-		ColumnPublishAggregateMetadataBytes:   a.columnPublishAggregateMetadataBytes,
-		ColumnPublishAggregateMetadataCount:   a.columnPublishAggregateMetadataCount,
-		ColumnPublishSharedAppendBytes:        a.columnPublishSharedAppendBytes,
-		ColumnPublishSharedAppendCount:        a.columnPublishSharedAppendCount,
-		ColumnPublishRequiredAssetBytes:       a.columnPublishRequiredAssetBytes,
-		ColumnPublishManifestBytes:            a.columnPublishManifestBytes,
+		RetainedPayloadPrepareSec:                          a.retainedPayloadPrepare.Seconds(),
+		RetainedPayloadRows:                                a.retainedPayloadRows,
+		RetainedPayloadDeclaredRows:                        a.retainedPayloadDeclaredRows,
+		RetainedPayloadSemanticStreamBlocks:                a.retainedPayloadSemanticBlocks,
+		RetainedPayloadSemanticStreamWorkerCount:           a.retainedPayloadSemanticWorkerCount,
+		RetainedPayloadSemanticStreamDeclaredRowPrepareSec: a.retainedPayloadSemanticDeclaredRows.Seconds(),
+		RetainedPayloadSemanticStreamBlockPrepareWallSec:   a.retainedPayloadSemanticBlockWall.Seconds(),
+		RetainedPayloadSemanticStreamBlockCollectSec:       a.retainedPayloadSemanticBlockCollect.Seconds(),
+		RetainedPayloadSemanticStreamBlockEncoderSetupSec:  a.retainedPayloadSemanticEncoderSetup.Seconds(),
+		RetainedPayloadSemanticStreamBlockRawEncodeSec:     a.retainedPayloadSemanticRawEncode.Seconds(),
+		RetainedPayloadSemanticStreamBlockStoredEncodeSec:  a.retainedPayloadSemanticStoredEncode.Seconds(),
+		RetainedPayloadSemanticStreamBlockFinalizeSec:      a.retainedPayloadSemanticFinalize.Seconds(),
+		RetainedPayloadSemanticStreamTableBuildSec:         a.retainedPayloadSemanticTableBuild.Seconds(),
+		RetainedPayloadValueLogPointerizeSec:               a.retainedPayloadValueLogPointerize.Seconds(),
+		RetainedPayloadValueLogValues:                      a.retainedPayloadValueLogValues,
+		RetainedPayloadValueLogBytes:                       a.retainedPayloadValueLogBytes,
+		RetainedStreamValueLogPointerizeSec:                a.retainedStreamValueLogPointerize.Seconds(),
+		RetainedStreamValueLogValues:                       a.retainedStreamValueLogValues,
+		RetainedStreamValueLogBytes:                        a.retainedStreamValueLogBytes,
+		PublishSec:                                         a.publish.Seconds(),
+		ColumnPublishBuildColumnDeltaSec:                   a.columnPublishBuildColumnDelta.Seconds(),
+		ColumnPublishBuildSystemDeltaSec:                   a.columnPublishBuildSystemDelta.Seconds(),
+		ColumnPublishCommitSec:                             a.columnPublishCommit.Seconds(),
+		ColumnPublishDocumentExtractionSec:                 a.columnPublishDocumentExtraction.Seconds(),
+		ColumnPublishDeclaredColumnSec:                     a.columnPublishDeclaredColumn.Seconds(),
+		ColumnPublishAssetPreparationSec:                   a.columnPublishAssetPreparation.Seconds(),
+		ColumnPublishRowAssetPrepareSec:                    a.columnPublishRowAssetPrepare.Seconds(),
+		ColumnPublishTypedColumnPrepareSec:                 a.columnPublishTypedColumnPrepare.Seconds(),
+		ColumnPublishTypedDictionarySec:                    a.columnPublishTypedDictionary.Seconds(),
+		ColumnPublishTypedRowsSec:                          a.columnPublishTypedRows.Seconds(),
+		ColumnPublishTypedPartSec:                          a.columnPublishTypedPart.Seconds(),
+		ColumnPublishTypedImageSec:                         a.columnPublishTypedImage.Seconds(),
+		ColumnPublishDictionaryPrepareSec:                  a.columnPublishDictionaryPrepare.Seconds(),
+		ColumnPublishInt64PrepareSec:                       a.columnPublishInt64Prepare.Seconds(),
+		ColumnPublishAggregateMetadataSec:                  a.columnPublishAggregateMetadata.Seconds(),
+		ColumnPublishRowSidecarSharedBuildSec:              a.columnPublishRowSidecarSharedBuild.Seconds(),
+		ColumnPublishAssetAppendSec:                        a.columnPublishAssetAppend.Seconds(),
+		ColumnPublishAssetAppendOpenSec:                    a.columnPublishAssetAppendOpen.Seconds(),
+		ColumnPublishAssetAppendWriteSec:                   a.columnPublishAssetAppendWrite.Seconds(),
+		ColumnPublishAssetAppendCloseSec:                   a.columnPublishAssetAppendClose.Seconds(),
+		ColumnPublishAssetAppendFileSyncSec:                a.columnPublishAssetAppendFileSync.Seconds(),
+		ColumnPublishAssetAppendFileCloseSec:               a.columnPublishAssetAppendFileClose.Seconds(),
+		ColumnPublishAssetAppendDirSyncSec:                 a.columnPublishAssetAppendDirSync.Seconds(),
+		ColumnPublishAssetAppendCleanupSec:                 a.columnPublishAssetAppendCleanup.Seconds(),
+		ColumnPublishManifestEncodeSec:                     a.columnPublishManifestEncode.Seconds(),
+		ColumnPublishAssetClosureSec:                       a.columnPublishAssetClosure.Seconds(),
+		ColumnPublishRootDeltaSec:                          a.columnPublishRootDelta.Seconds(),
+		ColumnPublishSystemDeltaSec:                        a.columnPublishSystemDelta.Seconds(),
+		ColumnPublishRootDeltaMaterializeSec:               a.columnPublishRootDeltaMaterialize.Seconds(),
+		ColumnPublishRows:                                  a.columnPublishRows,
+		ColumnPublishPreparedAssets:                        a.columnPublishPreparedAssets,
+		ColumnPublishRowAssetBytes:                         a.columnPublishRowAssetBytes,
+		ColumnPublishRowAssetCount:                         a.columnPublishRowAssetCount,
+		ColumnPublishTypedColumnBytes:                      a.columnPublishTypedColumnBytes,
+		ColumnPublishTypedColumnCount:                      a.columnPublishTypedColumnCount,
+		ColumnPublishDictionaryBytes:                       a.columnPublishDictionaryBytes,
+		ColumnPublishDictionaryCount:                       a.columnPublishDictionaryCount,
+		ColumnPublishInt64Bytes:                            a.columnPublishInt64Bytes,
+		ColumnPublishInt64Count:                            a.columnPublishInt64Count,
+		ColumnPublishAggregateMetadataBytes:                a.columnPublishAggregateMetadataBytes,
+		ColumnPublishAggregateMetadataCount:                a.columnPublishAggregateMetadataCount,
+		ColumnPublishSharedAppendBytes:                     a.columnPublishSharedAppendBytes,
+		ColumnPublishSharedAppendCount:                     a.columnPublishSharedAppendCount,
+		ColumnPublishRequiredAssetBytes:                    a.columnPublishRequiredAssetBytes,
+		ColumnPublishManifestBytes:                         a.columnPublishManifestBytes,
 	}
 }
 
@@ -252,6 +291,15 @@ func (a insertStatsAccounting) hasRetainedStats() bool {
 		a.retainedPayloadRows > 0 ||
 		a.retainedPayloadDeclaredRows > 0 ||
 		a.retainedPayloadSemanticBlocks > 0 ||
+		a.retainedPayloadSemanticWorkerCount > 0 ||
+		a.retainedPayloadSemanticDeclaredRows > 0 ||
+		a.retainedPayloadSemanticBlockWall > 0 ||
+		a.retainedPayloadSemanticBlockCollect > 0 ||
+		a.retainedPayloadSemanticEncoderSetup > 0 ||
+		a.retainedPayloadSemanticRawEncode > 0 ||
+		a.retainedPayloadSemanticStoredEncode > 0 ||
+		a.retainedPayloadSemanticFinalize > 0 ||
+		a.retainedPayloadSemanticTableBuild > 0 ||
 		a.retainedPayloadValueLogPointerize > 0 ||
 		a.retainedPayloadValueLogValues > 0 ||
 		a.retainedPayloadValueLogBytes > 0 ||
@@ -307,4 +355,43 @@ func (a insertStatsAccounting) hasColumnPublishStats() bool {
 		a.columnPublishSharedAppendCount > 0 ||
 		a.columnPublishRequiredAssetBytes > 0 ||
 		a.columnPublishManifestBytes > 0
+}
+
+var durationType = reflect.TypeOf(time.Duration(0))
+
+func insertStatDurationField(stats any, name string) time.Duration {
+	field := insertStatField(stats, name)
+	if !field.IsValid() || field.Type() != durationType {
+		return 0
+	}
+	return time.Duration(field.Int())
+}
+
+func insertStatIntField(stats any, name string) int {
+	field := insertStatField(stats, name)
+	if !field.IsValid() || field.Kind() != reflect.Int {
+		return 0
+	}
+	return int(field.Int())
+}
+
+func insertStatField(stats any, name string) reflect.Value {
+	value := reflect.ValueOf(stats)
+	if !value.IsValid() {
+		return reflect.Value{}
+	}
+	for value.Kind() == reflect.Ptr {
+		if value.IsNil() {
+			return reflect.Value{}
+		}
+		value = value.Elem()
+	}
+	if value.Kind() != reflect.Struct {
+		return reflect.Value{}
+	}
+	field := value.FieldByName(name)
+	if !field.IsValid() || !field.CanInterface() {
+		return reflect.Value{}
+	}
+	return field
 }
