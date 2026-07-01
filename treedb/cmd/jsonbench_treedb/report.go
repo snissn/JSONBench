@@ -152,6 +152,8 @@ type reportRow struct {
 	TypedColumnPrepareQ2DenseDistinctGlobalRanks          int       `json:"typed_column_prepare_q2_dense_distinct_global_ranks,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos    int64     `json:"typed_column_prepare_q2_group_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos int64     `json:"typed_column_prepare_q2_distinct_global_dictionary_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2GroupGlobalLocalRankNanos         int64     `json:"typed_column_prepare_q2_group_global_local_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2DistinctGlobalLocalRankNanos      int64     `json:"typed_column_prepare_q2_distinct_global_local_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalCodeRemapNanos         int64     `json:"typed_column_prepare_q2_group_global_code_remap_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos      int64     `json:"typed_column_prepare_q2_distinct_global_code_remap_nanos,omitempty"`
 	PrepareSetupNanos                                     int64     `json:"prepare_setup_nanos,omitempty"`
@@ -573,6 +575,8 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				TypedColumnPrepareQ2DenseDistinctGlobalRanks:          diagnostics.TypedColumnPrepareQ2DenseDistinctGlobalRanks,
 				TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    diagnostics.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos,
 				TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: diagnostics.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos,
+				TypedColumnPrepareQ2GroupGlobalLocalRankNanos:         diagnostics.TypedColumnPrepareQ2GroupGlobalLocalRankNanos,
+				TypedColumnPrepareQ2DistinctGlobalLocalRankNanos:      diagnostics.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos,
 				TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         diagnostics.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos,
 				TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      diagnostics.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos,
 				PrepareSetupNanos:                  diagnostics.PrepareSetupNanos,
@@ -1367,15 +1371,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTypedColumnSetupDiagnostics(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Typed Column Setup Diagnostics\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | q2 dense group global rank ns | q2 dense distinct global rank ns | q2 dense part local rank ns | q2 dense distinct rank plan ns | q2 dense distinct rank collect refs ns | q2 dense distinct rank build shards ns | q2 dense distinct rank shards | q2 dense distinct rank refs | q2 dense distinct rank max shard refs | q2 dense distinct global ranks | q2 group global dict/rank ns | q2 distinct global dict/rank ns | q2 group global-code remap ns | q2 distinct global-code remap ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns | dense predicate blocks skipped |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | prepare/setup ns | one-shot build ns | prep workers | prep plan ns | prep refs ns | prep pair ns | prep decode ns | prep post ns | q2 group rank ns | q2 distinct rank ns | q2 local rank ns | q2 dense group global rank ns | q2 dense distinct global rank ns | q2 dense part local rank ns | q2 dense distinct rank plan ns | q2 dense distinct rank collect refs ns | q2 dense distinct rank build shards ns | q2 dense distinct rank shards | q2 dense distinct rank refs | q2 dense distinct rank max shard refs | q2 dense distinct global ranks | q2 group global dict/rank ns | q2 distinct global dict/rank ns | q2 group global-local rank ns | q2 distinct global-local rank ns | q2 group global-code remap ns | q2 distinct global-code remap ns | prep summary ns | cache store ns | read image ns | state build ns | dictionary ns | pruning ns | sort key ns | stats ns | range read ns | range read B | adapter ns | dense group ns | dense value ns | dense predicate ns | dense preapply ns | dense predicate blocks skipped |\n")
+		fmt.Fprintf(&buf, "|---|---|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasTypedColumnSetupDiagnostics(row) {
 				continue
 			}
 			fmt.Fprintf(
 				&buf,
-				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
+				"| %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d | %d |\n",
 				row.Scale,
 				reportRowLayout(row),
 				row.Query,
@@ -1404,6 +1408,8 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				row.TypedColumnPrepareQ2DenseDistinctGlobalRanks,
 				row.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos,
 				row.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos,
+				row.TypedColumnPrepareQ2GroupGlobalLocalRankNanos,
+				row.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos,
 				row.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos,
 				row.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos,
 				row.TypedColumnPrepareSummaryNanos,
@@ -1642,6 +1648,8 @@ func reportRowHasTypedColumnSetupDiagnostics(row reportRow) bool {
 		row.TypedColumnPrepareQ2DenseDistinctGlobalRanks != 0 ||
 		row.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos != 0 ||
 		row.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos != 0 ||
+		row.TypedColumnPrepareQ2GroupGlobalLocalRankNanos != 0 ||
+		row.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos != 0 ||
 		row.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos != 0 ||
 		row.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos != 0
 }

@@ -727,6 +727,8 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 				TypedColumnPrepareQ2DensePartLocalRankNanos:           25,
 				TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    26,
 				TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: 27,
+				TypedColumnPrepareQ2GroupGlobalLocalRankNanos:         101,
+				TypedColumnPrepareQ2DistinctGlobalLocalRankNanos:      102,
 				TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         28,
 				TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      29,
 				TypedColumnPrepareQ2DenseDistinctRankPlanNanos:        30,
@@ -739,6 +741,8 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 			},
 			{
 				Name: "group_count",
+				TypedColumnPrepareQ2GroupGlobalLocalRankNanos:         1000,
+				TypedColumnPrepareQ2DistinctGlobalLocalRankNanos:      2000,
 				TypedColumnPrepareQ2DenseDistinctRankPlanNanos:        100,
 				TypedColumnPrepareQ2DenseDistinctRankCollectRefsNanos: 200,
 				TypedColumnPrepareQ2DenseDistinctRankBuildShardsNanos: 300,
@@ -801,6 +805,12 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos, int64(27); got != want {
 		t.Fatalf("typed_column_prepare_q2_distinct_global_dictionary_rank_nanos=%d want %d", got, want)
 	}
+	if got, want := diag.TypedColumnPrepareQ2GroupGlobalLocalRankNanos, int64(1101); got != want {
+		t.Fatalf("typed_column_prepare_q2_group_global_local_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos, int64(2102); got != want {
+		t.Fatalf("typed_column_prepare_q2_distinct_global_local_rank_nanos=%d want %d", got, want)
+	}
 	if got, want := diag.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos, int64(28); got != want {
 		t.Fatalf("typed_column_prepare_q2_group_global_code_remap_nanos=%d want %d", got, want)
 	}
@@ -833,6 +843,12 @@ func TestPreparedColumnQueryAppliesPrepareDiagnosticsByPhysicalName(t *testing.T
 	}
 	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2DenseDistinctGlobalRankNanos, int64(24); got != want {
 		t.Fatalf("physical typed_column_prepare_q2_dense_distinct_global_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2GroupGlobalLocalRankNanos, int64(1101); got != want {
+		t.Fatalf("physical typed_column_prepare_q2_group_global_local_rank_nanos=%d want %d", got, want)
+	}
+	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2DistinctGlobalLocalRankNanos, int64(2102); got != want {
+		t.Fatalf("physical typed_column_prepare_q2_distinct_global_local_rank_nanos=%d want %d", got, want)
 	}
 	if got, want := diag.PhysicalQueries[0].TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos, int64(29); got != want {
 		t.Fatalf("physical typed_column_prepare_q2_distinct_global_code_remap_nanos=%d want %d", got, want)
@@ -869,6 +885,20 @@ func TestPhysicalQueryDiagnosticMapsOptionalQ2DenseRankDiagnostics(t *testing.T)
 		read    func(queryPhysicalDiagnostic) int64
 		present bool
 	}{
+		{
+			name: "TypedColumnPrepareQ2GroupGlobalLocalRankNanos",
+			want: 34,
+			read: func(phys queryPhysicalDiagnostic) int64 {
+				return phys.TypedColumnPrepareQ2GroupGlobalLocalRankNanos
+			},
+		},
+		{
+			name: "TypedColumnPrepareQ2DistinctGlobalLocalRankNanos",
+			want: 35,
+			read: func(phys queryPhysicalDiagnostic) int64 {
+				return phys.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos
+			},
+		},
 		{
 			name: "TypedColumnPrepareQ2DenseGroupGlobalRankNanos",
 			want: 31,

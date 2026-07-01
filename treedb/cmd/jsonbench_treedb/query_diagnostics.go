@@ -105,6 +105,8 @@ type queryDiagnostics struct {
 	TypedColumnPrepareQ2DenseDistinctGlobalRanks          int                       `json:"typed_column_prepare_q2_dense_distinct_global_ranks,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos    int64                     `json:"typed_column_prepare_q2_group_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos int64                     `json:"typed_column_prepare_q2_distinct_global_dictionary_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2GroupGlobalLocalRankNanos         int64                     `json:"typed_column_prepare_q2_group_global_local_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2DistinctGlobalLocalRankNanos      int64                     `json:"typed_column_prepare_q2_distinct_global_local_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalCodeRemapNanos         int64                     `json:"typed_column_prepare_q2_group_global_code_remap_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos      int64                     `json:"typed_column_prepare_q2_distinct_global_code_remap_nanos,omitempty"`
 	ColumnAssetReadIntegrity                              string                    `json:"column_asset_read_integrity,omitempty"`
@@ -223,6 +225,8 @@ type queryPhysicalDiagnostic struct {
 	TypedColumnPrepareQ2DenseDistinctGlobalRanks          int      `json:"typed_column_prepare_q2_dense_distinct_global_ranks,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos    int64    `json:"typed_column_prepare_q2_group_global_dictionary_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos int64    `json:"typed_column_prepare_q2_distinct_global_dictionary_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2GroupGlobalLocalRankNanos         int64    `json:"typed_column_prepare_q2_group_global_local_rank_nanos,omitempty"`
+	TypedColumnPrepareQ2DistinctGlobalLocalRankNanos      int64    `json:"typed_column_prepare_q2_distinct_global_local_rank_nanos,omitempty"`
 	TypedColumnPrepareQ2GroupGlobalCodeRemapNanos         int64    `json:"typed_column_prepare_q2_group_global_code_remap_nanos,omitempty"`
 	TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos      int64    `json:"typed_column_prepare_q2_distinct_global_code_remap_nanos,omitempty"`
 	ColumnAssetReadIntegrity                              string   `json:"column_asset_read_integrity,omitempty"`
@@ -368,6 +372,8 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.TypedColumnPrepareQ2DenseDistinctGlobalRanks = maxInt(out.TypedColumnPrepareQ2DenseDistinctGlobalRanks, phys.TypedColumnPrepareQ2DenseDistinctGlobalRanks)
 		out.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos
 		out.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos
+		out.TypedColumnPrepareQ2GroupGlobalLocalRankNanos += phys.TypedColumnPrepareQ2GroupGlobalLocalRankNanos
+		out.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos += phys.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos
 		out.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos += phys.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos
 		out.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos += phys.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos
 		out.ColumnAssetReadIntegrity = mergeDiagnosticString(out.ColumnAssetReadIntegrity, phys.ColumnAssetReadIntegrity)
@@ -515,6 +521,8 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		TypedColumnPrepareQ2DensePartLocalRankNanos:        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DensePartLocalRankNanos"),
 		TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos: optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos"),
 		TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos"),
+		TypedColumnPrepareQ2GroupGlobalLocalRankNanos:         optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupGlobalLocalRankNanos"),
+		TypedColumnPrepareQ2DistinctGlobalLocalRankNanos:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DistinctGlobalLocalRankNanos"),
 		TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupGlobalCodeRemapNanos"),
 		TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos"),
 		ColumnAssetReadIntegrity:                              d.ColumnAssetReadIntegrity,
@@ -597,6 +605,8 @@ func columnPhysicalPrepareDiagnosticsHasData(phys queryPhysicalDiagnostic) bool 
 		phys.TypedColumnPrepareQ2DenseDistinctGlobalRanks > 0 ||
 		phys.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos > 0 ||
 		phys.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos > 0 ||
+		phys.TypedColumnPrepareQ2GroupGlobalLocalRankNanos > 0 ||
+		phys.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos > 0 ||
 		phys.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos > 0 ||
 		phys.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos > 0
 }
@@ -649,6 +659,8 @@ func mergeColumnPhysicalPrepareDiagnosticFields(diag *queryDiagnostics, phys que
 	diag.TypedColumnPrepareQ2DenseDistinctGlobalRanks = maxInt(diag.TypedColumnPrepareQ2DenseDistinctGlobalRanks, phys.TypedColumnPrepareQ2DenseDistinctGlobalRanks)
 	diag.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos
 	diag.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos += phys.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos
+	diag.TypedColumnPrepareQ2GroupGlobalLocalRankNanos += phys.TypedColumnPrepareQ2GroupGlobalLocalRankNanos
+	diag.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos += phys.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos
 	diag.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos += phys.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos
 	diag.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos += phys.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos
 }
@@ -690,6 +702,8 @@ func mergeQueryPhysicalPrepareDiagnosticFields(dst *queryPhysicalDiagnostic, src
 	dst.TypedColumnPrepareQ2DenseDistinctGlobalRanks = maxInt(dst.TypedColumnPrepareQ2DenseDistinctGlobalRanks, src.TypedColumnPrepareQ2DenseDistinctGlobalRanks)
 	dst.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos += src.TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos
 	dst.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos += src.TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos
+	dst.TypedColumnPrepareQ2GroupGlobalLocalRankNanos += src.TypedColumnPrepareQ2GroupGlobalLocalRankNanos
+	dst.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos += src.TypedColumnPrepareQ2DistinctGlobalLocalRankNanos
 	dst.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos += src.TypedColumnPrepareQ2GroupGlobalCodeRemapNanos
 	dst.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos += src.TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos
 }
