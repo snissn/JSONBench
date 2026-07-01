@@ -57,6 +57,36 @@ func TestInsertStatsAccountingReportsRetainedValueLogPointerization(t *testing.T
 	}
 }
 
+func TestInsertStatOptionalFieldReflection(t *testing.T) {
+	stats := struct {
+		RetainedPayloadSemanticStreamWorkerCount          int
+		RetainedPayloadSemanticStreamBlockPrepareWall     time.Duration
+		RetainedPayloadSemanticStreamBlockRawEncodeNanos  int64
+		retainedPayloadSemanticStreamBlockStoredEncodeSec time.Duration
+	}{
+		RetainedPayloadSemanticStreamWorkerCount:          8,
+		RetainedPayloadSemanticStreamBlockPrepareWall:     25 * time.Millisecond,
+		RetainedPayloadSemanticStreamBlockRawEncodeNanos:  99,
+		retainedPayloadSemanticStreamBlockStoredEncodeSec: time.Second,
+	}
+
+	if got := insertStatIntField(stats, "RetainedPayloadSemanticStreamWorkerCount"); got != 8 {
+		t.Fatalf("optional int field=%d want 8", got)
+	}
+	if got := insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockPrepareWall"); got != 25*time.Millisecond {
+		t.Fatalf("optional duration field=%s want 25ms", got)
+	}
+	if got := insertStatDurationField(stats, "RetainedPayloadSemanticStreamBlockRawEncodeNanos"); got != 0 {
+		t.Fatalf("non-duration optional field=%s want 0", got)
+	}
+	if got := insertStatDurationField(stats, "retainedPayloadSemanticStreamBlockStoredEncodeSec"); got != 0 {
+		t.Fatalf("unexported optional field=%s want 0", got)
+	}
+	if got := insertStatIntField(stats, "Missing"); got != 0 {
+		t.Fatalf("missing optional int field=%d want 0", got)
+	}
+}
+
 func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 	var accounting insertStatsAccounting
 	stats := collections.CollectionInsertStats{
@@ -148,51 +178,60 @@ func TestRenderMarkdownReportIncludesTreeDBInsertStats(t *testing.T) {
 		InsertStatsRetainedPayloadPrepareSec:   0.1,
 		InsertStatsRetainedPayloadRows:         10,
 		InsertStatsRetainedPayloadDeclaredRows: 10,
-		InsertStatsRetainedPayloadSemanticStreamBlocks:   2,
-		InsertStatsRetainedPayloadValueLogPointerizeSec:  0.03,
-		InsertStatsRetainedPayloadValueLogValues:         8,
-		InsertStatsRetainedPayloadValueLogBytes:          800,
-		InsertStatsRetainedStreamValueLogPointerizeSec:   0.04,
-		InsertStatsRetainedStreamValueLogValues:          2,
-		InsertStatsRetainedStreamValueLogBytes:           200,
-		InsertStatsPublishSec:                            1.4,
-		InsertStatsColumnPublishBuildColumnDeltaSec:      0.2,
-		InsertStatsColumnPublishCommitSec:                0.3,
-		InsertStatsColumnPublishAssetPreparationSec:      0.4,
-		InsertStatsColumnPublishRowAssetPrepareSec:       0.05,
-		InsertStatsColumnPublishTypedColumnPrepareSec:    0.06,
-		InsertStatsColumnPublishTypedDictionarySec:       0.061,
-		InsertStatsColumnPublishTypedRowsSec:             0.062,
-		InsertStatsColumnPublishTypedPartSec:             0.063,
-		InsertStatsColumnPublishTypedImageSec:            0.064,
-		InsertStatsColumnPublishDictionaryPrepareSec:     0.07,
-		InsertStatsColumnPublishInt64PrepareSec:          0.08,
-		InsertStatsColumnPublishAggregateMetadataSec:     0.09,
-		InsertStatsColumnPublishRowSidecarSharedBuildSec: 0.11,
-		InsertStatsColumnPublishAssetAppendSec:           0.12,
-		InsertStatsColumnPublishAssetAppendOpenSec:       0.01,
-		InsertStatsColumnPublishAssetAppendWriteSec:      0.02,
-		InsertStatsColumnPublishAssetAppendCloseSec:      0.03,
-		InsertStatsColumnPublishAssetAppendFileSyncSec:   0.025,
-		InsertStatsColumnPublishAssetAppendFileCloseSec:  0.004,
-		InsertStatsColumnPublishAssetAppendDirSyncSec:    0.003,
-		InsertStatsColumnPublishRows:                     10,
-		InsertStatsColumnPublishPreparedAssets:           6,
-		InsertStatsColumnPublishRowAssetBytes:            100,
-		InsertStatsColumnPublishTypedColumnBytes:         200,
-		InsertStatsColumnPublishDictionaryBytes:          300,
-		InsertStatsColumnPublishInt64Bytes:               400,
-		InsertStatsColumnPublishAggregateMetadataBytes:   500,
-		InsertStatsColumnPublishSharedAppendBytes:        600,
-		InsertStatsColumnPublishRequiredAssetBytes:       700,
-		InsertStatsColumnPublishManifestBytes:            800,
+		InsertStatsRetainedPayloadSemanticStreamBlocks:                2,
+		InsertStatsRetainedPayloadSemanticStreamWorkerCount:           4,
+		InsertStatsRetainedPayloadSemanticStreamDeclaredRowPrepareSec: 0.011,
+		InsertStatsRetainedPayloadSemanticStreamBlockPrepareWallSec:   0.12,
+		InsertStatsRetainedPayloadSemanticStreamBlockCollectSec:       0.021,
+		InsertStatsRetainedPayloadSemanticStreamBlockEncoderSetupSec:  0.022,
+		InsertStatsRetainedPayloadSemanticStreamBlockRawEncodeSec:     0.023,
+		InsertStatsRetainedPayloadSemanticStreamBlockStoredEncodeSec:  0.024,
+		InsertStatsRetainedPayloadSemanticStreamBlockFinalizeSec:      0.025,
+		InsertStatsRetainedPayloadSemanticStreamTableBuildSec:         0.026,
+		InsertStatsRetainedPayloadValueLogPointerizeSec:               0.03,
+		InsertStatsRetainedPayloadValueLogValues:                      8,
+		InsertStatsRetainedPayloadValueLogBytes:                       800,
+		InsertStatsRetainedStreamValueLogPointerizeSec:                0.04,
+		InsertStatsRetainedStreamValueLogValues:                       2,
+		InsertStatsRetainedStreamValueLogBytes:                        200,
+		InsertStatsPublishSec:                                         1.4,
+		InsertStatsColumnPublishBuildColumnDeltaSec:                   0.2,
+		InsertStatsColumnPublishCommitSec:                             0.3,
+		InsertStatsColumnPublishAssetPreparationSec:                   0.4,
+		InsertStatsColumnPublishRowAssetPrepareSec:                    0.05,
+		InsertStatsColumnPublishTypedColumnPrepareSec:                 0.06,
+		InsertStatsColumnPublishTypedDictionarySec:                    0.061,
+		InsertStatsColumnPublishTypedRowsSec:                          0.062,
+		InsertStatsColumnPublishTypedPartSec:                          0.063,
+		InsertStatsColumnPublishTypedImageSec:                         0.064,
+		InsertStatsColumnPublishDictionaryPrepareSec:                  0.07,
+		InsertStatsColumnPublishInt64PrepareSec:                       0.08,
+		InsertStatsColumnPublishAggregateMetadataSec:                  0.09,
+		InsertStatsColumnPublishRowSidecarSharedBuildSec:              0.11,
+		InsertStatsColumnPublishAssetAppendSec:                        0.12,
+		InsertStatsColumnPublishAssetAppendOpenSec:                    0.01,
+		InsertStatsColumnPublishAssetAppendWriteSec:                   0.02,
+		InsertStatsColumnPublishAssetAppendCloseSec:                   0.03,
+		InsertStatsColumnPublishAssetAppendFileSyncSec:                0.025,
+		InsertStatsColumnPublishAssetAppendFileCloseSec:               0.004,
+		InsertStatsColumnPublishAssetAppendDirSyncSec:                 0.003,
+		InsertStatsColumnPublishRows:                                  10,
+		InsertStatsColumnPublishPreparedAssets:                        6,
+		InsertStatsColumnPublishRowAssetBytes:                         100,
+		InsertStatsColumnPublishTypedColumnBytes:                      200,
+		InsertStatsColumnPublishDictionaryBytes:                       300,
+		InsertStatsColumnPublishInt64Bytes:                            400,
+		InsertStatsColumnPublishAggregateMetadataBytes:                500,
+		InsertStatsColumnPublishSharedAppendBytes:                     600,
+		InsertStatsColumnPublishRequiredAssetBytes:                    700,
+		InsertStatsColumnPublishManifestBytes:                         800,
 	}}}
 
 	got := string(renderMarkdownReport(doc))
 	for _, want := range []string{
 		"## TreeDB Insert Stats",
-		"| rows/scale | layout | load | insert | retained prepare | retained rows | declared rows | stream blocks | primary vlog pointerize | primary vlog values | primary vlog bytes | stream vlog pointerize | stream vlog values | stream vlog bytes |",
-		"| 10 rows | column-store-full-prepared:json/full | 2.000s | 1.500s | 0.1000s | 10 | 10 | 2 | 0.0300s | 8 | 800 B | 0.0400s | 2 | 200 B |",
+		"| rows/scale | layout | load | insert | retained prepare | retained rows | declared rows | stream blocks | stream workers | declared row prep | block prep wall | block collect | encoder setup | raw encode | stored encode | finalize | table build | primary vlog pointerize | primary vlog values | primary vlog bytes | stream vlog pointerize | stream vlog values | stream vlog bytes |",
+		"| 10 rows | column-store-full-prepared:json/full | 2.000s | 1.500s | 0.1000s | 10 | 10 | 2 | 4 | 0.0110s | 0.1200s | 0.0210s | 0.0220s | 0.0230s | 0.0240s | 0.0250s | 0.0260s | 0.0300s | 8 | 800 B | 0.0400s | 2 | 200 B |",
 		"## TreeDB Column Publish Insert Stats",
 		"| rows/scale | layout | load | insert | publish | build column delta | commit | asset prepare | row asset | typed column | typed dictionary | typed rows | typed part | typed image | dictionary | int64 | aggregate metadata | shared build | asset append | append open | append write | append close | file sync | file close | dir sync | rows | assets | row asset bytes | typed column bytes | dictionary bytes | int64 bytes | aggregate metadata bytes | shared append bytes | required asset bytes | manifest bytes |",
 		"| 10 rows | column-store-full-prepared:json/full | 2.000s | 1.500s | 1.400s | 0.2000s | 0.3000s | 0.4000s | 0.0500s | 0.0600s | 0.0610s | 0.0620s | 0.0630s | 0.0640s | 0.0700s | 0.0800s | 0.0900s | 0.1100s | 0.1200s | 0.0100s | 0.0200s | 0.0300s | 0.0250s | 0.0040s | 0.0030s | 10 | 6 | 100 B | 200 B | 300 B | 400 B | 500 B | 600 B | 700 B | 800 B |",
