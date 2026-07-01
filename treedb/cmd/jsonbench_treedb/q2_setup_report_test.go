@@ -22,8 +22,10 @@ func TestQ2SetupReportRowsExposePostPrepareSplit3324(t *testing.T) {
 		TypedColumnPrepareQ2DenseDistinctGlobalRanks:          20,
 		TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    21,
 		TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: 22,
-		TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         23,
-		TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      24,
+		TypedColumnPrepareQ2GroupGlobalLocalRankNanos:         23,
+		TypedColumnPrepareQ2DistinctGlobalLocalRankNanos:      24,
+		TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         25,
+		TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      26,
 	}
 	raw, err := json.Marshal(row)
 	if err != nil {
@@ -42,8 +44,10 @@ func TestQ2SetupReportRowsExposePostPrepareSplit3324(t *testing.T) {
 		`"typed_column_prepare_q2_dense_distinct_global_ranks":20`,
 		`"typed_column_prepare_q2_group_global_dictionary_rank_nanos":21`,
 		`"typed_column_prepare_q2_distinct_global_dictionary_rank_nanos":22`,
-		`"typed_column_prepare_q2_group_global_code_remap_nanos":23`,
-		`"typed_column_prepare_q2_distinct_global_code_remap_nanos":24`,
+		`"typed_column_prepare_q2_group_global_local_rank_nanos":23`,
+		`"typed_column_prepare_q2_distinct_global_local_rank_nanos":24`,
+		`"typed_column_prepare_q2_group_global_code_remap_nanos":25`,
+		`"typed_column_prepare_q2_distinct_global_code_remap_nanos":26`,
 	} {
 		if !strings.Contains(string(raw), want) {
 			t.Fatalf("report JSON missing %s\n%s", want, raw)
@@ -71,8 +75,10 @@ func TestRenderMarkdownReportIncludesQ2PostPrepareSplit3324(t *testing.T) {
 		TypedColumnPrepareQ2DenseDistinctGlobalRanks:          20,
 		TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    21,
 		TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: 22,
-		TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         23,
-		TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      24,
+		TypedColumnPrepareQ2GroupGlobalLocalRankNanos:         23,
+		TypedColumnPrepareQ2DistinctGlobalLocalRankNanos:      24,
+		TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         25,
+		TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      26,
 	}}}
 	got := string(renderMarkdownReport(doc))
 	for _, want := range []string{
@@ -89,11 +95,13 @@ func TestRenderMarkdownReportIncludesQ2PostPrepareSplit3324(t *testing.T) {
 		"q2 dense distinct global ranks",
 		"q2 group global dict/rank ns",
 		"q2 distinct global dict/rank ns",
+		"q2 group global-local rank ns",
+		"q2 distinct global-local rank ns",
 		"q2 group global-code remap ns",
 		"q2 distinct global-code remap ns",
 		"| 1M |",
 		"| q2 |",
-		"| 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 |",
+		"| 11 | 12 | 13 | 14 | 15 | 16 | 17 | 18 | 19 | 20 | 21 | 22 | 23 | 24 | 25 | 26 |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("markdown report missing %q\n%s", want, got)
