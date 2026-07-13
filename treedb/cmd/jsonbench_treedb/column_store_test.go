@@ -631,6 +631,42 @@ func TestFullPreparedReopenFailureReturnsErrorWithoutCleanupPanic(t *testing.T) 
 	}
 }
 
+func TestFullPreparedCloseFailurePreservesDeferredCleanup(t *testing.T) {
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.DBDir = t.TempDir()
+	cfg.Queries = []string{"q1"}
+	closeErr := errors.New("forced query-ready close failure")
+	closeCalls := 0
+	opener := func(cfg runConfig) (*backenddb.DB, func() error, error) {
+		backend, cleanup, err := openBackend(cfg)
+		if err != nil {
+			return nil, nil, err
+		}
+		closed := false
+		t.Cleanup(func() {
+			if !closed {
+				_ = cleanup()
+			}
+		})
+		return backend, func() error {
+			closeCalls++
+			if closeCalls == 1 {
+				return closeErr
+			}
+			err := cleanup()
+			closed = err == nil
+			return err
+		}, nil
+	}
+	_, err := runTreeDBBenchmarkWithOpener(cfg, opener)
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("error=%v want close error %v", err, closeErr)
+	}
+	if closeCalls != 2 {
+		t.Fatalf("backend close calls=%d want 2 (failed transition close plus deferred cleanup)", closeCalls)
+	}
+}
+
 func TestFullPreparedFirstTouchAfterOpenFailsBeforeOpeningBackend(t *testing.T) {
 	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
 	cfg.QueryMode = queryModeFirstTouchAfterOpen

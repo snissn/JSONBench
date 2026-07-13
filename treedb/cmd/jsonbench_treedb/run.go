@@ -426,10 +426,10 @@ func runTreeDBBenchmarkWithOpener(cfg runConfig, open backendOpener) (runResult,
 	}
 	if cfg.QueryMode == queryModeFirstTouchAfterOpen || cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
 		closeBackend := cleanup
-		cleanup = nil
 		if err := closeBackend(); err != nil {
 			return runResult{}, fmt.Errorf("close backend before query-ready reopen: %w", err)
 		}
+		cleanup = nil
 		reopenedBackend, reopenedCleanup, reopenErr := open(cfg)
 		if reopenErr != nil {
 			return runResult{}, fmt.Errorf("reopen backend for query execution: %w", reopenErr)
