@@ -2,6 +2,7 @@ package main
 
 import (
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -9,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/snissn/gomap/TreeDB/collections"
+	backenddb "github.com/snissn/gomap/TreeDB/db"
 )
 
 func TestNormalizeColumnStorePreparedLayout(t *testing.T) {
@@ -604,6 +606,28 @@ func TestOneShotPreparedLayoutUsesQueryReadyRunAndReportsRenderHash(t *testing.T
 	}
 	if query.Diagnostics.TotalQueryNanos < query.Diagnostics.PrepareSetupNanos+query.Diagnostics.RunNanos+query.Diagnostics.RenderHashNanos {
 		t.Fatalf("total_query_nanos=%d split prepare=%d run=%d render_hash=%d", query.Diagnostics.TotalQueryNanos, query.Diagnostics.PrepareSetupNanos, query.Diagnostics.RunNanos, query.Diagnostics.RenderHashNanos)
+	}
+}
+
+func TestFullPreparedReopenFailureReturnsErrorWithoutCleanupPanic(t *testing.T) {
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.DBDir = t.TempDir()
+	cfg.Queries = []string{"q1"}
+	reopenErr := errors.New("forced query-ready reopen failure")
+	opens := 0
+	opener := func(cfg runConfig) (*backenddb.DB, func() error, error) {
+		opens++
+		if opens == 2 {
+			return nil, nil, reopenErr
+		}
+		return openBackend(cfg)
+	}
+	_, err := runTreeDBBenchmarkWithOpener(cfg, opener)
+	if !errors.Is(err, reopenErr) {
+		t.Fatalf("error=%v want reopen error %v", err, reopenErr)
+	}
+	if opens != 2 {
+		t.Fatalf("backend opens=%d want 2", opens)
 	}
 }
 

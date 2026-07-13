@@ -327,7 +327,13 @@ func parseRunFlags(args []string) (runConfig, error) {
 	return cfg, nil
 }
 
+type backendOpener func(runConfig) (*backenddb.DB, func() error, error)
+
 func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
+	return runTreeDBBenchmarkWithOpener(cfg, openBackend)
+}
+
+func runTreeDBBenchmarkWithOpener(cfg runConfig, open backendOpener) (runResult, error) {
 	var err error
 	cfg.QueryMode, err = normalizeQueryMode(cfg.QueryMode)
 	if err != nil {
@@ -377,11 +383,15 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		return runResult{}, fmt.Errorf("create db dir: %w", err)
 	}
 
-	backend, cleanup, err := openBackend(cfg)
+	backend, cleanup, err := open(cfg)
 	if err != nil {
 		return runResult{}, err
 	}
-	defer func() { _ = cleanup() }()
+	defer func() {
+		if cleanup != nil {
+			_ = cleanup()
+		}
+	}()
 
 	manager := collections.NewCollectionManager(backend)
 	collection, err := createCollection(manager, cfg)
@@ -412,13 +422,16 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		compaction = &compact
 	}
 	if cfg.QueryMode == queryModeFirstTouchAfterOpen || cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
-		if err := cleanup(); err != nil {
+		closeBackend := cleanup
+		cleanup = nil
+		if err := closeBackend(); err != nil {
 			return runResult{}, fmt.Errorf("close backend before query-ready reopen: %w", err)
 		}
-		backend, cleanup, err = openBackend(cfg)
-		if err != nil {
-			return runResult{}, fmt.Errorf("reopen backend for query execution: %w", err)
+		reopenedBackend, reopenedCleanup, reopenErr := open(cfg)
+		if reopenErr != nil {
+			return runResult{}, fmt.Errorf("reopen backend for query execution: %w", reopenErr)
 		}
+		backend, cleanup = reopenedBackend, reopenedCleanup
 		manager = collections.NewCollectionManager(backend)
 		collection, err = manager.OpenCollection(cfg.Collection)
 		if err != nil {
