@@ -76,6 +76,7 @@ type queryDiagnostics struct {
 	QueryReadyBaseScanNanos                               int64                     `json:"query_ready_base_scan_nanos,omitempty"`
 	QueryReadyDeltaMergeNanos                             int64                     `json:"query_ready_delta_merge_nanos,omitempty"`
 	QueryReadyPredicateNanos                              int64                     `json:"query_ready_predicate_nanos,omitempty"`
+	QueryReadyReductionNanos                              int64                     `json:"query_ready_reduction_nanos,omitempty"`
 	QueryReadyGroupingNanos                               int64                     `json:"query_ready_grouping_nanos,omitempty"`
 	QueryReadyOrderingTopKNanos                           int64                     `json:"query_ready_ordering_topk_nanos,omitempty"`
 	VisibilityRows                                        int                       `json:"visibility_rows,omitempty"`
@@ -212,6 +213,7 @@ type queryPhysicalDiagnostic struct {
 	QueryReadyBaseScanNanos                               int64    `json:"query_ready_base_scan_nanos,omitempty"`
 	QueryReadyDeltaMergeNanos                             int64    `json:"query_ready_delta_merge_nanos,omitempty"`
 	QueryReadyPredicateNanos                              int64    `json:"query_ready_predicate_nanos,omitempty"`
+	QueryReadyReductionNanos                              int64    `json:"query_ready_reduction_nanos,omitempty"`
 	QueryReadyGroupingNanos                               int64    `json:"query_ready_grouping_nanos,omitempty"`
 	QueryReadyOrderingTopKNanos                           int64    `json:"query_ready_ordering_topk_nanos,omitempty"`
 	VisibilityRows                                        int      `json:"visibility_rows,omitempty"`
@@ -377,6 +379,7 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.QueryReadyBaseScanNanos += phys.QueryReadyBaseScanNanos
 		out.QueryReadyDeltaMergeNanos += phys.QueryReadyDeltaMergeNanos
 		out.QueryReadyPredicateNanos += phys.QueryReadyPredicateNanos
+		out.QueryReadyReductionNanos += phys.QueryReadyReductionNanos
 		out.QueryReadyGroupingNanos += phys.QueryReadyGroupingNanos
 		out.QueryReadyOrderingTopKNanos += phys.QueryReadyOrderingTopKNanos
 		out.VisibilityRows = maxInt(out.VisibilityRows, phys.VisibilityRows)
@@ -549,6 +552,7 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		QueryReadyBaseScanNanos:                               d.QueryReadyBaseScanNanos,
 		QueryReadyDeltaMergeNanos:                             d.QueryReadyDeltaMergeNanos,
 		QueryReadyPredicateNanos:                              d.QueryReadyPredicateNanos,
+		QueryReadyReductionNanos:                              d.QueryReadyReductionNanos,
 		QueryReadyGroupingNanos:                               d.QueryReadyGroupingNanos,
 		QueryReadyOrderingTopKNanos:                           d.QueryReadyOrderingTopKNanos,
 		VisibilityRows:                                        d.VisibilityRows,

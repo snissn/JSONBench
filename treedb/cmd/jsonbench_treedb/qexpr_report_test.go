@@ -57,6 +57,7 @@ func TestQExprReportRowsExposeTypedExpressionEvidence(t *testing.T) {
 					QueryReadyBaseScanNanos:     12,
 					QueryReadyDeltaMergeNanos:   13,
 					QueryReadyPredicateNanos:    14,
+					QueryReadyReductionNanos:    17,
 					QueryReadyGroupingNanos:     15,
 					QueryReadyOrderingTopKNanos: 16,
 					PhysicalQueries: []queryPhysicalDiagnostic{{
@@ -125,6 +126,7 @@ func TestQExprReportRowsExposeTypedExpressionEvidence(t *testing.T) {
 		`"query_ready_base_scan_nanos":12`,
 		`"query_ready_delta_merge_nanos":13`,
 		`"query_ready_predicate_nanos":14`,
+		`"query_ready_reduction_nanos":17`,
 		`"query_ready_grouping_nanos":15`,
 		`"query_ready_ordering_topk_nanos":16`,
 	} {

@@ -118,6 +118,7 @@ type reportRow struct {
 	QueryReadyBaseScanNanos                                       int64     `json:"query_ready_base_scan_nanos,omitempty"`
 	QueryReadyDeltaMergeNanos                                     int64     `json:"query_ready_delta_merge_nanos,omitempty"`
 	QueryReadyPredicateNanos                                      int64     `json:"query_ready_predicate_nanos,omitempty"`
+	QueryReadyReductionNanos                                      int64     `json:"query_ready_reduction_nanos,omitempty"`
 	QueryReadyGroupingNanos                                       int64     `json:"query_ready_grouping_nanos,omitempty"`
 	QueryReadyOrderingTopKNanos                                   int64     `json:"query_ready_ordering_topk_nanos,omitempty"`
 	AggregateMetadataUsed                                         bool      `json:"aggregate_metadata_used"`
@@ -566,6 +567,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				QueryReadyBaseScanNanos:                       diagnostics.QueryReadyBaseScanNanos,
 				QueryReadyDeltaMergeNanos:                     diagnostics.QueryReadyDeltaMergeNanos,
 				QueryReadyPredicateNanos:                      diagnostics.QueryReadyPredicateNanos,
+				QueryReadyReductionNanos:                      diagnostics.QueryReadyReductionNanos,
 				QueryReadyGroupingNanos:                       diagnostics.QueryReadyGroupingNanos,
 				QueryReadyOrderingTopKNanos:                   diagnostics.QueryReadyOrderingTopKNanos,
 				AggregateMetadataUsed:                         diagnostics.AggregateMetadataUsed,
