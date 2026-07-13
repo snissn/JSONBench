@@ -39,7 +39,7 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		"TRIES=1",
 		"RUN_CLICKHOUSE=0",
 		"CLICKHOUSE_RESULT="+clickHouseResult,
-		"QUERY_MODE=first_touch_after_open",
+		"QUERY_MODE=one_shot_end_to_end",
 		"METADATA_MODE=no_aggregate_metadata",
 		"TREEDB_VALIDATE_RECONSTRUCTION=1",
 		"OUT_DIR="+outDir,
@@ -62,7 +62,7 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		"## Standard comparison detail",
 		"| system/layout | query | rows loaded | load | insert | storage (TreeDB WAL-excl) | query mode | metadata mode | prepare/setup |",
 		"| TreeDB column-store-full-prepared | q1 | 6 |",
-		"first_touch_after_open",
+		"one_shot_end_to_end",
 		"no_aggregate_metadata",
 		"row/doc materializations",
 		"## Metadata cost accounting",
@@ -93,7 +93,7 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 	for _, row := range report.Rows {
 		if row.StorageLayout == storageLayoutColumnStoreFullPrepared &&
 			row.Query == "q1" &&
-			row.QueryMode == queryModeFirstTouchAfterOpen &&
+			row.QueryMode == queryModeOneShotEndToEnd &&
 			row.MetadataMode == metadataModeNoAggregateMetadata &&
 			row.DataShape == "full-retained-json" &&
 			row.TypedColumnOwner == "typed_column_part" &&
@@ -109,7 +109,7 @@ func TestPreferredScriptUsesFullDataStorageHeadline(t *testing.T) {
 		}
 		if row.StorageLayout == storageLayoutColumnStorePreparedMetadata &&
 			row.Query == "q4" &&
-			row.QueryMode == queryModeFirstTouchAfterOpen &&
+			row.QueryMode == queryModeOneShotEndToEnd &&
 			row.MetadataMode == metadataModeNoAggregateMetadata &&
 			row.DataShape == "query-shaped-projection" &&
 			row.TypedColumnOwner == "typed_row_asset" {
