@@ -102,6 +102,25 @@ type reportRow struct {
 	RowMaterializations                                           int       `json:"row_materializations"`
 	DocumentMaterializations                                      int       `json:"document_materializations"`
 	FallbackReads                                                 int       `json:"fallback_reads,omitempty"`
+	QueryReadyEncodedExecutions                                   int       `json:"query_ready_encoded_executions"`
+	QueryReadyLegacyFallbacks                                     int       `json:"query_ready_legacy_fallbacks"`
+	QueryReadyPrecomputedAnswers                                  int       `json:"query_ready_precomputed_answers"`
+	QueryReadyPreparedParts                                       int       `json:"query_ready_prepared_parts,omitempty"`
+	QueryReadyBaseParts                                           int       `json:"query_ready_base_parts,omitempty"`
+	QueryReadyDeltaParts                                          int       `json:"query_ready_delta_parts,omitempty"`
+	QueryReadyRowsCandidate                                       int       `json:"query_ready_rows_candidate,omitempty"`
+	QueryReadyRowsVisible                                         int       `json:"query_ready_rows_visible,omitempty"`
+	QueryReadyRowsSuperseded                                      int       `json:"query_ready_rows_superseded,omitempty"`
+	QueryReadyCodeTranslations                                    int       `json:"query_ready_code_translations,omitempty"`
+	QueryReadyDictionaryDomains                                   int       `json:"query_ready_dictionary_domains,omitempty"`
+	QueryReadyScratchBytes                                        int64     `json:"query_ready_scratch_bytes,omitempty"`
+	QueryReadyPreparationNanos                                    int64     `json:"query_ready_preparation_nanos,omitempty"`
+	QueryReadyBaseScanNanos                                       int64     `json:"query_ready_base_scan_nanos,omitempty"`
+	QueryReadyDeltaMergeNanos                                     int64     `json:"query_ready_delta_merge_nanos,omitempty"`
+	QueryReadyPredicateNanos                                      int64     `json:"query_ready_predicate_nanos,omitempty"`
+	QueryReadyReductionNanos                                      int64     `json:"query_ready_reduction_nanos,omitempty"`
+	QueryReadyGroupingNanos                                       int64     `json:"query_ready_grouping_nanos,omitempty"`
+	QueryReadyOrderingTopKNanos                                   int64     `json:"query_ready_ordering_topk_nanos,omitempty"`
 	AggregateMetadataUsed                                         bool      `json:"aggregate_metadata_used"`
 	AggregateMetadataRefs                                         int       `json:"aggregate_metadata_refs,omitempty"`
 	AggregateMetadataStorageBytes                                 int64     `json:"aggregate_metadata_storage_bytes,omitempty"`
@@ -532,6 +551,25 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				RowMaterializations:                           diagnostics.RowMaterializations,
 				DocumentMaterializations:                      diagnostics.DocumentMaterializations,
 				FallbackReads:                                 diagnostics.FallbackReads,
+				QueryReadyEncodedExecutions:                   diagnostics.QueryReadyEncodedExecutions,
+				QueryReadyLegacyFallbacks:                     diagnostics.QueryReadyLegacyFallbacks,
+				QueryReadyPrecomputedAnswers:                  diagnostics.QueryReadyPrecomputedAnswers,
+				QueryReadyPreparedParts:                       diagnostics.QueryReadyPreparedParts,
+				QueryReadyBaseParts:                           diagnostics.QueryReadyBaseParts,
+				QueryReadyDeltaParts:                          diagnostics.QueryReadyDeltaParts,
+				QueryReadyRowsCandidate:                       diagnostics.QueryReadyRowsCandidate,
+				QueryReadyRowsVisible:                         diagnostics.QueryReadyRowsVisible,
+				QueryReadyRowsSuperseded:                      diagnostics.QueryReadyRowsSuperseded,
+				QueryReadyCodeTranslations:                    diagnostics.QueryReadyCodeTranslations,
+				QueryReadyDictionaryDomains:                   diagnostics.QueryReadyDictionaryDomains,
+				QueryReadyScratchBytes:                        diagnostics.QueryReadyScratchBytes,
+				QueryReadyPreparationNanos:                    diagnostics.QueryReadyPreparationNanos,
+				QueryReadyBaseScanNanos:                       diagnostics.QueryReadyBaseScanNanos,
+				QueryReadyDeltaMergeNanos:                     diagnostics.QueryReadyDeltaMergeNanos,
+				QueryReadyPredicateNanos:                      diagnostics.QueryReadyPredicateNanos,
+				QueryReadyReductionNanos:                      diagnostics.QueryReadyReductionNanos,
+				QueryReadyGroupingNanos:                       diagnostics.QueryReadyGroupingNanos,
+				QueryReadyOrderingTopKNanos:                   diagnostics.QueryReadyOrderingTopKNanos,
 				AggregateMetadataUsed:                         diagnostics.AggregateMetadataUsed,
 				AggregateMetadataRefs:                         aggregateMetadataRefs,
 				AggregateMetadataStorageBytes:                 aggregateMetadataStorageBytes,
@@ -632,7 +670,10 @@ func applyQExprTypedScanEvidence(row *reportRow, query queryRun, diagnostics que
 	if row == nil || query.Name != "qexpr" {
 		return
 	}
-	if diagnostics.QueryPath != "typed_column_int64_aggregate" || diagnostics.AggregateMetadataUsed {
+	if diagnostics.AggregateMetadataUsed {
+		return
+	}
+	if diagnostics.QueryPath != "typed_column_int64_aggregate" && diagnostics.QueryPath != "column_physical" {
 		return
 	}
 	if !qexprUsesTypedColumnPath(diagnostics) {
@@ -647,11 +688,11 @@ func applyQExprTypedScanEvidence(row *reportRow, query queryRun, diagnostics que
 }
 
 func qexprUsesTypedColumnPath(diagnostics queryDiagnostics) bool {
-	if diagnostics.StorageSource == "typed_column_part" {
+	if diagnostics.StorageSource == "typed_column_part" || diagnostics.StorageSource == "query_ready_base_delta" {
 		return true
 	}
 	for _, physical := range diagnostics.PhysicalQueries {
-		if physical.StorageSource == "typed_column_part" {
+		if physical.StorageSource == "typed_column_part" || physical.StorageSource == "query_ready_base_delta" {
 			return true
 		}
 	}
@@ -1334,15 +1375,15 @@ func renderMarkdownReport(doc reportDocument) []byte {
 		}
 	}
 	fmt.Fprintf(&buf, "\n## TreeDB Query Diagnostics\n\n")
-	fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | path | source | fallback | scanned | matched | reduced | groups | predicates | topK | topK candidates | aggregate metadata | bounded topK | time-order topK | mark checks | mark skips | sorted distinct | dense path | decoded payload | decoded metadata | physical bytes | row mats | doc mats | JSON reconstruction | prepare/setup | run | render/hash | total |\n")
-	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|\n")
+	fmt.Fprintf(&buf, "| rows/scale | layout | query | query mode | metadata mode | path | source | fallback | scanned | matched | reduced | groups | predicates | topK | topK candidates | aggregate metadata | bounded topK | time-order topK | mark checks | mark skips | sorted distinct | dense path | decoded payload | decoded metadata | physical bytes | row mats | doc mats | query-ready encoded | query-ready legacy | query-ready precomputed | JSON reconstruction | prepare/setup | run | render/hash | total |\n")
+	fmt.Fprintf(&buf, "|---|---|---:|---|---|---|---|---|---:|---:|---:|---:|---:|---:|---:|---|---|---|---:|---:|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---|---:|---:|---:|---:|\n")
 	for _, row := range doc.Rows {
 		if row.System != "TreeDB" {
 			continue
 		}
 		fmt.Fprintf(
 			&buf,
-			"| %s | %s | %s | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %t | %t | %t | %d | %d | %s | %s | %d | %d | %d | %d | %d | %t | %d | %d | %d | %d |\n",
+			"| %s | %s | %s | %s | %s | %s | %s | %s | %d | %d | %d | %d | %d | %d | %d | %t | %t | %t | %d | %d | %s | %s | %d | %d | %d | %d | %d | %d | %d | %d | %t | %d | %d | %d | %d |\n",
 			row.Scale,
 			reportRowLayout(row),
 			row.Query,
@@ -1370,6 +1411,9 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			row.PhysicalBytesScanned,
 			row.RowMaterializations,
 			row.DocumentMaterializations,
+			row.QueryReadyEncodedExecutions,
+			row.QueryReadyLegacyFallbacks,
+			row.QueryReadyPrecomputedAnswers,
 			row.JSONReconstructionUsed,
 			row.PrepareSetupNanos,
 			row.RunNanos,

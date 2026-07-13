@@ -48,6 +48,9 @@ Environment:
   QUERY_MODE          Query timing mode: one_shot_end_to_end,
                       first_touch_after_open, or hot_prepared_run.
                       Defaults to one_shot_end_to_end.
+                      first_touch_after_open is unsupported for
+                      column-store-full-prepared because query-ready generation
+                      preparation touches reopened state before execution.
   METADATA_MODE       Column-store metadata mode: auto_aggregate_metadata or
                       no_aggregate_metadata. Defaults to auto_aggregate_metadata.
   SUITE               minimal, full, or all. Defaults to "minimal".

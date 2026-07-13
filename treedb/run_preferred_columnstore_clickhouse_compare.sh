@@ -71,6 +71,8 @@ Environment:
   TREEDB_QUERY_MODE        TreeDB query timing mode: one_shot_end_to_end,
                            first_touch_after_open, or hot_prepared_run.
                            Defaults to QUERY_MODE, then one_shot_end_to_end.
+                           first_touch_after_open is unsupported for the default
+                           column-store-full-prepared headline layout.
   TREEDB_METADATA_MODE     TreeDB metadata mode: auto_aggregate_metadata or
                            no_aggregate_metadata. Defaults to METADATA_MODE,
                            then auto_aggregate_metadata.

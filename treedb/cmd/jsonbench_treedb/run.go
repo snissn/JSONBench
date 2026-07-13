@@ -73,33 +73,34 @@ type runResult struct {
 	ScaleLabel    string `json:"scale_label"`
 	RequestedRows int    `json:"requested_rows"`
 	// Kept for parsing old result JSON; new runs always reject partial input.
-	AllowShortData                bool                  `json:"allow_short_data,omitempty"`
-	DatasetSize                   int                   `json:"dataset_size"`
-	DataDir                       string                `json:"data_dir"`
-	DBDir                         string                `json:"db_dir"`
-	Collection                    string                `json:"collection"`
-	Format                        string                `json:"format"`
-	StorageLayout                 string                `json:"storage_layout"`
-	QueryMode                     string                `json:"query_mode"`
-	MetadataMode                  string                `json:"metadata_mode"`
-	Projection                    string                `json:"projection"`
-	RetainsJSON                   bool                  `json:"retains_json_structure"`
-	DataShape                     string                `json:"data_shape,omitempty"`
-	RetainedPayloadPolicy         string                `json:"retained_payload_policy,omitempty"`
-	RetainedPayloadEncoding       string                `json:"retained_payload_encoding,omitempty"`
-	RetainedPayloadEncodingStatus string                `json:"retained_payload_encoding_status,omitempty"`
-	ColumnReconstructionPolicy    string                `json:"column_reconstruction_policy,omitempty"`
-	TypedColumnOwner              string                `json:"typed_column_owner,omitempty"`
-	Profile                       string                `json:"profile"`
-	QueryProfileDir               string                `json:"query_profile_dir,omitempty"`
-	DataRoot                      string                `json:"data_root"`
-	Load                          loadResult            `json:"load"`
-	Storage                       storageResult         `json:"storage"`
-	Compaction                    *compactionResult     `json:"compaction,omitempty"`
-	Reconstruction                *reconstructionResult `json:"reconstruction,omitempty"`
-	Queries                       []queryRun            `json:"queries"`
-	Command                       []string              `json:"command,omitempty"`
-	Notes                         []string              `json:"notes,omitempty"`
+	AllowShortData                bool                                          `json:"allow_short_data,omitempty"`
+	DatasetSize                   int                                           `json:"dataset_size"`
+	DataDir                       string                                        `json:"data_dir"`
+	DBDir                         string                                        `json:"db_dir"`
+	Collection                    string                                        `json:"collection"`
+	Format                        string                                        `json:"format"`
+	StorageLayout                 string                                        `json:"storage_layout"`
+	QueryMode                     string                                        `json:"query_mode"`
+	MetadataMode                  string                                        `json:"metadata_mode"`
+	Projection                    string                                        `json:"projection"`
+	RetainsJSON                   bool                                          `json:"retains_json_structure"`
+	DataShape                     string                                        `json:"data_shape,omitempty"`
+	RetainedPayloadPolicy         string                                        `json:"retained_payload_policy,omitempty"`
+	RetainedPayloadEncoding       string                                        `json:"retained_payload_encoding,omitempty"`
+	RetainedPayloadEncodingStatus string                                        `json:"retained_payload_encoding_status,omitempty"`
+	ColumnReconstructionPolicy    string                                        `json:"column_reconstruction_policy,omitempty"`
+	TypedColumnOwner              string                                        `json:"typed_column_owner,omitempty"`
+	Profile                       string                                        `json:"profile"`
+	QueryProfileDir               string                                        `json:"query_profile_dir,omitempty"`
+	DataRoot                      string                                        `json:"data_root"`
+	Load                          loadResult                                    `json:"load"`
+	Storage                       storageResult                                 `json:"storage"`
+	Compaction                    *compactionResult                             `json:"compaction,omitempty"`
+	Reconstruction                *reconstructionResult                         `json:"reconstruction,omitempty"`
+	QueryReadyPreparation         *collections.QueryReadyColumnPreparationStats `json:"query_ready_preparation,omitempty"`
+	Queries                       []queryRun                                    `json:"queries"`
+	Command                       []string                                      `json:"command,omitempty"`
+	Notes                         []string                                      `json:"notes,omitempty"`
 }
 
 type loadResult struct {
@@ -326,7 +327,13 @@ func parseRunFlags(args []string) (runConfig, error) {
 	return cfg, nil
 }
 
+type backendOpener func(runConfig) (*backenddb.DB, func() error, error)
+
 func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
+	return runTreeDBBenchmarkWithOpener(cfg, openBackend)
+}
+
+func runTreeDBBenchmarkWithOpener(cfg runConfig, open backendOpener) (runResult, error) {
 	var err error
 	cfg.QueryMode, err = normalizeQueryMode(cfg.QueryMode)
 	if err != nil {
@@ -338,6 +345,9 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 	}
 	if err := validateQueryModeAttempts(cfg.QueryMode, cfg.Tries); err != nil {
 		return runResult{}, err
+	}
+	if cfg.QueryMode == queryModeFirstTouchAfterOpen && cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
+		return runResult{}, errors.New("-query-mode first_touch_after_open is unsupported for column-store-full-prepared because query-ready generation preparation touches the reopened state before execution; use one_shot_end_to_end")
 	}
 	dataDir, err := expandPath(cfg.DataDir)
 	if err != nil {
@@ -376,11 +386,15 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		return runResult{}, fmt.Errorf("create db dir: %w", err)
 	}
 
-	backend, cleanup, err := openBackend(cfg)
+	backend, cleanup, err := open(cfg)
 	if err != nil {
 		return runResult{}, err
 	}
-	defer func() { _ = cleanup() }()
+	defer func() {
+		if cleanup != nil {
+			_ = cleanup()
+		}
+	}()
 
 	manager := collections.NewCollectionManager(backend)
 	collection, err := createCollection(manager, cfg)
@@ -410,21 +424,39 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		}
 		compaction = &compact
 	}
-	if cfg.QueryMode == queryModeFirstTouchAfterOpen {
-		if err := cleanup(); err != nil {
-			return runResult{}, fmt.Errorf("close backend before first-touch query reopen: %w", err)
+	if cfg.QueryMode == queryModeFirstTouchAfterOpen || cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
+		closeBackend := cleanup
+		if err := closeBackend(); err != nil {
+			return runResult{}, fmt.Errorf("close backend before query-ready reopen: %w", err)
 		}
-		backend, cleanup, err = openBackend(cfg)
-		if err != nil {
-			return runResult{}, fmt.Errorf("reopen backend for first-touch query mode: %w", err)
+		cleanup = nil
+		reopenedBackend, reopenedCleanup, reopenErr := open(cfg)
+		if reopenErr != nil {
+			return runResult{}, fmt.Errorf("reopen backend for query execution: %w", reopenErr)
 		}
+		backend, cleanup = reopenedBackend, reopenedCleanup
 		manager = collections.NewCollectionManager(backend)
 		collection, err = manager.OpenCollection(cfg.Collection)
 		if err != nil {
-			return runResult{}, fmt.Errorf("reopen collection for first-touch query mode: %w", err)
+			return runResult{}, fmt.Errorf("reopen collection for query execution: %w", err)
 		}
 	}
-	queryResults, err := runQueries(collection, cfg, load.Rows)
+	var queryReadyPreparation *collections.QueryReadyColumnPreparedGeneration
+	var queryReadyPreparationStats *collections.QueryReadyColumnPreparationStats
+	var queryReadyFiles *collections.QueryReadyColumnGenerationFiles
+	if cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
+		queryReadyPreparation, err = collection.PrepareQueryReadyColumnGeneration(context.Background(), collections.QueryReadyColumnPreparationOptions{})
+		if err != nil {
+			return runResult{}, fmt.Errorf("prepare query-ready column generation: %w", err)
+		}
+		stats := queryReadyPreparation.Stats()
+		files := queryReadyPreparation.Files()
+		queryReadyPreparationStats, queryReadyFiles = &stats, &files
+	}
+	queryResults, err := runQueries(collection, cfg, load.Rows, queryReadyFiles)
+	if queryReadyPreparation != nil {
+		err = errors.Join(err, queryReadyPreparation.Close())
+	}
 	if err != nil {
 		return runResult{}, err
 	}
@@ -477,6 +509,7 @@ func runTreeDBBenchmark(cfg runConfig) (runResult, error) {
 		Compaction:                    compaction,
 		Reconstruction:                reconstruction,
 		Queries:                       queryResults,
+		QueryReadyPreparation:         queryReadyPreparationStats,
 		Notes:                         runNotes(cfg),
 	}, nil
 }

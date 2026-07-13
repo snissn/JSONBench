@@ -203,7 +203,7 @@ func TestRenderMarkdownReportLabelsDataShapeAndClickHouseBest(t *testing.T) {
 		"## TreeDB Row Attribution Labels",
 		"| 6 rows | column-store-full:json/full+retained=template-v1 | q1 | durable | one_shot_end_to_end | typed_column_part | none | typed_column_data_scan | false | time_us | requested=none:1; actual=none:1 | insert_only_static_snapshot | non-column | typed_column_part | 6 | valid | 2.93 KiB | 1.07 KiB |",
 		"## TreeDB Query Diagnostics",
-		"| 6 rows | column-store-full:json/full+retained=template-v1 | q1 | one_shot_end_to_end | no_aggregate_metadata | column_physical | typed_column_part | none | 6 | 4 | 4 | 2 | 1 | 3 | 2 | false | true | false | 5 | 1 |  | group_count | 128 | 64 | 192 | 0 | 0 | false | 10 | 300 | 120 | 430 |",
+		"| 6 rows | column-store-full:json/full+retained=template-v1 | q1 | one_shot_end_to_end | no_aggregate_metadata | column_physical | typed_column_part | none | 6 | 4 | 4 | 2 | 1 | 3 | 2 | false | true | false | 5 | 1 |  | group_count | 128 | 64 | 192 | 0 | 0 | 0 | 0 | 0 | false | 10 | 300 | 120 | 430 |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("report missing %q\n%s", want, got)

@@ -24,7 +24,7 @@ var querySQL = map[string]string{
 
 var jsonBenchQueryNames = []string{"q1", "q2", "q3", "q4", "q4a", "q4b", "q5", "qexpr"}
 
-func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]queryRun, error) {
+func runQueries(collection *collections.Collection, cfg runConfig, rows int, queryReadyFiles *collections.QueryReadyColumnGenerationFiles) ([]queryRun, error) {
 	out := make([]queryRun, 0, len(cfg.Queries))
 	for _, name := range cfg.Queries {
 		var prepared *preparedColumnQuery
@@ -32,7 +32,7 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 		if cfg.QueryMode == queryModeHotPreparedRun {
 			prepareStart := time.Now()
 			var err error
-			prepared, err = prepareColumnQueryIfNeeded(collection, cfg, name)
+			prepared, err = prepareColumnQueryIfNeeded(collection, cfg, name, queryReadyFiles)
 			outsidePrepareSetupNanos = time.Since(prepareStart).Nanoseconds()
 			if err != nil {
 				return nil, fmt.Errorf("%s prepare: %w", name, err)
@@ -53,7 +53,7 @@ func runQueries(collection *collections.Collection, cfg runConfig, rows int) ([]
 				}
 				return nil, fmt.Errorf("%s attempt %d profile: %w", name, attempt, err)
 			}
-			computed, hash, elapsed, err := runTimedQueryAttempt(collection, cfg, name, rows, prepared, outsidePrepareSetupNanos)
+			computed, hash, elapsed, err := runTimedQueryAttempt(collection, cfg, name, rows, prepared, outsidePrepareSetupNanos, queryReadyFiles)
 			if profile != nil {
 				attemptProfile, profileErr := profile.Stop(cfg.QueryProfileDir, name, attempt)
 				if attemptProfile.Attempt != 0 {
@@ -106,19 +106,19 @@ type queryComputation struct {
 	Diagnostics queryDiagnostics
 }
 
-func runQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, prepared *preparedColumnQuery) (queryComputation, error) {
+func runQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, prepared *preparedColumnQuery, queryReadyFiles *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
 	if prepared != nil {
 		return prepared.Run(rows)
 	}
-	return runQueryOnce(collection, cfg, name, rows)
+	return runQueryOnce(collection, cfg, name, rows, queryReadyFiles)
 }
 
-func runTimedQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, outsidePrepared *preparedColumnQuery, outsidePrepareSetupNanos int64) (queryComputation, string, time.Duration, error) {
+func runTimedQueryAttempt(collection *collections.Collection, cfg runConfig, name string, rows int, outsidePrepared *preparedColumnQuery, outsidePrepareSetupNanos int64, queryReadyFiles *collections.QueryReadyColumnGenerationFiles) (queryComputation, string, time.Duration, error) {
 	attemptStart := time.Now()
 	prepared := outsidePrepared
 	prepareSetupNanos := outsidePrepareSetupNanos
 	runStart := time.Now()
-	computed, err := runQueryAttempt(collection, cfg, name, rows, prepared)
+	computed, err := runQueryAttempt(collection, cfg, name, rows, prepared, queryReadyFiles)
 	runElapsedNanos := time.Since(runStart).Nanoseconds()
 	if err != nil {
 		if prepared != nil && prepared != outsidePrepared {
@@ -174,21 +174,21 @@ func runTimedQueryAttempt(collection *collections.Collection, cfg runConfig, nam
 	return computed, hash, elapsed, nil
 }
 
-func runQueryOnce(collection *collections.Collection, cfg runConfig, name string, rows int) (queryComputation, error) {
+func runQueryOnce(collection *collections.Collection, cfg runConfig, name string, rows int, queryReadyFiles *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
 	if isColumnStoreLayout(cfg.StorageLayout) {
 		switch name {
 		case "q1":
-			return runColumnQ1(collection, cfg, rows)
+			return runColumnQ1(collection, cfg, rows, queryReadyFiles)
 		case "q2":
-			return runColumnQ2(collection, cfg, rows)
+			return runColumnQ2(collection, cfg, rows, queryReadyFiles)
 		case "q3":
-			return runColumnQ3(collection, cfg, rows)
+			return runColumnQ3(collection, cfg, rows, queryReadyFiles)
 		case "q4", "q4a", "q4b":
-			return runColumnQ4(collection, cfg, rows)
+			return runColumnQ4(collection, cfg, rows, queryReadyFiles)
 		case "q5":
-			return runColumnQ5(collection, cfg, rows)
+			return runColumnQ5(collection, cfg, rows, queryReadyFiles)
 		case "qexpr":
-			return runColumnQExpr(collection, cfg, rows)
+			return runColumnQExpr(collection, cfg, rows, queryReadyFiles)
 		default:
 			return queryComputation{}, fmt.Errorf("unknown query %q", name)
 		}

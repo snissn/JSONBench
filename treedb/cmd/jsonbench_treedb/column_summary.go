@@ -113,7 +113,7 @@ func renderColumnStoreCompactSummary(doc reportDocument) []byte {
 			formatExpressionEvidence(row),
 		)
 	}
-	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. `full-retained-json` rows store enough JSON payload to reconstruct every loaded document; `query-shaped-projection` rows are smaller benchmark projections and are not full-storage baselines. `prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5 and answers from aggregate metadata with `scanned rows` = 0; `full-prepared aggregate metadata` applies to full-retained q1/q3/q5; `full-prepared bounded top-k` applies to full-retained q4/q4a/q4b and scans typed-column data with a bounded TopK request; `qexpr` is an arbitrary-expression typed-column scan/evaluation lane with explicit typed-cell evidence and `precomputed_expression_used=false` unless a separate expression summary is reported.\n")
+	fmt.Fprintf(&buf, "\nRows/sec is based on loaded logical rows. `full-retained-json` rows store enough JSON payload to reconstruct every loaded document; `query-shaped-projection` rows are smaller benchmark projections and are not full-storage baselines. `query-ready base-plus-delta` applies when encoded query-ready diagnostics report the persisted base-plus-delta source; `prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5 and answers from aggregate metadata with `scanned rows` = 0; `full-prepared aggregate metadata` applies to full-retained q1/q3/q5; `full-prepared bounded top-k` applies to legacy full-retained q4/q4a/q4b scans with a bounded TopK request; `qexpr` is an arbitrary-expression typed-column scan/evaluation lane with explicit typed-cell evidence and `precomputed_expression_used=false` unless a separate expression summary is reported.\n")
 	return buf.Bytes()
 }
 
@@ -135,6 +135,9 @@ func columnSummaryLayoutRank(layout string) int {
 }
 
 func columnSummaryExecutionMode(row reportRow) string {
+	if row.StorageSource == "query_ready_base_delta" && row.QueryReadyEncodedExecutions > 0 {
+		return "query-ready base-plus-delta"
+	}
 	switch row.StorageLayout {
 	case storageLayoutColumnStore:
 		return "direct physical scan"

@@ -9,47 +9,62 @@ import (
 	"github.com/snissn/gomap/TreeDB/collections"
 )
 
-func runColumnQ1(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
-	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q1", collections.ColumnPhysicalQueryGroupCount, "event", "", ""))
+func runColumnPhysicalQuery(collection *collections.Collection, files *collections.QueryReadyColumnGenerationFiles, request collections.ColumnPhysicalQueryRequest) (collections.ColumnPhysicalQueryResult, error) {
+	if files != nil {
+		request.AggregateMetadataName = ""
+		return collection.RunQueryReadyColumnPhysicalQuery(*files, request)
+	}
+	return collection.RunColumnPhysicalQuery(request)
+}
+
+func runColumnQ1(collection *collections.Collection, cfg runConfig, rows int, files *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
+	result, err := runColumnPhysicalQuery(collection, files, columnPhysicalRequest(cfg, "q1", collections.ColumnPhysicalQueryGroupCount, "event", "", ""))
 	if err != nil {
 		return queryComputation{}, err
 	}
 	return renderColumnQ1(rows, result), nil
 }
 
-func runColumnQ2(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
-	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountAndDistinct, "event", "", "did"))
+func runColumnQ2(collection *collections.Collection, cfg runConfig, rows int, files *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
+	result, err := runColumnPhysicalQuery(collection, files, columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountAndDistinct, "event", "", "did"))
 	if err != nil {
 		return queryComputation{}, err
 	}
 	return renderColumnQ2(rows, result), nil
 }
 
-func runColumnQ3(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
-	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", ""))
+func runColumnQ3(collection *collections.Collection, cfg runConfig, rows int, files *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
+	result, err := runColumnPhysicalQuery(collection, files, columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", ""))
 	if err != nil {
 		return queryComputation{}, err
 	}
 	return renderColumnQ3(rows, result), nil
 }
 
-func runColumnQ4(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
-	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q4", collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", ""))
+func runColumnQ4(collection *collections.Collection, cfg runConfig, rows int, files *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
+	result, err := runColumnPhysicalQuery(collection, files, columnPhysicalRequest(cfg, "q4", collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", ""))
 	if err != nil {
 		return queryComputation{}, err
 	}
 	return renderColumnQ4(rows, result), nil
 }
 
-func runColumnQ5(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
-	result, err := collection.RunColumnPhysicalQuery(columnPhysicalRequest(cfg, "q5", collections.ColumnPhysicalQueryGroupInt64Span, "did", "time_us", ""))
+func runColumnQ5(collection *collections.Collection, cfg runConfig, rows int, files *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
+	result, err := runColumnPhysicalQuery(collection, files, columnPhysicalRequest(cfg, "q5", collections.ColumnPhysicalQueryGroupInt64Span, "did", "time_us", ""))
 	if err != nil {
 		return queryComputation{}, err
 	}
 	return renderColumnQ5(rows, result), nil
 }
 
-func runColumnQExpr(collection *collections.Collection, cfg runConfig, rows int) (queryComputation, error) {
+func runColumnQExpr(collection *collections.Collection, cfg runConfig, rows int, files *collections.QueryReadyColumnGenerationFiles) (queryComputation, error) {
+	if files != nil {
+		result, err := runColumnPhysicalQuery(collection, files, columnPhysicalRequest(cfg, "qexpr", collections.ColumnPhysicalQuerySumSecondOfDaySquare, "", "time_us", ""))
+		if err != nil {
+			return queryComputation{}, err
+		}
+		return renderColumnQExprPhysical(rows, result), nil
+	}
 	result, err := collection.RunTypedColumnInt64PredicateAggregate(qexprTypedInt64AggregateRequest())
 	if err != nil {
 		return queryComputation{}, err
@@ -123,15 +138,47 @@ type preparedColumnQuery struct {
 	count          *collections.ColumnPhysicalQueryRunner
 	distinct       *collections.ColumnPhysicalQueryRunner
 	int64Aggregate *collections.TypedColumnInt64PredicateAggregateSession
+	queryReady     *collections.QueryReadyColumnPhysicalQueryRunner
 	prepare        []queryPhysicalDiagnostic
 }
 
-func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfig, name string) (*preparedColumnQuery, error) {
+func prepareColumnQueryIfNeeded(collection *collections.Collection, cfg runConfig, name string, files *collections.QueryReadyColumnGenerationFiles) (*preparedColumnQuery, error) {
 	if !isPreparedColumnStoreLayout(cfg.StorageLayout) {
 		return nil, nil
 	}
 	prepare := func(req collections.ColumnPhysicalQueryRequest) (*collections.ColumnPhysicalQueryRunner, error) {
 		return collection.PrepareColumnPhysicalQuery(req)
+	}
+	prepareQueryReady := func(req collections.ColumnPhysicalQueryRequest) (*collections.QueryReadyColumnPhysicalQueryRunner, error) {
+		if files == nil {
+			return nil, errors.New("query-ready generation files are not initialized")
+		}
+		req.AggregateMetadataName = ""
+		return collection.PrepareQueryReadyColumnPhysicalQuery(*files, req)
+	}
+	if files != nil {
+		var request collections.ColumnPhysicalQueryRequest
+		switch name {
+		case "q1":
+			request = columnPhysicalRequest(cfg, "q1", collections.ColumnPhysicalQueryGroupCount, "event", "", "")
+		case "q2":
+			request = columnPhysicalRequest(cfg, "q2", collections.ColumnPhysicalQueryGroupCountAndDistinct, "event", "", "did")
+		case "q3":
+			request = columnPhysicalRequest(cfg, "q3", collections.ColumnPhysicalQueryGroupHourCount, "event", "time_us", "")
+		case "q4", "q4a", "q4b":
+			request = columnPhysicalRequest(cfg, name, collections.ColumnPhysicalQueryGroupMinInt64, "did", "time_us", "")
+		case "q5":
+			request = columnPhysicalRequest(cfg, "q5", collections.ColumnPhysicalQueryGroupInt64Span, "did", "time_us", "")
+		case "qexpr":
+			request = columnPhysicalRequest(cfg, "qexpr", collections.ColumnPhysicalQuerySumSecondOfDaySquare, "", "time_us", "")
+		default:
+			return nil, nil
+		}
+		runner, err := prepareQueryReady(request)
+		if err != nil {
+			return nil, err
+		}
+		return &preparedColumnQuery{name: name, queryReady: runner}, nil
 	}
 	preparedPhysical := func(physicalName string, runner *collections.ColumnPhysicalQueryRunner) *preparedColumnQuery {
 		prepared := &preparedColumnQuery{name: name, count: runner}
@@ -202,6 +249,11 @@ func (p *preparedColumnQuery) Close() error {
 			errs = append(errs, err)
 		}
 	}
+	if p.queryReady != nil {
+		if err := p.queryReady.Close(); err != nil {
+			errs = append(errs, err)
+		}
+	}
 	return errors.Join(errs...)
 }
 
@@ -217,6 +269,27 @@ func (p *preparedColumnQuery) Run(rows int) (queryComputation, error) {
 		computed := renderColumnQExpr(rows, result)
 		p.applyPrepareDiagnostics(&computed.Diagnostics)
 		return computed, nil
+	}
+	if p.queryReady != nil {
+		result, err := p.queryReady.Run()
+		if err != nil {
+			return queryComputation{}, err
+		}
+		if p.name == "qexpr" {
+			return renderColumnQExprPhysical(rows, result), nil
+		}
+		switch p.name {
+		case "q1":
+			return renderColumnQ1(rows, result), nil
+		case "q2":
+			return renderColumnQ2(rows, result), nil
+		case "q3":
+			return renderColumnQ3(rows, result), nil
+		case "q4", "q4a", "q4b":
+			return renderColumnQ4(rows, result), nil
+		case "q5":
+			return renderColumnQ5(rows, result), nil
+		}
 	}
 	if p.count == nil {
 		return queryComputation{}, errors.New("prepared column query is not initialized")
@@ -412,6 +485,21 @@ func renderColumnQExpr(rows int, result collections.TypedColumnInt64PredicateAgg
 			renderNanos,
 			namedTypedInt64AggregateResult{Name: "second_of_day_square_sum", Result: result, FallbackRows: rows},
 		),
+	}
+}
+
+func renderColumnQExprPhysical(rows int, result collections.ColumnPhysicalQueryResult) queryComputation {
+	renderStart := time.Now()
+	sum := int64(0)
+	if len(result.Groups) != 0 {
+		sum = result.Groups[0].Int64
+	}
+	out := []queryRow{{"second_of_day_square_sum": sum}}
+	renderNanos := time.Since(renderStart).Nanoseconds()
+	return queryComputation{
+		RowsScanned: columnPhysicalRowsScanned(rows, result),
+		Rows:        out,
+		Diagnostics: columnQueryDiagnostics(len(out), renderNanos, namedColumnPhysicalResult{Name: "second_of_day_square_sum", Result: result, FallbackRows: rows}),
 	}
 }
 
