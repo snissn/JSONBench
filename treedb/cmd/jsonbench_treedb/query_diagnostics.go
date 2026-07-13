@@ -63,6 +63,21 @@ type queryDiagnostics struct {
 	QueryReadyEncodedExecutions                           int                       `json:"query_ready_encoded_executions"`
 	QueryReadyLegacyFallbacks                             int                       `json:"query_ready_legacy_fallbacks"`
 	QueryReadyPrecomputedAnswers                          int                       `json:"query_ready_precomputed_answers"`
+	QueryReadyPreparedParts                               int                       `json:"query_ready_prepared_parts,omitempty"`
+	QueryReadyBaseParts                                   int                       `json:"query_ready_base_parts,omitempty"`
+	QueryReadyDeltaParts                                  int                       `json:"query_ready_delta_parts,omitempty"`
+	QueryReadyRowsCandidate                               int                       `json:"query_ready_rows_candidate,omitempty"`
+	QueryReadyRowsVisible                                 int                       `json:"query_ready_rows_visible,omitempty"`
+	QueryReadyRowsSuperseded                              int                       `json:"query_ready_rows_superseded,omitempty"`
+	QueryReadyCodeTranslations                            int                       `json:"query_ready_code_translations,omitempty"`
+	QueryReadyDictionaryDomains                           int                       `json:"query_ready_dictionary_domains,omitempty"`
+	QueryReadyScratchBytes                                int64                     `json:"query_ready_scratch_bytes,omitempty"`
+	QueryReadyPreparationNanos                            int64                     `json:"query_ready_preparation_nanos,omitempty"`
+	QueryReadyBaseScanNanos                               int64                     `json:"query_ready_base_scan_nanos,omitempty"`
+	QueryReadyDeltaMergeNanos                             int64                     `json:"query_ready_delta_merge_nanos,omitempty"`
+	QueryReadyPredicateNanos                              int64                     `json:"query_ready_predicate_nanos,omitempty"`
+	QueryReadyGroupingNanos                               int64                     `json:"query_ready_grouping_nanos,omitempty"`
+	QueryReadyOrderingTopKNanos                           int64                     `json:"query_ready_ordering_topk_nanos,omitempty"`
 	VisibilityRows                                        int                       `json:"visibility_rows,omitempty"`
 	ReconstructionRows                                    int                       `json:"reconstruction_rows,omitempty"`
 	WorkerCount                                           int                       `json:"worker_count,omitempty"`
@@ -184,6 +199,21 @@ type queryPhysicalDiagnostic struct {
 	QueryReadyEncodedExecutions                           int      `json:"query_ready_encoded_executions"`
 	QueryReadyLegacyFallbacks                             int      `json:"query_ready_legacy_fallbacks"`
 	QueryReadyPrecomputedAnswers                          int      `json:"query_ready_precomputed_answers"`
+	QueryReadyPreparedParts                               int      `json:"query_ready_prepared_parts,omitempty"`
+	QueryReadyBaseParts                                   int      `json:"query_ready_base_parts,omitempty"`
+	QueryReadyDeltaParts                                  int      `json:"query_ready_delta_parts,omitempty"`
+	QueryReadyRowsCandidate                               int      `json:"query_ready_rows_candidate,omitempty"`
+	QueryReadyRowsVisible                                 int      `json:"query_ready_rows_visible,omitempty"`
+	QueryReadyRowsSuperseded                              int      `json:"query_ready_rows_superseded,omitempty"`
+	QueryReadyCodeTranslations                            int      `json:"query_ready_code_translations,omitempty"`
+	QueryReadyDictionaryDomains                           int      `json:"query_ready_dictionary_domains,omitempty"`
+	QueryReadyScratchBytes                                int64    `json:"query_ready_scratch_bytes,omitempty"`
+	QueryReadyPreparationNanos                            int64    `json:"query_ready_preparation_nanos,omitempty"`
+	QueryReadyBaseScanNanos                               int64    `json:"query_ready_base_scan_nanos,omitempty"`
+	QueryReadyDeltaMergeNanos                             int64    `json:"query_ready_delta_merge_nanos,omitempty"`
+	QueryReadyPredicateNanos                              int64    `json:"query_ready_predicate_nanos,omitempty"`
+	QueryReadyGroupingNanos                               int64    `json:"query_ready_grouping_nanos,omitempty"`
+	QueryReadyOrderingTopKNanos                           int64    `json:"query_ready_ordering_topk_nanos,omitempty"`
 	VisibilityRows                                        int      `json:"visibility_rows,omitempty"`
 	ReconstructionRows                                    int      `json:"reconstruction_rows,omitempty"`
 	WorkerCount                                           int      `json:"worker_count,omitempty"`
@@ -332,6 +362,23 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.QueryReadyEncodedExecutions += phys.QueryReadyEncodedExecutions
 		out.QueryReadyLegacyFallbacks += phys.QueryReadyLegacyFallbacks
 		out.QueryReadyPrecomputedAnswers += phys.QueryReadyPrecomputedAnswers
+		out.QueryReadyPreparedParts = maxInt(out.QueryReadyPreparedParts, phys.QueryReadyPreparedParts)
+		out.QueryReadyBaseParts = maxInt(out.QueryReadyBaseParts, phys.QueryReadyBaseParts)
+		out.QueryReadyDeltaParts = maxInt(out.QueryReadyDeltaParts, phys.QueryReadyDeltaParts)
+		out.QueryReadyRowsCandidate += phys.QueryReadyRowsCandidate
+		out.QueryReadyRowsVisible += phys.QueryReadyRowsVisible
+		out.QueryReadyRowsSuperseded += phys.QueryReadyRowsSuperseded
+		out.QueryReadyCodeTranslations += phys.QueryReadyCodeTranslations
+		out.QueryReadyDictionaryDomains = maxInt(out.QueryReadyDictionaryDomains, phys.QueryReadyDictionaryDomains)
+		if phys.QueryReadyScratchBytes > out.QueryReadyScratchBytes {
+			out.QueryReadyScratchBytes = phys.QueryReadyScratchBytes
+		}
+		out.QueryReadyPreparationNanos += phys.QueryReadyPreparationNanos
+		out.QueryReadyBaseScanNanos += phys.QueryReadyBaseScanNanos
+		out.QueryReadyDeltaMergeNanos += phys.QueryReadyDeltaMergeNanos
+		out.QueryReadyPredicateNanos += phys.QueryReadyPredicateNanos
+		out.QueryReadyGroupingNanos += phys.QueryReadyGroupingNanos
+		out.QueryReadyOrderingTopKNanos += phys.QueryReadyOrderingTopKNanos
 		out.VisibilityRows = maxInt(out.VisibilityRows, phys.VisibilityRows)
 		out.ReconstructionRows += phys.ReconstructionRows
 		out.WorkerCount = maxInt(out.WorkerCount, phys.WorkerCount)
@@ -434,98 +481,113 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		fallbackRowsUsed = true
 	}
 	return queryPhysicalDiagnostic{
-		Name:                                               input.Name,
-		StorageSource:                                      string(d.StorageSource),
-		FallbackReason:                                     string(d.FallbackReason),
-		RowsScanned:                                        rowsScanned,
-		RowsMatched:                                        d.RowsMatched,
-		ReduceRows:                                         d.ReduceRows,
-		ResultGroups:                                       d.ResultGroups,
-		PredicateCount:                                     d.PredicateCount,
-		PredicateColumns:                                   append([]string(nil), d.PredicateColumns...),
-		PredicateKinds:                                     append([]string(nil), d.PredicateKinds...),
-		PredicateLiterals:                                  d.PredicateLiterals,
-		TopKLimit:                                          d.TopKLimit,
-		TopKOrder:                                          d.TopKOrder,
-		TopKCandidates:                                     d.TopKCandidates,
-		BoundedTopKUsed:                                    d.TopKLimit > 0 && (d.TopKCandidates > 0 || d.TimeOrderTopKUsed),
-		TimeOrderTopKUsed:                                  d.TimeOrderTopKUsed,
-		SortKeyPrefixPlanned:                               d.SortKeyPrefixPlanned,
-		SortKeyPrefixColumns:                               append([]string(nil), d.SortKeyPrefixColumns...),
-		SortKeyPrefixLiterals:                              d.SortKeyPrefixLiterals,
-		SortKeyMarkChecks:                                  d.SortKeyMarkChecks,
-		SortKeyMarkMatches:                                 d.SortKeyMarkMatches,
-		SortKeyMarkSkips:                                   d.SortKeyMarkSkips,
-		SortKeyMarkFallbackReason:                          d.SortKeyMarkFallbackReason,
-		SortedGroupedDistinctReady:                         d.SortedGroupedDistinctReady,
-		SortedGroupedDistinctUsed:                          d.SortedGroupedDistinctUsed,
-		SortedGroupedDistinctFallback:                      d.SortedGroupedDistinctFallbackReason,
-		DenseGroupCountUsed:                                d.DenseGroupCountUsed,
-		DenseGroupCountDistinctUsed:                        d.DenseGroupCountDistinctUsed,
-		DenseGroupHourCountUsed:                            d.DenseGroupHourCountUsed,
-		DenseInt64SpanUsed:                                 d.DenseInt64SpanUsed,
-		DenseInt64SpanPredicateBlocksSkipped:               optionalColumnPhysicalDiagnosticInt(d, "DenseInt64SpanPredicateBlocksSkipped"),
-		MetadataHits:                                       d.MetadataHits,
-		MetadataEntries:                                    d.MetadataEntries,
-		MetadataMisses:                                     d.MetadataMisses,
-		DictionaryCodeHits:                                 d.DictionaryCodeHits,
-		PredicateDictionaryCodeHits:                        d.PredicateDictionaryCodeHits,
-		Int64ValueHits:                                     d.Int64ValueHits,
-		ScheduledGranules:                                  d.ScheduledGranules,
-		SkippedGranules:                                    d.SkippedGranules,
-		DecodedGranules:                                    d.DecodedGranules,
-		DecodedBlocks:                                      d.DecodedBlocks,
-		DirectReduceBlocks:                                 d.DirectReduceBlocks,
-		TypedColumnPartSections:                            d.TypedColumnPartSections,
-		TypedColumnPartSectionBytes:                        d.TypedColumnPartSectionBytes,
-		DecodedPayloadBytes:                                d.DecodedPayloadBytes,
-		DecodedMetadataBytes:                               d.DecodedMetadataBytes,
-		PhysicalBytesScanned:                               d.PhysicalBytesScanned,
-		MappedBytes:                                        d.MappedBytes,
-		HeapCopyBytes:                                      d.HeapCopyBytes,
-		RowMaterializations:                                d.RowMaterializations,
-		DocumentMaterializations:                           d.DocumentMaterializations,
-		FallbackReads:                                      d.FallbackReads,
-		QueryReadyEncodedExecutions:                        d.QueryReadyEncodedExecutions,
-		QueryReadyLegacyFallbacks:                          d.QueryReadyLegacyFallbacks,
-		QueryReadyPrecomputedAnswers:                       d.QueryReadyPrecomputedAnswers,
-		VisibilityRows:                                     d.VisibilityRows,
-		ReconstructionRows:                                 d.ReconstructionRows,
-		WorkerCount:                                        d.WorkerCount,
-		TypedColumnPrepareWorkerCount:                      optionalColumnPhysicalDiagnosticInt(d, "TypedColumnPrepareWorkerCount"),
-		SegmentFileCacheHits:                               d.SegmentFileCacheHits,
-		SegmentFileCacheMisses:                             d.SegmentFileCacheMisses,
-		TypedColumnOneShotCacheHit:                         d.TypedColumnOneShotCacheHit,
-		TypedColumnOneShotCacheMiss:                        d.TypedColumnOneShotCacheMiss,
-		TypedColumnOneShotCacheBuild:                       d.TypedColumnOneShotCacheBuild,
-		TypedColumnOneShotBuildNanos:                       d.TypedColumnOneShotBuildNanos,
-		TypedColumnPreparePlanNanos:                        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePlanNanos"),
-		TypedColumnPrepareRefsNanos:                        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRefsNanos"),
-		TypedColumnPreparePairingNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePairingNanos"),
-		TypedColumnPreparePartDecodeNanos:                  optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePartDecodeNanos"),
-		TypedColumnPreparePostPrepareNanos:                 optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePostPrepareNanos"),
-		TypedColumnPrepareSummaryNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareSummaryNanos"),
-		TypedColumnOneShotCacheStoreNanos:                  optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnOneShotCacheStoreNanos"),
-		TypedColumnPrepareReadImageNanos:                   optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareReadImageNanos"),
-		TypedColumnPrepareStateBuildNanos:                  optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareStateBuildNanos"),
-		TypedColumnPrepareDictionaryNanos:                  optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDictionaryNanos"),
-		TypedColumnPreparePruningNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePruningNanos"),
-		TypedColumnPrepareSortKeyNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareSortKeyNanos"),
-		TypedColumnPrepareStatsNanos:                       optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareStatsNanos"),
-		TypedColumnPrepareRangeReadNanos:                   optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRangeReadNanos"),
-		TypedColumnPrepareRangeReadBytes:                   optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRangeReadBytes"),
-		TypedColumnPrepareAdapterNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareAdapterNanos"),
-		TypedColumnPrepareDenseGroupNanos:                  optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDenseGroupNanos"),
-		TypedColumnPrepareDenseValueNanos:                  optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDenseValueNanos"),
-		TypedColumnPrepareDensePredicateNanos:              optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDensePredicateNanos"),
-		TypedColumnPrepareDensePreapplyNanos:               optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDensePreapplyNanos"),
-		TypedColumnPrepareQ2GroupRankNanos:                 optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupRankNanos"),
-		TypedColumnPrepareQ2DistinctRankNanos:              optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DistinctRankNanos"),
-		TypedColumnPrepareQ2LocalRankNanos:                 optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2LocalRankNanos"),
-		TypedColumnPrepareQ2DenseGroupGlobalRankNanos:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DenseGroupGlobalRankNanos"),
-		TypedColumnPrepareQ2DenseDistinctGlobalRankNanos:   optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DenseDistinctGlobalRankNanos"),
-		TypedColumnPrepareQ2DensePartLocalRankNanos:        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DensePartLocalRankNanos"),
-		TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos: optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos"),
+		Name:                                                  input.Name,
+		StorageSource:                                         string(d.StorageSource),
+		FallbackReason:                                        string(d.FallbackReason),
+		RowsScanned:                                           rowsScanned,
+		RowsMatched:                                           d.RowsMatched,
+		ReduceRows:                                            d.ReduceRows,
+		ResultGroups:                                          d.ResultGroups,
+		PredicateCount:                                        d.PredicateCount,
+		PredicateColumns:                                      append([]string(nil), d.PredicateColumns...),
+		PredicateKinds:                                        append([]string(nil), d.PredicateKinds...),
+		PredicateLiterals:                                     d.PredicateLiterals,
+		TopKLimit:                                             d.TopKLimit,
+		TopKOrder:                                             d.TopKOrder,
+		TopKCandidates:                                        d.TopKCandidates,
+		BoundedTopKUsed:                                       d.TopKLimit > 0 && (d.TopKCandidates > 0 || d.TimeOrderTopKUsed),
+		TimeOrderTopKUsed:                                     d.TimeOrderTopKUsed,
+		SortKeyPrefixPlanned:                                  d.SortKeyPrefixPlanned,
+		SortKeyPrefixColumns:                                  append([]string(nil), d.SortKeyPrefixColumns...),
+		SortKeyPrefixLiterals:                                 d.SortKeyPrefixLiterals,
+		SortKeyMarkChecks:                                     d.SortKeyMarkChecks,
+		SortKeyMarkMatches:                                    d.SortKeyMarkMatches,
+		SortKeyMarkSkips:                                      d.SortKeyMarkSkips,
+		SortKeyMarkFallbackReason:                             d.SortKeyMarkFallbackReason,
+		SortedGroupedDistinctReady:                            d.SortedGroupedDistinctReady,
+		SortedGroupedDistinctUsed:                             d.SortedGroupedDistinctUsed,
+		SortedGroupedDistinctFallback:                         d.SortedGroupedDistinctFallbackReason,
+		DenseGroupCountUsed:                                   d.DenseGroupCountUsed,
+		DenseGroupCountDistinctUsed:                           d.DenseGroupCountDistinctUsed,
+		DenseGroupHourCountUsed:                               d.DenseGroupHourCountUsed,
+		DenseInt64SpanUsed:                                    d.DenseInt64SpanUsed,
+		DenseInt64SpanPredicateBlocksSkipped:                  optionalColumnPhysicalDiagnosticInt(d, "DenseInt64SpanPredicateBlocksSkipped"),
+		MetadataHits:                                          d.MetadataHits,
+		MetadataEntries:                                       d.MetadataEntries,
+		MetadataMisses:                                        d.MetadataMisses,
+		DictionaryCodeHits:                                    d.DictionaryCodeHits,
+		PredicateDictionaryCodeHits:                           d.PredicateDictionaryCodeHits,
+		Int64ValueHits:                                        d.Int64ValueHits,
+		ScheduledGranules:                                     d.ScheduledGranules,
+		SkippedGranules:                                       d.SkippedGranules,
+		DecodedGranules:                                       d.DecodedGranules,
+		DecodedBlocks:                                         d.DecodedBlocks,
+		DirectReduceBlocks:                                    d.DirectReduceBlocks,
+		TypedColumnPartSections:                               d.TypedColumnPartSections,
+		TypedColumnPartSectionBytes:                           d.TypedColumnPartSectionBytes,
+		DecodedPayloadBytes:                                   d.DecodedPayloadBytes,
+		DecodedMetadataBytes:                                  d.DecodedMetadataBytes,
+		PhysicalBytesScanned:                                  d.PhysicalBytesScanned,
+		MappedBytes:                                           d.MappedBytes,
+		HeapCopyBytes:                                         d.HeapCopyBytes,
+		RowMaterializations:                                   d.RowMaterializations,
+		DocumentMaterializations:                              d.DocumentMaterializations,
+		FallbackReads:                                         d.FallbackReads,
+		QueryReadyEncodedExecutions:                           d.QueryReadyEncodedExecutions,
+		QueryReadyLegacyFallbacks:                             d.QueryReadyLegacyFallbacks,
+		QueryReadyPrecomputedAnswers:                          d.QueryReadyPrecomputedAnswers,
+		QueryReadyPreparedParts:                               d.QueryReadyPreparedParts,
+		QueryReadyBaseParts:                                   d.QueryReadyBaseParts,
+		QueryReadyDeltaParts:                                  d.QueryReadyDeltaParts,
+		QueryReadyRowsCandidate:                               d.QueryReadyRowsCandidate,
+		QueryReadyRowsVisible:                                 d.QueryReadyRowsVisible,
+		QueryReadyRowsSuperseded:                              d.QueryReadyRowsSuperseded,
+		QueryReadyCodeTranslations:                            d.QueryReadyCodeTranslations,
+		QueryReadyDictionaryDomains:                           d.QueryReadyDictionaryDomains,
+		QueryReadyScratchBytes:                                d.QueryReadyScratchBytes,
+		QueryReadyPreparationNanos:                            d.QueryReadyPreparationNanos,
+		QueryReadyBaseScanNanos:                               d.QueryReadyBaseScanNanos,
+		QueryReadyDeltaMergeNanos:                             d.QueryReadyDeltaMergeNanos,
+		QueryReadyPredicateNanos:                              d.QueryReadyPredicateNanos,
+		QueryReadyGroupingNanos:                               d.QueryReadyGroupingNanos,
+		QueryReadyOrderingTopKNanos:                           d.QueryReadyOrderingTopKNanos,
+		VisibilityRows:                                        d.VisibilityRows,
+		ReconstructionRows:                                    d.ReconstructionRows,
+		WorkerCount:                                           d.WorkerCount,
+		TypedColumnPrepareWorkerCount:                         optionalColumnPhysicalDiagnosticInt(d, "TypedColumnPrepareWorkerCount"),
+		SegmentFileCacheHits:                                  d.SegmentFileCacheHits,
+		SegmentFileCacheMisses:                                d.SegmentFileCacheMisses,
+		TypedColumnOneShotCacheHit:                            d.TypedColumnOneShotCacheHit,
+		TypedColumnOneShotCacheMiss:                           d.TypedColumnOneShotCacheMiss,
+		TypedColumnOneShotCacheBuild:                          d.TypedColumnOneShotCacheBuild,
+		TypedColumnOneShotBuildNanos:                          d.TypedColumnOneShotBuildNanos,
+		TypedColumnPreparePlanNanos:                           optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePlanNanos"),
+		TypedColumnPrepareRefsNanos:                           optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRefsNanos"),
+		TypedColumnPreparePairingNanos:                        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePairingNanos"),
+		TypedColumnPreparePartDecodeNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePartDecodeNanos"),
+		TypedColumnPreparePostPrepareNanos:                    optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePostPrepareNanos"),
+		TypedColumnPrepareSummaryNanos:                        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareSummaryNanos"),
+		TypedColumnOneShotCacheStoreNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnOneShotCacheStoreNanos"),
+		TypedColumnPrepareReadImageNanos:                      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareReadImageNanos"),
+		TypedColumnPrepareStateBuildNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareStateBuildNanos"),
+		TypedColumnPrepareDictionaryNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDictionaryNanos"),
+		TypedColumnPreparePruningNanos:                        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPreparePruningNanos"),
+		TypedColumnPrepareSortKeyNanos:                        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareSortKeyNanos"),
+		TypedColumnPrepareStatsNanos:                          optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareStatsNanos"),
+		TypedColumnPrepareRangeReadNanos:                      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRangeReadNanos"),
+		TypedColumnPrepareRangeReadBytes:                      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareRangeReadBytes"),
+		TypedColumnPrepareAdapterNanos:                        optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareAdapterNanos"),
+		TypedColumnPrepareDenseGroupNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDenseGroupNanos"),
+		TypedColumnPrepareDenseValueNanos:                     optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDenseValueNanos"),
+		TypedColumnPrepareDensePredicateNanos:                 optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDensePredicateNanos"),
+		TypedColumnPrepareDensePreapplyNanos:                  optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareDensePreapplyNanos"),
+		TypedColumnPrepareQ2GroupRankNanos:                    optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupRankNanos"),
+		TypedColumnPrepareQ2DistinctRankNanos:                 optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DistinctRankNanos"),
+		TypedColumnPrepareQ2LocalRankNanos:                    optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2LocalRankNanos"),
+		TypedColumnPrepareQ2DenseGroupGlobalRankNanos:         optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DenseGroupGlobalRankNanos"),
+		TypedColumnPrepareQ2DenseDistinctGlobalRankNanos:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DenseDistinctGlobalRankNanos"),
+		TypedColumnPrepareQ2DensePartLocalRankNanos:           optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DensePartLocalRankNanos"),
+		TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos:    optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupGlobalDictionaryRankNanos"),
 		TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos: optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DistinctGlobalDictionaryRankNanos"),
 		TypedColumnPrepareQ2GroupGlobalCodeRemapNanos:         optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2GroupGlobalCodeRemapNanos"),
 		TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos:      optionalColumnPhysicalDiagnosticInt64(d, "TypedColumnPrepareQ2DistinctGlobalCodeRemapNanos"),

@@ -105,6 +105,21 @@ type reportRow struct {
 	QueryReadyEncodedExecutions                                   int       `json:"query_ready_encoded_executions"`
 	QueryReadyLegacyFallbacks                                     int       `json:"query_ready_legacy_fallbacks"`
 	QueryReadyPrecomputedAnswers                                  int       `json:"query_ready_precomputed_answers"`
+	QueryReadyPreparedParts                                       int       `json:"query_ready_prepared_parts,omitempty"`
+	QueryReadyBaseParts                                           int       `json:"query_ready_base_parts,omitempty"`
+	QueryReadyDeltaParts                                          int       `json:"query_ready_delta_parts,omitempty"`
+	QueryReadyRowsCandidate                                       int       `json:"query_ready_rows_candidate,omitempty"`
+	QueryReadyRowsVisible                                         int       `json:"query_ready_rows_visible,omitempty"`
+	QueryReadyRowsSuperseded                                      int       `json:"query_ready_rows_superseded,omitempty"`
+	QueryReadyCodeTranslations                                    int       `json:"query_ready_code_translations,omitempty"`
+	QueryReadyDictionaryDomains                                   int       `json:"query_ready_dictionary_domains,omitempty"`
+	QueryReadyScratchBytes                                        int64     `json:"query_ready_scratch_bytes,omitempty"`
+	QueryReadyPreparationNanos                                    int64     `json:"query_ready_preparation_nanos,omitempty"`
+	QueryReadyBaseScanNanos                                       int64     `json:"query_ready_base_scan_nanos,omitempty"`
+	QueryReadyDeltaMergeNanos                                     int64     `json:"query_ready_delta_merge_nanos,omitempty"`
+	QueryReadyPredicateNanos                                      int64     `json:"query_ready_predicate_nanos,omitempty"`
+	QueryReadyGroupingNanos                                       int64     `json:"query_ready_grouping_nanos,omitempty"`
+	QueryReadyOrderingTopKNanos                                   int64     `json:"query_ready_ordering_topk_nanos,omitempty"`
 	AggregateMetadataUsed                                         bool      `json:"aggregate_metadata_used"`
 	AggregateMetadataRefs                                         int       `json:"aggregate_metadata_refs,omitempty"`
 	AggregateMetadataStorageBytes                                 int64     `json:"aggregate_metadata_storage_bytes,omitempty"`
@@ -538,6 +553,21 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				QueryReadyEncodedExecutions:                   diagnostics.QueryReadyEncodedExecutions,
 				QueryReadyLegacyFallbacks:                     diagnostics.QueryReadyLegacyFallbacks,
 				QueryReadyPrecomputedAnswers:                  diagnostics.QueryReadyPrecomputedAnswers,
+				QueryReadyPreparedParts:                       diagnostics.QueryReadyPreparedParts,
+				QueryReadyBaseParts:                           diagnostics.QueryReadyBaseParts,
+				QueryReadyDeltaParts:                          diagnostics.QueryReadyDeltaParts,
+				QueryReadyRowsCandidate:                       diagnostics.QueryReadyRowsCandidate,
+				QueryReadyRowsVisible:                         diagnostics.QueryReadyRowsVisible,
+				QueryReadyRowsSuperseded:                      diagnostics.QueryReadyRowsSuperseded,
+				QueryReadyCodeTranslations:                    diagnostics.QueryReadyCodeTranslations,
+				QueryReadyDictionaryDomains:                   diagnostics.QueryReadyDictionaryDomains,
+				QueryReadyScratchBytes:                        diagnostics.QueryReadyScratchBytes,
+				QueryReadyPreparationNanos:                    diagnostics.QueryReadyPreparationNanos,
+				QueryReadyBaseScanNanos:                       diagnostics.QueryReadyBaseScanNanos,
+				QueryReadyDeltaMergeNanos:                     diagnostics.QueryReadyDeltaMergeNanos,
+				QueryReadyPredicateNanos:                      diagnostics.QueryReadyPredicateNanos,
+				QueryReadyGroupingNanos:                       diagnostics.QueryReadyGroupingNanos,
+				QueryReadyOrderingTopKNanos:                   diagnostics.QueryReadyOrderingTopKNanos,
 				AggregateMetadataUsed:                         diagnostics.AggregateMetadataUsed,
 				AggregateMetadataRefs:                         aggregateMetadataRefs,
 				AggregateMetadataStorageBytes:                 aggregateMetadataStorageBytes,

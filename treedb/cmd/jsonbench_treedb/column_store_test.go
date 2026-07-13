@@ -1167,6 +1167,12 @@ func assertQueryReadyBaseDeltaDiagnostics(t *testing.T, query queryRun) {
 	if query.Diagnostics.QueryReadyEncodedExecutions != 1 || query.Diagnostics.QueryReadyLegacyFallbacks != 0 || query.Diagnostics.QueryReadyPrecomputedAnswers != 0 {
 		t.Fatalf("%s query-ready execution counters=%+v", query.Name, query.Diagnostics)
 	}
+	if query.Diagnostics.QueryReadyPreparedParts <= 0 || query.Diagnostics.QueryReadyBaseParts <= 0 || query.Diagnostics.QueryReadyRowsCandidate <= 0 || query.Diagnostics.QueryReadyRowsVisible <= 0 {
+		t.Fatalf("%s query-ready base/visibility counters=%+v", query.Name, query.Diagnostics)
+	}
+	if query.Diagnostics.QueryReadyScratchBytes <= 0 || query.Diagnostics.QueryReadyPreparationNanos <= 0 || query.Diagnostics.QueryReadyBaseScanNanos <= 0 {
+		t.Fatalf("%s query-ready resource/phase counters=%+v", query.Name, query.Diagnostics)
+	}
 }
 
 func assertTypedInt64AggregateQueryDiagnostics(t *testing.T, query queryRun) {
