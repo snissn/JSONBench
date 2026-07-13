@@ -60,6 +60,9 @@ type queryDiagnostics struct {
 	RowMaterializations                                   int                       `json:"row_materializations,omitempty"`
 	DocumentMaterializations                              int                       `json:"document_materializations,omitempty"`
 	FallbackReads                                         int                       `json:"fallback_reads,omitempty"`
+	QueryReadyEncodedExecutions                           int                       `json:"query_ready_encoded_executions"`
+	QueryReadyLegacyFallbacks                             int                       `json:"query_ready_legacy_fallbacks"`
+	QueryReadyPrecomputedAnswers                          int                       `json:"query_ready_precomputed_answers"`
 	VisibilityRows                                        int                       `json:"visibility_rows,omitempty"`
 	ReconstructionRows                                    int                       `json:"reconstruction_rows,omitempty"`
 	WorkerCount                                           int                       `json:"worker_count,omitempty"`
@@ -178,6 +181,9 @@ type queryPhysicalDiagnostic struct {
 	RowMaterializations                                   int      `json:"row_materializations,omitempty"`
 	DocumentMaterializations                              int      `json:"document_materializations,omitempty"`
 	FallbackReads                                         int      `json:"fallback_reads,omitempty"`
+	QueryReadyEncodedExecutions                           int      `json:"query_ready_encoded_executions"`
+	QueryReadyLegacyFallbacks                             int      `json:"query_ready_legacy_fallbacks"`
+	QueryReadyPrecomputedAnswers                          int      `json:"query_ready_precomputed_answers"`
 	VisibilityRows                                        int      `json:"visibility_rows,omitempty"`
 	ReconstructionRows                                    int      `json:"reconstruction_rows,omitempty"`
 	WorkerCount                                           int      `json:"worker_count,omitempty"`
@@ -323,6 +329,9 @@ func columnQueryDiagnostics(resultRows int, renderNanos int64, inputs ...namedCo
 		out.RowMaterializations += phys.RowMaterializations
 		out.DocumentMaterializations += phys.DocumentMaterializations
 		out.FallbackReads += phys.FallbackReads
+		out.QueryReadyEncodedExecutions += phys.QueryReadyEncodedExecutions
+		out.QueryReadyLegacyFallbacks += phys.QueryReadyLegacyFallbacks
+		out.QueryReadyPrecomputedAnswers += phys.QueryReadyPrecomputedAnswers
 		out.VisibilityRows = maxInt(out.VisibilityRows, phys.VisibilityRows)
 		out.ReconstructionRows += phys.ReconstructionRows
 		out.WorkerCount = maxInt(out.WorkerCount, phys.WorkerCount)
@@ -477,6 +486,9 @@ func physicalQueryDiagnostic(input namedColumnPhysicalResult) queryPhysicalDiagn
 		RowMaterializations:                                d.RowMaterializations,
 		DocumentMaterializations:                           d.DocumentMaterializations,
 		FallbackReads:                                      d.FallbackReads,
+		QueryReadyEncodedExecutions:                        d.QueryReadyEncodedExecutions,
+		QueryReadyLegacyFallbacks:                          d.QueryReadyLegacyFallbacks,
+		QueryReadyPrecomputedAnswers:                       d.QueryReadyPrecomputedAnswers,
 		VisibilityRows:                                     d.VisibilityRows,
 		ReconstructionRows:                                 d.ReconstructionRows,
 		WorkerCount:                                        d.WorkerCount,

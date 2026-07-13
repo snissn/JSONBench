@@ -195,7 +195,7 @@ func runNotes(cfg runConfig) []string {
 		}
 		notes = append(notes, inputNotes...)
 		if cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
-			notes = append(notes, "column-store-full-prepared declares typed-column hot-path assets and aggregate metadata. one_shot_end_to_end and first_touch_after_open use the direct physical query APIs; hot_prepared_run prepares exact physical runners outside timed attempts. q1/q3/q5 request aggregate metadata when metadata_mode allows it, q4/q4a/q4b keep bounded physical TopK over typed-column part sections, and qexpr scans a typed int64 expression aggregate.")
+			notes = append(notes, "column-store-full-prepared reopens the database, builds one query-ready base generation from recovery-authoritative typed-column parts outside timed query attempts, and routes q1-q5 plus qexpr through encoded base-plus-delta execution. hot_prepared_run also opens each exact physical runner outside timed attempts. query-ready execution does not use aggregate-metadata answers, legacy execution, document materialization, or precomputed qexpr answers; generation preparation time, memory bounds, allocation/copy accounting, and output bytes are reported separately.")
 		}
 		return notes
 	}

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"reflect"
@@ -154,22 +155,12 @@ func TestFullColumnStoreLayoutsMatchFullRowFixture(t *testing.T) {
 				if got, want := query.ResultHash, rowQuery.ResultHash; got != want {
 					t.Fatalf("%s %s result hash=%s want row hash=%s", layout, query.Name, got, want)
 				}
-				if layout == storageLayoutColumnStoreFullPrepared && columnStoreUsesAggregateMetadata(layout, query.Name) {
-					if got := query.RowsScanned; got != 0 {
-						t.Fatalf("%s %s rows_scanned=%d want 0 for aggregate metadata", layout, query.Name, got)
+				if layout == storageLayoutColumnStoreFullPrepared {
+					if got, want := query.RowsScanned, rowQuery.RowsScanned; got != want {
+						t.Fatalf("%s %s rows_scanned=%d want query-ready scan %d", layout, query.Name, got, want)
 					}
 					assertColumnPhysicalQueryDiagnostics(t, query, expectedPhysicalQueryCount(query.Name))
-					if query.Name == "q5" {
-						assertAggregateMetadataTopKDiagnostics(t, query)
-					}
-					continue
-				}
-				if layout == storageLayoutColumnStoreFullPrepared && isQ4FamilyQuery(query.Name) {
-					if query.RowsScanned <= 0 || query.RowsScanned > rowQuery.RowsScanned {
-						t.Fatalf("%s %s rows_scanned=%d want within 1..%d", layout, query.Name, query.RowsScanned, rowQuery.RowsScanned)
-					}
-					assertColumnPhysicalQueryDiagnostics(t, query, expectedPhysicalQueryCount(query.Name))
-					assertFullPreparedTopKDiagnostics(t, query)
+					assertQueryReadyBaseDeltaDiagnostics(t, query)
 					continue
 				}
 				if got, want := query.RowsScanned, rowQuery.RowsScanned; got != want {
@@ -585,7 +576,7 @@ func TestFullPreparedNoAggregateMetadataScansRows(t *testing.T) {
 	}
 }
 
-func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
+func TestOneShotPreparedLayoutUsesQueryReadyRunAndReportsRenderHash(t *testing.T) {
 	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
 	cfg.Queries = []string{"q1"}
 	cfg.QueryMode = queryModeOneShotEndToEnd
@@ -595,53 +586,15 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 	if got, want := query.QueryMode, queryModeOneShotEndToEnd; got != want {
 		t.Fatalf("query_mode=%q want %q", got, want)
 	}
-	if !query.Diagnostics.TypedColumnOneShotCacheMiss || !query.Diagnostics.TypedColumnOneShotCacheBuild || query.Diagnostics.TypedColumnOneShotCacheHit {
-		t.Fatalf("typed-column one-shot cache hit/miss/build=%t/%t/%t want false/true/true diagnostics=%+v",
-			query.Diagnostics.TypedColumnOneShotCacheHit,
-			query.Diagnostics.TypedColumnOneShotCacheMiss,
-			query.Diagnostics.TypedColumnOneShotCacheBuild,
-			query.Diagnostics)
+	if result.QueryReadyPreparation == nil || result.QueryReadyPreparation.SourceParts == 0 || result.QueryReadyPreparation.OutputBytes == 0 {
+		t.Fatalf("missing query-ready preparation stats: %+v", result.QueryReadyPreparation)
 	}
-	if query.Diagnostics.TypedColumnOneShotBuildNanos <= 0 {
-		t.Fatalf("typed_column_one_shot_build_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnOneShotBuildNanos, query.Diagnostics)
+	assertQueryReadyBaseDeltaDiagnostics(t, query)
+	if query.Diagnostics.TypedColumnOneShotCacheHit || query.Diagnostics.TypedColumnOneShotCacheMiss || query.Diagnostics.TypedColumnOneShotCacheBuild || query.Diagnostics.TypedColumnOneShotBuildNanos != 0 {
+		t.Fatalf("query-ready route reported legacy typed-column one-shot setup: %+v", query.Diagnostics)
 	}
-	if got, want := query.Diagnostics.PrepareSetupNanos, query.Diagnostics.TypedColumnOneShotBuildNanos; got != want {
-		t.Fatalf("prepare_setup_nanos=%d want typed-column one-shot build %d diagnostics=%+v", got, want, query.Diagnostics)
-	}
-	prepareSubphaseNanos := query.Diagnostics.TypedColumnPreparePlanNanos +
-		query.Diagnostics.TypedColumnPrepareRefsNanos +
-		query.Diagnostics.TypedColumnPreparePairingNanos +
-		query.Diagnostics.TypedColumnPreparePartDecodeNanos +
-		query.Diagnostics.TypedColumnPreparePostPrepareNanos +
-		query.Diagnostics.TypedColumnPrepareSummaryNanos
-	prepareFineNanos := query.Diagnostics.TypedColumnPrepareReadImageNanos +
-		query.Diagnostics.TypedColumnPrepareStateBuildNanos +
-		query.Diagnostics.TypedColumnPrepareDictionaryNanos +
-		query.Diagnostics.TypedColumnPreparePruningNanos +
-		query.Diagnostics.TypedColumnPrepareSortKeyNanos +
-		query.Diagnostics.TypedColumnPrepareStatsNanos +
-		query.Diagnostics.TypedColumnPrepareRangeReadNanos +
-		query.Diagnostics.TypedColumnPrepareAdapterNanos +
-		query.Diagnostics.TypedColumnPrepareDenseGroupNanos +
-		query.Diagnostics.TypedColumnPrepareDenseValueNanos +
-		query.Diagnostics.TypedColumnPrepareDensePredicateNanos +
-		query.Diagnostics.TypedColumnPrepareDensePreapplyNanos
-	if prepareSubphaseNanos > 0 {
-		if query.Diagnostics.TypedColumnPreparePartDecodeNanos <= 0 {
-			t.Fatalf("typed_column_prepare_part_decode_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnPreparePartDecodeNanos, query.Diagnostics)
-		}
-		if query.Diagnostics.TypedColumnOneShotCacheStoreNanos <= 0 {
-			t.Fatalf("typed_column_one_shot_cache_store_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnOneShotCacheStoreNanos, query.Diagnostics)
-		}
-		if query.Diagnostics.PrepareSetupNanos < prepareSubphaseNanos {
-			t.Fatalf("prepare_setup_nanos=%d smaller than subphase sum %d diagnostics=%+v", query.Diagnostics.PrepareSetupNanos, prepareSubphaseNanos, query.Diagnostics)
-		}
-	}
-	if prepareFineNanos > 0 && query.Diagnostics.TypedColumnPrepareRangeReadNanos > 0 && query.Diagnostics.TypedColumnPrepareRangeReadBytes <= 0 {
-		t.Fatalf("typed_column_prepare_range_read_bytes=%d want >0 with range_read_nanos=%d diagnostics=%+v",
-			query.Diagnostics.TypedColumnPrepareRangeReadBytes,
-			query.Diagnostics.TypedColumnPrepareRangeReadNanos,
-			query.Diagnostics)
+	if query.Diagnostics.PrepareSetupNanos != 0 {
+		t.Fatalf("prepare_setup_nanos=%d want 0 because generation preparation is reported outside attempts", query.Diagnostics.PrepareSetupNanos)
 	}
 	if query.Diagnostics.RunNanos <= 0 {
 		t.Fatalf("run_nanos=%d want >0", query.Diagnostics.RunNanos)
@@ -654,10 +607,7 @@ func TestOneShotPreparedLayoutUsesDirectRunAndReportsRenderHash(t *testing.T) {
 	}
 }
 
-func TestHotPreparedReportsRunnerPrepareDiagnostics(t *testing.T) {
-	if !columnPhysicalRunnerPrepareDiagnosticsAvailableForTest() {
-		t.Skip("linked gomap does not expose ColumnPhysicalQueryRunner.PrepareDiagnostics")
-	}
+func TestHotPreparedReportsQueryReadyRunnerSetupOutsideAttempts(t *testing.T) {
 	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
 	cfg.Queries = []string{"q5"}
 	cfg.QueryMode = queryModeHotPreparedRun
@@ -667,24 +617,54 @@ func TestHotPreparedReportsRunnerPrepareDiagnostics(t *testing.T) {
 	if got, want := query.QueryMode, queryModeHotPreparedRun; got != want {
 		t.Fatalf("query_mode=%q want %q", got, want)
 	}
+	if result.QueryReadyPreparation == nil || result.QueryReadyPreparation.SourceParts == 0 || result.QueryReadyPreparation.OutputBytes == 0 {
+		t.Fatalf("missing query-ready preparation stats: %+v", result.QueryReadyPreparation)
+	}
+	assertQueryReadyBaseDeltaDiagnostics(t, query)
 	if query.Diagnostics.TypedColumnOneShotCacheBuild || query.Diagnostics.TypedColumnOneShotBuildNanos != 0 {
 		t.Fatalf("hot-prepared query reported one-shot setup diagnostics=%+v", query.Diagnostics)
 	}
 	if query.Diagnostics.PrepareSetupNanos <= 0 {
 		t.Fatalf("prepare_setup_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.PrepareSetupNanos, query.Diagnostics)
 	}
-	prepareSubphaseNanos := typedColumnPrepareDiagnosticNanos(query.Diagnostics)
-	if prepareSubphaseNanos == 0 {
-		t.Skipf("linked gomap exposes prepare diagnostics, but fixture timers rounded to zero: %+v", query.Diagnostics)
-	}
-	if query.Diagnostics.TypedColumnPreparePartDecodeNanos <= 0 {
-		t.Fatalf("typed_column_prepare_part_decode_nanos=%d want >0 diagnostics=%+v", query.Diagnostics.TypedColumnPreparePartDecodeNanos, query.Diagnostics)
-	}
-	if got, want := len(query.Diagnostics.PhysicalQueries), 1; got != want {
-		t.Fatalf("physical query diagnostics=%d want %d: %+v", got, want, query.Diagnostics.PhysicalQueries)
-	}
-	if physSubphaseNanos := typedColumnPhysicalPrepareDiagnosticNanos(query.Diagnostics.PhysicalQueries[0]); physSubphaseNanos == 0 {
-		t.Fatalf("physical query prepare diagnostics were not merged: %+v", query.Diagnostics.PhysicalQueries[0])
+}
+
+func TestFullPreparedRoutesAllJSONBenchQueriesThroughQueryReadyBaseDelta(t *testing.T) {
+	for _, mode := range []string{queryModeOneShotEndToEnd, queryModeHotPreparedRun} {
+		t.Run(mode, func(t *testing.T) {
+			cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+			cfg.QueryMode = mode
+			if mode == queryModeHotPreparedRun {
+				cfg.Tries = 2
+			}
+			result := runJSONBenchConfig(t, cfg)
+			if result.QueryReadyPreparation == nil || result.QueryReadyPreparation.SourceParts == 0 || result.QueryReadyPreparation.OutputBytes == 0 {
+				t.Fatalf("missing query-ready preparation stats: %+v", result.QueryReadyPreparation)
+			}
+			for _, query := range result.Queries {
+				if query.Diagnostics.QueryPath != "column_physical" || query.Diagnostics.StorageSource != "query_ready_base_delta" {
+					t.Fatalf("%s route path=%q source=%q diagnostics=%+v", query.Name, query.Diagnostics.QueryPath, query.Diagnostics.StorageSource, query.Diagnostics)
+				}
+				if len(query.Diagnostics.PhysicalQueries) != 1 || query.Diagnostics.PhysicalQueries[0].StorageSource != "query_ready_base_delta" {
+					t.Fatalf("%s physical routing=%+v", query.Name, query.Diagnostics.PhysicalQueries)
+				}
+				if query.Diagnostics.DocumentMaterializations != 0 || query.Diagnostics.FallbackReads != 0 {
+					t.Fatalf("%s materialization/fallback diagnostics=%+v", query.Name, query.Diagnostics)
+				}
+				if query.Diagnostics.QueryReadyEncodedExecutions != 1 || query.Diagnostics.QueryReadyLegacyFallbacks != 0 || query.Diagnostics.QueryReadyPrecomputedAnswers != 0 {
+					t.Fatalf("%s query-ready counters=%+v", query.Name, query.Diagnostics)
+				}
+				raw, err := json.Marshal(query.Diagnostics)
+				if err != nil {
+					t.Fatal(err)
+				}
+				for _, field := range []string{`"query_ready_encoded_executions":1`, `"query_ready_legacy_fallbacks":0`, `"query_ready_precomputed_answers":0`} {
+					if !strings.Contains(string(raw), field) {
+						t.Fatalf("%s serialized diagnostics missing %s: %s", query.Name, field, raw)
+					}
+				}
+			}
+		})
 	}
 }
 
@@ -1173,6 +1153,19 @@ func assertColumnPhysicalQueryDiagnostics(t *testing.T, query queryRun, wantPhys
 	}
 	if query.Diagnostics.ResultRows != query.ResultRows || query.Diagnostics.ResultGroups == 0 {
 		t.Fatalf("%s result diagnostics=%+v result_rows=%d", query.Name, query.Diagnostics, query.ResultRows)
+	}
+}
+
+func assertQueryReadyBaseDeltaDiagnostics(t *testing.T, query queryRun) {
+	t.Helper()
+	if query.Diagnostics.QueryPath != "column_physical" || query.Diagnostics.StorageSource != "query_ready_base_delta" {
+		t.Fatalf("%s query-ready route path=%q source=%q diagnostics=%+v", query.Name, query.Diagnostics.QueryPath, query.Diagnostics.StorageSource, query.Diagnostics)
+	}
+	if query.Diagnostics.DocumentMaterializations != 0 || query.Diagnostics.FallbackReads != 0 {
+		t.Fatalf("%s query-ready materialization/fallback diagnostics=%+v", query.Name, query.Diagnostics)
+	}
+	if query.Diagnostics.QueryReadyEncodedExecutions != 1 || query.Diagnostics.QueryReadyLegacyFallbacks != 0 || query.Diagnostics.QueryReadyPrecomputedAnswers != 0 {
+		t.Fatalf("%s query-ready execution counters=%+v", query.Name, query.Diagnostics)
 	}
 }
 

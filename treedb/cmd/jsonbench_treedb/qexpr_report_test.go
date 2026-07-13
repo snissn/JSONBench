@@ -40,13 +40,13 @@ func TestQExprReportRowsExposeTypedExpressionEvidence(t *testing.T) {
 				MedianSec:   0.001,
 				RowsScanned: 6,
 				Diagnostics: queryDiagnostics{
-					QueryPath:      "typed_column_int64_aggregate",
-					StorageSource:  "typed_column_part",
+					QueryPath:      "column_physical",
+					StorageSource:  "query_ready_base_delta",
 					FallbackReason: "none",
 					RowsScanned:    6,
 					PhysicalQueries: []queryPhysicalDiagnostic{{
 						Name:          "second_of_day_square_sum",
-						StorageSource: "typed_column_part",
+						StorageSource: "query_ready_base_delta",
 						RowsScanned:   6,
 					}},
 				},
@@ -116,8 +116,8 @@ func TestRenderMarkdownReportIncludesQExprExpressionEvidence(t *testing.T) {
 		Projection:                     "full",
 		QueryMode:                      queryModeFirstTouchAfterOpen,
 		MetadataMode:                   metadataModeNoAggregateMetadata,
-		QueryPath:                      "typed_column_int64_aggregate",
-		StorageSource:                  "typed_column_part",
+		QueryPath:                      "column_physical",
+		StorageSource:                  "query_ready_base_delta",
 		Query:                          "qexpr",
 		BestSec:                        0.001,
 		MedianSec:                      0.001,
@@ -134,7 +134,7 @@ func TestRenderMarkdownReportIncludesQExprExpressionEvidence(t *testing.T) {
 	for _, want := range []string{
 		"## TreeDB Expression Evidence",
 		"| rows/scale | layout | query | expression | typed cells visited | basis | precomputed expression | aggregate metadata | path | source |",
-		"| 6 rows | column-store-full-prepared:json/full | qexpr | sum(second_of_day_square) | 6 | rows_scanned | false | false | typed_column_int64_aggregate | typed_column_part |",
+		"| 6 rows | column-store-full-prepared:json/full | qexpr | sum(second_of_day_square) | 6 | rows_scanned | false | false | column_physical | query_ready_base_delta |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("markdown report missing %q\n%s", want, got)
