@@ -346,6 +346,9 @@ func runTreeDBBenchmarkWithOpener(cfg runConfig, open backendOpener) (runResult,
 	if err := validateQueryModeAttempts(cfg.QueryMode, cfg.Tries); err != nil {
 		return runResult{}, err
 	}
+	if cfg.QueryMode == queryModeFirstTouchAfterOpen && cfg.StorageLayout == storageLayoutColumnStoreFullPrepared {
+		return runResult{}, errors.New("-query-mode first_touch_after_open is unsupported for column-store-full-prepared because query-ready generation preparation touches the reopened state before execution; use one_shot_end_to_end")
+	}
 	dataDir, err := expandPath(cfg.DataDir)
 	if err != nil {
 		return runResult{}, err

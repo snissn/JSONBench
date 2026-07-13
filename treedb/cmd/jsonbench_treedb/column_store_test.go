@@ -631,6 +631,24 @@ func TestFullPreparedReopenFailureReturnsErrorWithoutCleanupPanic(t *testing.T) 
 	}
 }
 
+func TestFullPreparedFirstTouchAfterOpenFailsBeforeOpeningBackend(t *testing.T) {
+	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
+	cfg.QueryMode = queryModeFirstTouchAfterOpen
+	cfg.Tries = 1
+	opens := 0
+	opener := func(runConfig) (*backenddb.DB, func() error, error) {
+		opens++
+		return nil, nil, errors.New("backend should not open")
+	}
+	_, err := runTreeDBBenchmarkWithOpener(cfg, opener)
+	if err == nil || !strings.Contains(err.Error(), "first_touch_after_open") || !strings.Contains(err.Error(), "column-store-full-prepared") {
+		t.Fatalf("error=%v want explicit first-touch/full-prepared incompatibility", err)
+	}
+	if opens != 0 {
+		t.Fatalf("backend opens=%d want 0", opens)
+	}
+}
+
 func TestHotPreparedReportsQueryReadyRunnerSetupOutsideAttempts(t *testing.T) {
 	cfg := runFullFixtureConfig(storageLayoutColumnStoreFullPrepared, false)
 	cfg.Queries = []string{"q5"}

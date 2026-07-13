@@ -227,9 +227,14 @@ Column-store execution modes are explicit:
 - `column-store-full`: full retained JSON cell with declared hot paths owned by
   `typed_column_part`; direct physical query API.
 - `column-store-full-prepared`: full retained JSON cell with declared hot paths
-  owned by `typed_column_part` plus maintained aggregate metadata; direct
-  one-shot modes use physical query APIs, while `hot_prepared_run` uses exact
-  prepared physical query runners.
+  owned by `typed_column_part` plus maintained aggregate metadata. It builds a
+  query-independent persisted query-ready generation outside timed attempts,
+  reopens that generation from disk, and routes q1-q5/qexpr through encoded
+  base-plus-delta execution. `one_shot_end_to_end` opens each exact runner
+  inside the attempt; `hot_prepared_run` opens it outside the attempt.
+  `first_touch_after_open` is rejected for this layout because generation
+  preparation necessarily touches the reopened state before execution; use
+  `one_shot_end_to_end` for the canonical cold-open lane.
 
 q1/q2/q3/qexpr prepared-layout rows are scan-mode rows, not metadata rows. q3 uses TreeDB's
 physical grouped-hour reducer over dictionary and int64 column sidecars. qexpr
