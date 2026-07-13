@@ -18,6 +18,7 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStore, Query: "q3", DatasetSize: 1_000_000, BestSec: 0.025, RowsScanned: 1_000_000, StorageBytes: 2 * 1024 * 1024, LoadSec: 3},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStoreFull, DataShape: "full-retained-json", Query: "q2", DatasetSize: 1_000_000, BestSec: 0.030, RowsScanned: 1_000_000, StorageBytes: 4 * 1024 * 1024, LoadSec: 4},
 		{System: "TreeDB", StorageLayout: storageLayoutColumnStoreFullPrepared, DataShape: "full-retained-json", Query: "q1", DatasetSize: 1_000_000, BestSec: 0.004, RowsScanned: 0, StorageBytes: 5 * 1024 * 1024, LoadSec: 5, AggregateMetadataUsed: true},
+		{System: "TreeDB", StorageLayout: storageLayoutColumnStoreFullPrepared, DataShape: "full-retained-json", Query: "q2", DatasetSize: 1_000_000, BestSec: 0.006, RowsScanned: 1_000_000, StorageBytes: 5 * 1024 * 1024, LoadSec: 5, StorageSource: "query_ready_base_delta", QueryReadyEncodedExecutions: 1},
 	}}
 	got := string(renderColumnStoreCompactSummary(doc))
 	for _, want := range []string{
@@ -30,9 +31,11 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 		"| column-store-prepared | query-shaped-projection | prepared storage scan | qexpr | 0.0210s | 47.6M | 1.0M | 1.00 KiB | 2.000s | sum(second_of_day_square); 1.0M typed cells (rows_scanned); precomputed_expression_used=false |",
 		"| column-store-full | full-retained-json | direct physical scan | q2 | 0.0300s | 33.3M | 1.0M | 4.00 MiB | 4.000s |",
 		"| column-store-full-prepared | full-retained-json | full-prepared aggregate metadata | q1 | 0.0040s | 250.0M logical | 0 | 5.00 MiB | 5.000s |",
+		"| column-store-full-prepared | full-retained-json | query-ready base-plus-delta | q2 | 0.0060s | 166.7M | 1.0M | 5.00 MiB | 5.000s |",
 		"`full-retained-json` rows store enough JSON payload",
 		"`prepared metadata top-k` applies to query-shaped q4/q4a/q4b/q5",
 		"`full-prepared aggregate metadata` applies to full-retained q1/q3/q5",
+		"`query-ready base-plus-delta` applies when encoded query-ready diagnostics report the persisted base-plus-delta source",
 		"`qexpr` is an arbitrary-expression typed-column scan/evaluation lane with explicit typed-cell evidence",
 	} {
 		if !strings.Contains(got, want) {
@@ -41,6 +44,20 @@ func TestRenderColumnStoreCompactSummary(t *testing.T) {
 	}
 	if strings.Contains(got, "DuckDB") {
 		t.Fatalf("summary should filter non-TreeDB rows:\n%s", got)
+	}
+}
+
+func TestColumnSummaryExecutionModeUsesQueryReadyDiagnostics(t *testing.T) {
+	for _, query := range []string{"q1", "q2", "q3", "q4", "q4a", "q4b", "q5", "qexpr"} {
+		row := reportRow{
+			StorageLayout:               storageLayoutColumnStoreFullPrepared,
+			Query:                       query,
+			StorageSource:               "query_ready_base_delta",
+			QueryReadyEncodedExecutions: 1,
+		}
+		if got, want := columnSummaryExecutionMode(row), "query-ready base-plus-delta"; got != want {
+			t.Errorf("%s mode=%q want %q", query, got, want)
+		}
 	}
 }
 
