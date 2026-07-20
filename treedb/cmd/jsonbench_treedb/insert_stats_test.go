@@ -166,6 +166,55 @@ func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 	}
 }
 
+func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) {
+	type optionalPublishStats struct {
+		ColumnPublishWriteLockWait             time.Duration
+		ColumnPublishPreflight                 time.Duration
+		ColumnPublishCommandWALAppend          time.Duration
+		ColumnPublishOrderedRootApply          time.Duration
+		ColumnPublishSystemRootApply           time.Duration
+		ColumnPublishFinalize                  time.Duration
+		ColumnPublishFinalizePrepareDurability time.Duration
+		ColumnPublishFinalizeCandidateBuild    time.Duration
+		ColumnPublishFinalizeEnqueueActivation time.Duration
+		ColumnPublishFinalizeAdmissionWait     time.Duration
+		ColumnPublishFinalizeDurabilityWait    time.Duration
+		ColumnPublishPostFinalize              time.Duration
+	}
+
+	var accounting insertStatsAccounting
+	accounting.addOptionalColumnPublishStats(optionalPublishStats{
+		ColumnPublishWriteLockWait:             1 * time.Millisecond,
+		ColumnPublishPreflight:                 2 * time.Millisecond,
+		ColumnPublishCommandWALAppend:          3 * time.Millisecond,
+		ColumnPublishOrderedRootApply:          4 * time.Millisecond,
+		ColumnPublishSystemRootApply:           5 * time.Millisecond,
+		ColumnPublishFinalize:                  6 * time.Millisecond,
+		ColumnPublishFinalizePrepareDurability: 7 * time.Millisecond,
+		ColumnPublishFinalizeCandidateBuild:    8 * time.Millisecond,
+		ColumnPublishFinalizeEnqueueActivation: 9 * time.Millisecond,
+		ColumnPublishFinalizeAdmissionWait:     10 * time.Millisecond,
+		ColumnPublishFinalizeDurabilityWait:    11 * time.Millisecond,
+		ColumnPublishPostFinalize:              12 * time.Millisecond,
+	})
+	got := accounting.result()
+	if got == nil {
+		t.Fatal("insert stats result=nil want populated")
+	}
+	if got.ColumnPublishWriteLockWaitSec != 0.001 || got.ColumnPublishPreflightSec != 0.002 || got.ColumnPublishCommandWALAppendSec != 0.003 {
+		t.Fatalf("exclusive pre-apply timings mismatch: %+v", got)
+	}
+	if got.ColumnPublishOrderedRootApplySec != 0.004 || got.ColumnPublishSystemRootApplySec != 0.005 || got.ColumnPublishFinalizeSec != 0.006 || got.ColumnPublishPostFinalizeSec != 0.012 {
+		t.Fatalf("exclusive apply/finalize timings mismatch: %+v", got)
+	}
+	if got.ColumnPublishCommitExclusiveTotalSec != 0.033 {
+		t.Fatalf("exclusive total=%v want 0.033", got.ColumnPublishCommitExclusiveTotalSec)
+	}
+	if got.ColumnPublishFinalizeCandidateBuildSec != 0.008 || got.ColumnPublishFinalizeDurabilityWaitSec != 0.011 {
+		t.Fatalf("finalize child timings mismatch: %+v", got)
+	}
+}
+
 func TestRenderMarkdownReportIncludesTreeDBInsertStats(t *testing.T) {
 	doc := reportDocument{Rows: []reportRow{{
 		System:                                 "TreeDB",

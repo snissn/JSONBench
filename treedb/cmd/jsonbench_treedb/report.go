@@ -222,6 +222,19 @@ type reportRow struct {
 	InsertStatsColumnPublishBuildColumnDeltaSec                   float64   `json:"insert_stats_column_publish_build_column_delta_seconds,omitempty"`
 	InsertStatsColumnPublishBuildSystemDeltaSec                   float64   `json:"insert_stats_column_publish_build_system_delta_seconds,omitempty"`
 	InsertStatsColumnPublishCommitSec                             float64   `json:"insert_stats_column_publish_commit_seconds,omitempty"`
+	InsertStatsColumnPublishCommitExclusiveTotalSec               float64   `json:"insert_stats_column_publish_commit_exclusive_total_seconds,omitempty"`
+	InsertStatsColumnPublishWriteLockWaitSec                      float64   `json:"insert_stats_column_publish_write_lock_wait_seconds,omitempty"`
+	InsertStatsColumnPublishPreflightSec                          float64   `json:"insert_stats_column_publish_preflight_seconds,omitempty"`
+	InsertStatsColumnPublishCommandWALAppendSec                   float64   `json:"insert_stats_column_publish_command_wal_append_seconds,omitempty"`
+	InsertStatsColumnPublishOrderedRootApplySec                   float64   `json:"insert_stats_column_publish_ordered_root_apply_seconds,omitempty"`
+	InsertStatsColumnPublishSystemRootApplySec                    float64   `json:"insert_stats_column_publish_system_root_apply_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeSec                           float64   `json:"insert_stats_column_publish_finalize_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizePrepareDurabilitySec          float64   `json:"insert_stats_column_publish_finalize_prepare_durability_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeCandidateBuildSec             float64   `json:"insert_stats_column_publish_finalize_candidate_build_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeEnqueueActivationSec          float64   `json:"insert_stats_column_publish_finalize_enqueue_activation_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeAdmissionWaitSec              float64   `json:"insert_stats_column_publish_finalize_admission_wait_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeDurabilityWaitSec             float64   `json:"insert_stats_column_publish_finalize_durability_wait_seconds,omitempty"`
+	InsertStatsColumnPublishPostFinalizeSec                       float64   `json:"insert_stats_column_publish_post_finalize_seconds,omitempty"`
 	InsertStatsColumnPublishDocumentExtractionSec                 float64   `json:"insert_stats_column_publish_document_extraction_seconds,omitempty"`
 	InsertStatsColumnPublishDeclaredColumnSec                     float64   `json:"insert_stats_column_publish_declared_column_encoding_seconds,omitempty"`
 	InsertStatsColumnPublishAssetPreparationSec                   float64   `json:"insert_stats_column_publish_asset_preparation_seconds,omitempty"`
@@ -960,6 +973,19 @@ func reportRowHasColumnPublishInsertStats(row reportRow) bool {
 		row.InsertStatsColumnPublishBuildColumnDeltaSec > 0 ||
 		row.InsertStatsColumnPublishBuildSystemDeltaSec > 0 ||
 		row.InsertStatsColumnPublishCommitSec > 0 ||
+		row.InsertStatsColumnPublishCommitExclusiveTotalSec > 0 ||
+		row.InsertStatsColumnPublishWriteLockWaitSec > 0 ||
+		row.InsertStatsColumnPublishPreflightSec > 0 ||
+		row.InsertStatsColumnPublishCommandWALAppendSec > 0 ||
+		row.InsertStatsColumnPublishOrderedRootApplySec > 0 ||
+		row.InsertStatsColumnPublishSystemRootApplySec > 0 ||
+		row.InsertStatsColumnPublishFinalizeSec > 0 ||
+		row.InsertStatsColumnPublishFinalizePrepareDurabilitySec > 0 ||
+		row.InsertStatsColumnPublishFinalizeCandidateBuildSec > 0 ||
+		row.InsertStatsColumnPublishFinalizeEnqueueActivationSec > 0 ||
+		row.InsertStatsColumnPublishFinalizeAdmissionWaitSec > 0 ||
+		row.InsertStatsColumnPublishFinalizeDurabilityWaitSec > 0 ||
+		row.InsertStatsColumnPublishPostFinalizeSec > 0 ||
 		row.InsertStatsColumnPublishDocumentExtractionSec > 0 ||
 		row.InsertStatsColumnPublishDeclaredColumnSec > 0 ||
 		row.InsertStatsColumnPublishAssetPreparationSec > 0 ||
@@ -1031,6 +1057,19 @@ func applyReportRowInsertStats(row *reportRow, stats *insertStatsResult) {
 	row.InsertStatsColumnPublishBuildColumnDeltaSec = stats.ColumnPublishBuildColumnDeltaSec
 	row.InsertStatsColumnPublishBuildSystemDeltaSec = stats.ColumnPublishBuildSystemDeltaSec
 	row.InsertStatsColumnPublishCommitSec = stats.ColumnPublishCommitSec
+	row.InsertStatsColumnPublishCommitExclusiveTotalSec = stats.ColumnPublishCommitExclusiveTotalSec
+	row.InsertStatsColumnPublishWriteLockWaitSec = stats.ColumnPublishWriteLockWaitSec
+	row.InsertStatsColumnPublishPreflightSec = stats.ColumnPublishPreflightSec
+	row.InsertStatsColumnPublishCommandWALAppendSec = stats.ColumnPublishCommandWALAppendSec
+	row.InsertStatsColumnPublishOrderedRootApplySec = stats.ColumnPublishOrderedRootApplySec
+	row.InsertStatsColumnPublishSystemRootApplySec = stats.ColumnPublishSystemRootApplySec
+	row.InsertStatsColumnPublishFinalizeSec = stats.ColumnPublishFinalizeSec
+	row.InsertStatsColumnPublishFinalizePrepareDurabilitySec = stats.ColumnPublishFinalizePrepareDurabilitySec
+	row.InsertStatsColumnPublishFinalizeCandidateBuildSec = stats.ColumnPublishFinalizeCandidateBuildSec
+	row.InsertStatsColumnPublishFinalizeEnqueueActivationSec = stats.ColumnPublishFinalizeEnqueueActivationSec
+	row.InsertStatsColumnPublishFinalizeAdmissionWaitSec = stats.ColumnPublishFinalizeAdmissionWaitSec
+	row.InsertStatsColumnPublishFinalizeDurabilityWaitSec = stats.ColumnPublishFinalizeDurabilityWaitSec
+	row.InsertStatsColumnPublishPostFinalizeSec = stats.ColumnPublishPostFinalizeSec
 	row.InsertStatsColumnPublishDocumentExtractionSec = stats.ColumnPublishDocumentExtractionSec
 	row.InsertStatsColumnPublishDeclaredColumnSec = stats.ColumnPublishDeclaredColumnSec
 	row.InsertStatsColumnPublishAssetPreparationSec = stats.ColumnPublishAssetPreparationSec

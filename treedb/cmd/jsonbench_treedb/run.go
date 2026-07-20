@@ -17,6 +17,7 @@ import (
 	"os"
 	stdpath "path"
 	"path/filepath"
+	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -171,13 +172,34 @@ type compactionResult struct {
 }
 
 type reconstructionResult struct {
-	Enabled                 bool   `json:"enabled"`
-	Rows                    int    `json:"rows"`
-	Mode                    string `json:"mode"`
-	SourceCanonicalJSONHash string `json:"source_canonical_json_hash,omitempty"`
-	StoredCanonicalJSONHash string `json:"stored_canonical_json_hash,omitempty"`
-	Valid                   bool   `json:"valid"`
-	Mismatch                string `json:"mismatch,omitempty"`
+	Enabled                 bool                     `json:"enabled"`
+	Rows                    int                      `json:"rows"`
+	Mode                    string                   `json:"mode"`
+	SourceCanonicalJSONHash string                   `json:"source_canonical_json_hash,omitempty"`
+	StoredCanonicalJSONHash string                   `json:"stored_canonical_json_hash,omitempty"`
+	Valid                   bool                     `json:"valid"`
+	Mismatch                string                   `json:"mismatch,omitempty"`
+	ScanStats               *documentScanStatsResult `json:"scan_stats,omitempty"`
+}
+
+type documentScanStatsResult struct {
+	CertifiedMonotonicPath    bool   `json:"certified_monotonic_path"`
+	GenericFallback           bool   `json:"generic_fallback"`
+	PhysicalPasses            uint64 `json:"physical_passes,omitempty"`
+	PhysicalRows              uint64 `json:"physical_rows,omitempty"`
+	PhysicalBytes             uint64 `json:"physical_bytes,omitempty"`
+	PhysicalDecodedBlocks     uint64 `json:"physical_decoded_blocks,omitempty"`
+	LocatorLookupBatches      uint64 `json:"locator_lookup_batches,omitempty"`
+	LocatorLookups            uint64 `json:"locator_lookups,omitempty"`
+	PointRowFetches           uint64 `json:"point_row_fetches,omitempty"`
+	ReconstructedRows         uint64 `json:"reconstructed_rows,omitempty"`
+	MaxRecordWindow           uint64 `json:"max_record_window,omitempty"`
+	MaxVisibleRowWindow       uint64 `json:"max_visible_row_window,omitempty"`
+	MaxTypedGenerations       uint64 `json:"max_typed_generations,omitempty"`
+	MaxTypedDecodedBytes      uint64 `json:"max_typed_decoded_bytes,omitempty"`
+	MaxTypedSourcePartBytes   uint64 `json:"max_typed_source_part_bytes,omitempty"`
+	MaxRetainedBlocks         uint64 `json:"max_retained_blocks,omitempty"`
+	PreflightProjectedColumns uint64 `json:"preflight_projected_columns,omitempty"`
 }
 
 type queryRun struct {
@@ -790,6 +812,7 @@ func validateStoredReconstruction(collection *collections.Collection, cfg runCon
 		return out, fmt.Errorf("reconstruction validation scanned %d stored rows, want %d", scanned, rows)
 	}
 	out.Rows = scanned
+	out.ScanStats = readDocumentScanStats(collection)
 	out.SourceCanonicalJSONHash = sourceHash
 	out.StoredCanonicalJSONHash = hasher.Sum()
 	out.Valid = out.StoredCanonicalJSONHash == out.SourceCanonicalJSONHash
@@ -797,6 +820,66 @@ func validateStoredReconstruction(collection *collections.Collection, cfg runCon
 		out.Mismatch = fmt.Sprintf("reconstructed JSON canonical hash=%s want source hash=%s", out.StoredCanonicalJSONHash, out.SourceCanonicalJSONHash)
 	}
 	return out, nil
+}
+
+func readDocumentScanStats(source any) *documentScanStatsResult {
+	value := reflect.ValueOf(source)
+	if !value.IsValid() {
+		return nil
+	}
+	method := value.MethodByName("LastDocumentScanStats")
+	if !method.IsValid() || method.Type().NumIn() != 0 || method.Type().NumOut() != 1 {
+		return nil
+	}
+	values := method.Call(nil)
+	if len(values) != 1 {
+		return nil
+	}
+	stats := values[0]
+	if stats.Kind() == reflect.Pointer {
+		if stats.IsNil() {
+			return nil
+		}
+		stats = stats.Elem()
+	}
+	if stats.Kind() != reflect.Struct {
+		return nil
+	}
+	boolField := func(name string) bool {
+		field := stats.FieldByName(name)
+		return field.IsValid() && field.Kind() == reflect.Bool && field.Bool()
+	}
+	uintField := func(name string) uint64 {
+		field := stats.FieldByName(name)
+		if !field.IsValid() {
+			return 0
+		}
+		switch field.Kind() {
+		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
+			return field.Uint()
+		default:
+			return 0
+		}
+	}
+	return &documentScanStatsResult{
+		CertifiedMonotonicPath:    boolField("CertifiedMonotonicPath"),
+		GenericFallback:           boolField("GenericFallback"),
+		PhysicalPasses:            uintField("PhysicalPasses"),
+		PhysicalRows:              uintField("PhysicalRows"),
+		PhysicalBytes:             uintField("PhysicalBytes"),
+		PhysicalDecodedBlocks:     uintField("PhysicalDecodedBlocks"),
+		LocatorLookupBatches:      uintField("LocatorLookupBatches"),
+		LocatorLookups:            uintField("LocatorLookups"),
+		PointRowFetches:           uintField("PointRowFetches"),
+		ReconstructedRows:         uintField("ReconstructedRows"),
+		MaxRecordWindow:           uintField("MaxRecordWindow"),
+		MaxVisibleRowWindow:       uintField("MaxVisibleRowWindow"),
+		MaxTypedGenerations:       uintField("MaxTypedGenerations"),
+		MaxTypedDecodedBytes:      uintField("MaxTypedDecodedBytes"),
+		MaxTypedSourcePartBytes:   uintField("MaxTypedSourcePartBytes"),
+		MaxRetainedBlocks:         uintField("MaxRetainedBlocks"),
+		PreflightProjectedColumns: uintField("PreflightProjectedColumns"),
+	}
 }
 
 var errStopScan = errors.New("stop scan")
