@@ -1366,8 +1366,23 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTreeDBColumnPublishInsertStats(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Column Publish Insert Stats\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | load | insert | publish | build column delta | commit | asset prepare | row asset | typed column | typed dictionary | typed rows | typed part | typed image | dictionary | int64 | aggregate metadata | shared build | asset append | append open | append write | append close | file sync | file close | dir sync | rows | assets | row asset bytes | typed column bytes | dictionary bytes | int64 bytes | aggregate metadata bytes | shared append bytes | required asset bytes | manifest bytes |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		headers := []string{
+			"rows/scale", "layout", "load", "insert", "publish", "build column delta", "commit",
+			"commit exclusive total", "write lock wait", "preflight", "command WAL append", "ordered root apply",
+			"system root apply", "finalize", "finalize durability prep", "finalize candidate build", "finalize enqueue",
+			"finalize admission wait", "finalize durability wait", "post finalize", "manifest mutation records",
+			"manifest mutation bytes", "asset prepare", "row asset", "typed column", "typed dictionary", "typed rows",
+			"typed part", "typed image", "dictionary", "int64", "aggregate metadata", "shared build", "asset append",
+			"append open", "append write", "append close", "file sync", "file close", "dir sync", "rows", "assets",
+			"row asset bytes", "typed column bytes", "dictionary bytes", "int64 bytes", "aggregate metadata bytes",
+			"shared append bytes", "required asset bytes", "manifest bytes",
+		}
+		separators := make([]string, len(headers))
+		for i := range separators {
+			separators[i] = "---"
+		}
+		fmt.Fprintf(&buf, "| %s |\n", strings.Join(headers, " | "))
+		fmt.Fprintf(&buf, "|%s|\n", strings.Join(separators, "|"))
 		seen := make(map[string]struct{})
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasColumnPublishInsertStats(row) {
@@ -1378,9 +1393,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				continue
 			}
 			seen[key] = struct{}{}
-			fmt.Fprintf(
-				&buf,
-				"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			cells := []string{
 				row.Scale,
 				reportRowLayout(row),
 				formatSeconds(row.LoadSec),
@@ -1388,6 +1401,21 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				formatSeconds(row.InsertStatsPublishSec),
 				formatSeconds(row.InsertStatsColumnPublishBuildColumnDeltaSec),
 				formatSeconds(row.InsertStatsColumnPublishCommitSec),
+				formatSeconds(row.InsertStatsColumnPublishCommitExclusiveTotalSec),
+				formatSeconds(row.InsertStatsColumnPublishWriteLockWaitSec),
+				formatSeconds(row.InsertStatsColumnPublishPreflightSec),
+				formatSeconds(row.InsertStatsColumnPublishCommandWALAppendSec),
+				formatSeconds(row.InsertStatsColumnPublishOrderedRootApplySec),
+				formatSeconds(row.InsertStatsColumnPublishSystemRootApplySec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizePrepareDurabilitySec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeCandidateBuildSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeEnqueueActivationSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeAdmissionWaitSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeDurabilityWaitSec),
+				formatSeconds(row.InsertStatsColumnPublishPostFinalizeSec),
+				strconv.Itoa(row.InsertStatsColumnPublishManifestMutationRecords),
+				formatBytes(row.InsertStatsColumnPublishManifestMutationBytes),
 				formatSeconds(row.InsertStatsColumnPublishAssetPreparationSec),
 				formatSeconds(row.InsertStatsColumnPublishRowAssetPrepareSec),
 				formatSeconds(row.InsertStatsColumnPublishTypedColumnPrepareSec),
@@ -1406,8 +1434,8 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				formatSeconds(row.InsertStatsColumnPublishAssetAppendFileSyncSec),
 				formatSeconds(row.InsertStatsColumnPublishAssetAppendFileCloseSec),
 				formatSeconds(row.InsertStatsColumnPublishAssetAppendDirSyncSec),
-				row.InsertStatsColumnPublishRows,
-				row.InsertStatsColumnPublishPreparedAssets,
+				strconv.Itoa(row.InsertStatsColumnPublishRows),
+				strconv.Itoa(row.InsertStatsColumnPublishPreparedAssets),
 				formatBytes(row.InsertStatsColumnPublishRowAssetBytes),
 				formatBytes(row.InsertStatsColumnPublishTypedColumnBytes),
 				formatBytes(row.InsertStatsColumnPublishDictionaryBytes),
@@ -1416,7 +1444,8 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				formatBytes(row.InsertStatsColumnPublishSharedAppendBytes),
 				formatBytes(row.InsertStatsColumnPublishRequiredAssetBytes),
 				formatBytes(row.InsertStatsColumnPublishManifestBytes),
-			)
+			}
+			fmt.Fprintf(&buf, "| %s |\n", strings.Join(cells, " | "))
 		}
 	}
 	fmt.Fprintf(&buf, "\n## TreeDB Query Diagnostics\n\n")
