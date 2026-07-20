@@ -42,3 +42,26 @@ func TestOpenBackendColumnStorePersistsFullCommandWALFormat(t *testing.T) {
 		t.Fatalf("IndexInternalBaseDelta=true, want false with outer leaf-log refs")
 	}
 }
+
+func TestOpenBackendColumnStorePromotesFastProfileToDurableContract(t *testing.T) {
+	backend, cleanup, err := openBackend(runConfig{
+		DBDir:         t.TempDir(),
+		Profile:       "fast",
+		StorageLayout: storageLayoutColumnStoreFullPrepared,
+		DataRoot:      "fast",
+	})
+	if err != nil {
+		t.Fatalf("openBackend: %v", err)
+	}
+	defer func() {
+		if err := cleanup(); err != nil {
+			t.Fatalf("cleanup: %v", err)
+		}
+	}()
+	if got := backend.DurabilityMode(); got != backenddb.DurabilityDurable {
+		t.Fatalf("durability=%v want durable", got)
+	}
+	if !backend.CommandWALEnabled() {
+		t.Fatal("command WAL disabled, want enabled")
+	}
+}

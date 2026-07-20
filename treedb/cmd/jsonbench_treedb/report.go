@@ -222,6 +222,21 @@ type reportRow struct {
 	InsertStatsColumnPublishBuildColumnDeltaSec                   float64   `json:"insert_stats_column_publish_build_column_delta_seconds,omitempty"`
 	InsertStatsColumnPublishBuildSystemDeltaSec                   float64   `json:"insert_stats_column_publish_build_system_delta_seconds,omitempty"`
 	InsertStatsColumnPublishCommitSec                             float64   `json:"insert_stats_column_publish_commit_seconds,omitempty"`
+	InsertStatsColumnPublishCommitExclusiveTotalSec               float64   `json:"insert_stats_column_publish_commit_exclusive_total_seconds,omitempty"`
+	InsertStatsColumnPublishWriteLockWaitSec                      float64   `json:"insert_stats_column_publish_write_lock_wait_seconds,omitempty"`
+	InsertStatsColumnPublishPreflightSec                          float64   `json:"insert_stats_column_publish_preflight_seconds,omitempty"`
+	InsertStatsColumnPublishCommandWALAppendSec                   float64   `json:"insert_stats_column_publish_command_wal_append_seconds,omitempty"`
+	InsertStatsColumnPublishOrderedRootApplySec                   float64   `json:"insert_stats_column_publish_ordered_root_apply_seconds,omitempty"`
+	InsertStatsColumnPublishSystemRootApplySec                    float64   `json:"insert_stats_column_publish_system_root_apply_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeSec                           float64   `json:"insert_stats_column_publish_finalize_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizePrepareDurabilitySec          float64   `json:"insert_stats_column_publish_finalize_prepare_durability_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeCandidateBuildSec             float64   `json:"insert_stats_column_publish_finalize_candidate_build_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeEnqueueActivationSec          float64   `json:"insert_stats_column_publish_finalize_enqueue_activation_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeAdmissionWaitSec              float64   `json:"insert_stats_column_publish_finalize_admission_wait_seconds,omitempty"`
+	InsertStatsColumnPublishFinalizeDurabilityWaitSec             float64   `json:"insert_stats_column_publish_finalize_durability_wait_seconds,omitempty"`
+	InsertStatsColumnPublishPostFinalizeSec                       float64   `json:"insert_stats_column_publish_post_finalize_seconds,omitempty"`
+	InsertStatsColumnPublishManifestMutationRecords               int       `json:"insert_stats_column_publish_manifest_mutation_records,omitempty"`
+	InsertStatsColumnPublishManifestMutationBytes                 int64     `json:"insert_stats_column_publish_manifest_mutation_bytes,omitempty"`
 	InsertStatsColumnPublishDocumentExtractionSec                 float64   `json:"insert_stats_column_publish_document_extraction_seconds,omitempty"`
 	InsertStatsColumnPublishDeclaredColumnSec                     float64   `json:"insert_stats_column_publish_declared_column_encoding_seconds,omitempty"`
 	InsertStatsColumnPublishAssetPreparationSec                   float64   `json:"insert_stats_column_publish_asset_preparation_seconds,omitempty"`
@@ -268,7 +283,10 @@ type reportRow struct {
 	Compacted                                                     bool      `json:"compacted,omitempty"`
 	RetainsJSON                                                   *bool     `json:"retains_json_structure,omitempty"`
 	ReconstructionValid                                           *bool     `json:"reconstruction_valid,omitempty"`
-	Source                                                        string    `json:"source"`
+
+	ReconstructionScanStats *documentScanStatsResult `json:"reconstruction_scan_stats,omitempty"`
+
+	Source string `json:"source"`
 }
 
 type jsonBenchBaselineResult struct {
@@ -425,9 +443,11 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 			compactionSec = result.Compaction.WallSec
 		}
 		var reconstructionValid *bool
+		var reconstructionScanStats *documentScanStatsResult
 		if result.Reconstruction != nil {
 			valid := result.Reconstruction.Valid
 			reconstructionValid = &valid
+			reconstructionScanStats = result.Reconstruction.ScanStats
 		}
 		columnAssetBytes := storageCategoryBytes(result.Storage, "column_asset_segments", "column_asset_indexes", "column_asset_metadata", "column_asset_quarantine")
 		typedColumnPartBytes := int64(0)
@@ -650,6 +670,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				Compacted:                          compactionEnabled,
 				RetainsJSON:                        &retainsJSON,
 				ReconstructionValid:                reconstructionValid,
+				ReconstructionScanStats:            reconstructionScanStats,
 				Source:                             path,
 			}
 			applyQExprTypedScanEvidence(&row, q, diagnostics)
@@ -929,6 +950,15 @@ func reportHasTreeDBColumnPublishInsertStats(rows []reportRow) bool {
 	return false
 }
 
+func reportHasTreeDBReconstructionScanStats(rows []reportRow) bool {
+	for _, row := range rows {
+		if row.System == "TreeDB" && row.ReconstructionScanStats != nil {
+			return true
+		}
+	}
+	return false
+}
+
 func reportRowHasInsertStats(row reportRow) bool {
 	return reportRowHasRetainedInsertStats(row) || reportRowHasColumnPublishInsertStats(row)
 }
@@ -960,6 +990,21 @@ func reportRowHasColumnPublishInsertStats(row reportRow) bool {
 		row.InsertStatsColumnPublishBuildColumnDeltaSec > 0 ||
 		row.InsertStatsColumnPublishBuildSystemDeltaSec > 0 ||
 		row.InsertStatsColumnPublishCommitSec > 0 ||
+		row.InsertStatsColumnPublishCommitExclusiveTotalSec > 0 ||
+		row.InsertStatsColumnPublishWriteLockWaitSec > 0 ||
+		row.InsertStatsColumnPublishPreflightSec > 0 ||
+		row.InsertStatsColumnPublishCommandWALAppendSec > 0 ||
+		row.InsertStatsColumnPublishOrderedRootApplySec > 0 ||
+		row.InsertStatsColumnPublishSystemRootApplySec > 0 ||
+		row.InsertStatsColumnPublishFinalizeSec > 0 ||
+		row.InsertStatsColumnPublishFinalizePrepareDurabilitySec > 0 ||
+		row.InsertStatsColumnPublishFinalizeCandidateBuildSec > 0 ||
+		row.InsertStatsColumnPublishFinalizeEnqueueActivationSec > 0 ||
+		row.InsertStatsColumnPublishFinalizeAdmissionWaitSec > 0 ||
+		row.InsertStatsColumnPublishFinalizeDurabilityWaitSec > 0 ||
+		row.InsertStatsColumnPublishPostFinalizeSec > 0 ||
+		row.InsertStatsColumnPublishManifestMutationRecords > 0 ||
+		row.InsertStatsColumnPublishManifestMutationBytes > 0 ||
 		row.InsertStatsColumnPublishDocumentExtractionSec > 0 ||
 		row.InsertStatsColumnPublishDeclaredColumnSec > 0 ||
 		row.InsertStatsColumnPublishAssetPreparationSec > 0 ||
@@ -1031,6 +1076,21 @@ func applyReportRowInsertStats(row *reportRow, stats *insertStatsResult) {
 	row.InsertStatsColumnPublishBuildColumnDeltaSec = stats.ColumnPublishBuildColumnDeltaSec
 	row.InsertStatsColumnPublishBuildSystemDeltaSec = stats.ColumnPublishBuildSystemDeltaSec
 	row.InsertStatsColumnPublishCommitSec = stats.ColumnPublishCommitSec
+	row.InsertStatsColumnPublishCommitExclusiveTotalSec = stats.ColumnPublishCommitExclusiveTotalSec
+	row.InsertStatsColumnPublishWriteLockWaitSec = stats.ColumnPublishWriteLockWaitSec
+	row.InsertStatsColumnPublishPreflightSec = stats.ColumnPublishPreflightSec
+	row.InsertStatsColumnPublishCommandWALAppendSec = stats.ColumnPublishCommandWALAppendSec
+	row.InsertStatsColumnPublishOrderedRootApplySec = stats.ColumnPublishOrderedRootApplySec
+	row.InsertStatsColumnPublishSystemRootApplySec = stats.ColumnPublishSystemRootApplySec
+	row.InsertStatsColumnPublishFinalizeSec = stats.ColumnPublishFinalizeSec
+	row.InsertStatsColumnPublishFinalizePrepareDurabilitySec = stats.ColumnPublishFinalizePrepareDurabilitySec
+	row.InsertStatsColumnPublishFinalizeCandidateBuildSec = stats.ColumnPublishFinalizeCandidateBuildSec
+	row.InsertStatsColumnPublishFinalizeEnqueueActivationSec = stats.ColumnPublishFinalizeEnqueueActivationSec
+	row.InsertStatsColumnPublishFinalizeAdmissionWaitSec = stats.ColumnPublishFinalizeAdmissionWaitSec
+	row.InsertStatsColumnPublishFinalizeDurabilityWaitSec = stats.ColumnPublishFinalizeDurabilityWaitSec
+	row.InsertStatsColumnPublishPostFinalizeSec = stats.ColumnPublishPostFinalizeSec
+	row.InsertStatsColumnPublishManifestMutationRecords = stats.ColumnPublishManifestMutationRecords
+	row.InsertStatsColumnPublishManifestMutationBytes = stats.ColumnPublishManifestMutationBytes
 	row.InsertStatsColumnPublishDocumentExtractionSec = stats.ColumnPublishDocumentExtractionSec
 	row.InsertStatsColumnPublishDeclaredColumnSec = stats.ColumnPublishDeclaredColumnSec
 	row.InsertStatsColumnPublishAssetPreparationSec = stats.ColumnPublishAssetPreparationSec
@@ -1276,6 +1336,55 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			formatBytes(row.StorageWALBytesExcludedFromDurable),
 		)
 	}
+	if reportHasTreeDBReconstructionScanStats(doc.Rows) {
+		fmt.Fprintf(&buf, "\n## TreeDB Reconstruction Scan Stats\n\n")
+		headers := []string{
+			"rows/scale", "layout", "certified monotonic", "generic fallback", "physical passes", "physical rows",
+			"physical bytes", "decoded blocks", "locator batches", "locator lookups", "point row fetches", "reconstructed rows",
+			"max record window", "max visible row window", "max typed generations", "max typed decoded bytes",
+			"max typed source part bytes", "max retained blocks", "preflight projected columns",
+		}
+		separators := make([]string, len(headers))
+		for i := range separators {
+			separators[i] = "---"
+		}
+		fmt.Fprintf(&buf, "| %s |\n", strings.Join(headers, " | "))
+		fmt.Fprintf(&buf, "|%s|\n", strings.Join(separators, "|"))
+		seen := make(map[string]struct{})
+		for _, row := range doc.Rows {
+			if row.System != "TreeDB" || row.ReconstructionScanStats == nil {
+				continue
+			}
+			key := strings.Join([]string{row.Source, row.Scale, row.StorageLayout, row.Projection}, "\x00")
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			stats := row.ReconstructionScanStats
+			cells := []string{
+				row.Scale,
+				reportRowLayout(row),
+				strconv.FormatBool(stats.CertifiedMonotonicPath),
+				strconv.FormatBool(stats.GenericFallback),
+				strconv.FormatUint(stats.PhysicalPasses, 10),
+				strconv.FormatUint(stats.PhysicalRows, 10),
+				formatUintBytes(stats.PhysicalBytes),
+				strconv.FormatUint(stats.PhysicalDecodedBlocks, 10),
+				strconv.FormatUint(stats.LocatorLookupBatches, 10),
+				strconv.FormatUint(stats.LocatorLookups, 10),
+				strconv.FormatUint(stats.PointRowFetches, 10),
+				strconv.FormatUint(stats.ReconstructedRows, 10),
+				strconv.FormatUint(stats.MaxRecordWindow, 10),
+				strconv.FormatUint(stats.MaxVisibleRowWindow, 10),
+				strconv.FormatUint(stats.MaxTypedGenerations, 10),
+				formatUintBytes(stats.MaxTypedDecodedBytes),
+				formatUintBytes(stats.MaxTypedSourcePartBytes),
+				strconv.FormatUint(stats.MaxRetainedBlocks, 10),
+				strconv.FormatUint(stats.PreflightProjectedColumns, 10),
+			}
+			fmt.Fprintf(&buf, "| %s |\n", strings.Join(cells, " | "))
+		}
+	}
 	if reportHasTreeDBRetainedInsertStats(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Insert Stats\n\n")
 		fmt.Fprintf(&buf, "| rows/scale | layout | load | insert | retained prepare | retained rows | declared rows | stream blocks | stream workers | declared row prep | block prep wall | block collect | encoder setup | raw encode | stored encode | finalize | table build | primary vlog pointerize | primary vlog values | primary vlog bytes | stream vlog pointerize | stream vlog values | stream vlog bytes |\n")
@@ -1321,8 +1430,23 @@ func renderMarkdownReport(doc reportDocument) []byte {
 	}
 	if reportHasTreeDBColumnPublishInsertStats(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Column Publish Insert Stats\n\n")
-		fmt.Fprintf(&buf, "| rows/scale | layout | load | insert | publish | build column delta | commit | asset prepare | row asset | typed column | typed dictionary | typed rows | typed part | typed image | dictionary | int64 | aggregate metadata | shared build | asset append | append open | append write | append close | file sync | file close | dir sync | rows | assets | row asset bytes | typed column bytes | dictionary bytes | int64 bytes | aggregate metadata bytes | shared append bytes | required asset bytes | manifest bytes |\n")
-		fmt.Fprintf(&buf, "|---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|---:|\n")
+		headers := []string{
+			"rows/scale", "layout", "load", "insert", "publish", "build column delta", "commit",
+			"commit exclusive total", "write lock wait", "preflight", "command WAL append", "ordered root apply",
+			"system root apply", "finalize", "finalize durability prep", "finalize candidate build", "finalize enqueue",
+			"finalize admission wait", "finalize durability wait", "post finalize", "manifest mutation records",
+			"manifest mutation bytes", "asset prepare", "row asset", "typed column", "typed dictionary", "typed rows",
+			"typed part", "typed image", "dictionary", "int64", "aggregate metadata", "shared build", "asset append",
+			"append open", "append write", "append close", "file sync", "file close", "dir sync", "rows", "assets",
+			"row asset bytes", "typed column bytes", "dictionary bytes", "int64 bytes", "aggregate metadata bytes",
+			"shared append bytes", "required asset bytes", "manifest bytes",
+		}
+		separators := make([]string, len(headers))
+		for i := range separators {
+			separators[i] = "---"
+		}
+		fmt.Fprintf(&buf, "| %s |\n", strings.Join(headers, " | "))
+		fmt.Fprintf(&buf, "|%s|\n", strings.Join(separators, "|"))
 		seen := make(map[string]struct{})
 		for _, row := range doc.Rows {
 			if row.System != "TreeDB" || !reportRowHasColumnPublishInsertStats(row) {
@@ -1333,9 +1457,7 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				continue
 			}
 			seen[key] = struct{}{}
-			fmt.Fprintf(
-				&buf,
-				"| %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %s | %d | %d | %s | %s | %s | %s | %s | %s | %s | %s |\n",
+			cells := []string{
 				row.Scale,
 				reportRowLayout(row),
 				formatSeconds(row.LoadSec),
@@ -1343,6 +1465,21 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				formatSeconds(row.InsertStatsPublishSec),
 				formatSeconds(row.InsertStatsColumnPublishBuildColumnDeltaSec),
 				formatSeconds(row.InsertStatsColumnPublishCommitSec),
+				formatSeconds(row.InsertStatsColumnPublishCommitExclusiveTotalSec),
+				formatSeconds(row.InsertStatsColumnPublishWriteLockWaitSec),
+				formatSeconds(row.InsertStatsColumnPublishPreflightSec),
+				formatSeconds(row.InsertStatsColumnPublishCommandWALAppendSec),
+				formatSeconds(row.InsertStatsColumnPublishOrderedRootApplySec),
+				formatSeconds(row.InsertStatsColumnPublishSystemRootApplySec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizePrepareDurabilitySec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeCandidateBuildSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeEnqueueActivationSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeAdmissionWaitSec),
+				formatSeconds(row.InsertStatsColumnPublishFinalizeDurabilityWaitSec),
+				formatSeconds(row.InsertStatsColumnPublishPostFinalizeSec),
+				strconv.Itoa(row.InsertStatsColumnPublishManifestMutationRecords),
+				formatBytes(row.InsertStatsColumnPublishManifestMutationBytes),
 				formatSeconds(row.InsertStatsColumnPublishAssetPreparationSec),
 				formatSeconds(row.InsertStatsColumnPublishRowAssetPrepareSec),
 				formatSeconds(row.InsertStatsColumnPublishTypedColumnPrepareSec),
@@ -1361,8 +1498,8 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				formatSeconds(row.InsertStatsColumnPublishAssetAppendFileSyncSec),
 				formatSeconds(row.InsertStatsColumnPublishAssetAppendFileCloseSec),
 				formatSeconds(row.InsertStatsColumnPublishAssetAppendDirSyncSec),
-				row.InsertStatsColumnPublishRows,
-				row.InsertStatsColumnPublishPreparedAssets,
+				strconv.Itoa(row.InsertStatsColumnPublishRows),
+				strconv.Itoa(row.InsertStatsColumnPublishPreparedAssets),
 				formatBytes(row.InsertStatsColumnPublishRowAssetBytes),
 				formatBytes(row.InsertStatsColumnPublishTypedColumnBytes),
 				formatBytes(row.InsertStatsColumnPublishDictionaryBytes),
@@ -1371,7 +1508,8 @@ func renderMarkdownReport(doc reportDocument) []byte {
 				formatBytes(row.InsertStatsColumnPublishSharedAppendBytes),
 				formatBytes(row.InsertStatsColumnPublishRequiredAssetBytes),
 				formatBytes(row.InsertStatsColumnPublishManifestBytes),
-			)
+			}
+			fmt.Fprintf(&buf, "| %s |\n", strings.Join(cells, " | "))
 		}
 	}
 	fmt.Fprintf(&buf, "\n## TreeDB Query Diagnostics\n\n")
@@ -1873,4 +2011,11 @@ func formatBytes(value int64) string {
 		return fmt.Sprintf("%d B", value)
 	}
 	return fmt.Sprintf("%.2f %s", f, units[unit])
+}
+
+func formatUintBytes(value uint64) string {
+	if value > math.MaxInt64 {
+		return strconv.FormatUint(value, 10) + " B"
+	}
+	return formatBytes(int64(value))
 }

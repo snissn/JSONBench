@@ -31,6 +31,21 @@ type insertStatsResult struct {
 	ColumnPublishBuildColumnDeltaSec                   float64 `json:"column_publish_build_column_delta_seconds,omitempty"`
 	ColumnPublishBuildSystemDeltaSec                   float64 `json:"column_publish_build_system_delta_seconds,omitempty"`
 	ColumnPublishCommitSec                             float64 `json:"column_publish_commit_seconds,omitempty"`
+	ColumnPublishCommitExclusiveTotalSec               float64 `json:"column_publish_commit_exclusive_total_seconds,omitempty"`
+	ColumnPublishWriteLockWaitSec                      float64 `json:"column_publish_write_lock_wait_seconds,omitempty"`
+	ColumnPublishPreflightSec                          float64 `json:"column_publish_preflight_seconds,omitempty"`
+	ColumnPublishCommandWALAppendSec                   float64 `json:"column_publish_command_wal_append_seconds,omitempty"`
+	ColumnPublishOrderedRootApplySec                   float64 `json:"column_publish_ordered_root_apply_seconds,omitempty"`
+	ColumnPublishSystemRootApplySec                    float64 `json:"column_publish_system_root_apply_seconds,omitempty"`
+	ColumnPublishFinalizeSec                           float64 `json:"column_publish_finalize_seconds,omitempty"`
+	ColumnPublishFinalizePrepareDurabilitySec          float64 `json:"column_publish_finalize_prepare_durability_seconds,omitempty"`
+	ColumnPublishFinalizeCandidateBuildSec             float64 `json:"column_publish_finalize_candidate_build_seconds,omitempty"`
+	ColumnPublishFinalizeEnqueueActivationSec          float64 `json:"column_publish_finalize_enqueue_activation_seconds,omitempty"`
+	ColumnPublishFinalizeAdmissionWaitSec              float64 `json:"column_publish_finalize_admission_wait_seconds,omitempty"`
+	ColumnPublishFinalizeDurabilityWaitSec             float64 `json:"column_publish_finalize_durability_wait_seconds,omitempty"`
+	ColumnPublishPostFinalizeSec                       float64 `json:"column_publish_post_finalize_seconds,omitempty"`
+	ColumnPublishManifestMutationRecords               int     `json:"column_publish_manifest_mutation_records,omitempty"`
+	ColumnPublishManifestMutationBytes                 int64   `json:"column_publish_manifest_mutation_bytes,omitempty"`
 	ColumnPublishDocumentExtractionSec                 float64 `json:"column_publish_document_extraction_seconds,omitempty"`
 	ColumnPublishDeclaredColumnSec                     float64 `json:"column_publish_declared_column_encoding_seconds,omitempty"`
 	ColumnPublishAssetPreparationSec                   float64 `json:"column_publish_asset_preparation_seconds,omitempty"`
@@ -76,71 +91,86 @@ type insertStatsResult struct {
 }
 
 type insertStatsAccounting struct {
-	retainedPayloadPrepare              time.Duration
-	retainedPayloadRows                 int
-	retainedPayloadDeclaredRows         int
-	retainedPayloadSemanticBlocks       int
-	retainedPayloadSemanticWorkerCount  int
-	retainedPayloadSemanticDeclaredRows time.Duration
-	retainedPayloadSemanticBlockWall    time.Duration
-	retainedPayloadSemanticBlockCollect time.Duration
-	retainedPayloadSemanticEncoderSetup time.Duration
-	retainedPayloadSemanticRawEncode    time.Duration
-	retainedPayloadSemanticStoredEncode time.Duration
-	retainedPayloadSemanticFinalize     time.Duration
-	retainedPayloadSemanticTableBuild   time.Duration
-	retainedPayloadValueLogPointerize   time.Duration
-	retainedPayloadValueLogValues       int
-	retainedPayloadValueLogBytes        int64
-	retainedStreamValueLogPointerize    time.Duration
-	retainedStreamValueLogValues        int
-	retainedStreamValueLogBytes         int64
-	publish                             time.Duration
-	columnPublishBuildColumnDelta       time.Duration
-	columnPublishBuildSystemDelta       time.Duration
-	columnPublishCommit                 time.Duration
-	columnPublishDocumentExtraction     time.Duration
-	columnPublishDeclaredColumn         time.Duration
-	columnPublishAssetPreparation       time.Duration
-	columnPublishRowAssetPrepare        time.Duration
-	columnPublishTypedColumnPrepare     time.Duration
-	columnPublishTypedDictionary        time.Duration
-	columnPublishTypedRows              time.Duration
-	columnPublishTypedPart              time.Duration
-	columnPublishTypedImage             time.Duration
-	columnPublishDictionaryPrepare      time.Duration
-	columnPublishInt64Prepare           time.Duration
-	columnPublishAggregateMetadata      time.Duration
-	columnPublishRowSidecarSharedBuild  time.Duration
-	columnPublishAssetAppend            time.Duration
-	columnPublishAssetAppendOpen        time.Duration
-	columnPublishAssetAppendWrite       time.Duration
-	columnPublishAssetAppendClose       time.Duration
-	columnPublishAssetAppendFileSync    time.Duration
-	columnPublishAssetAppendFileClose   time.Duration
-	columnPublishAssetAppendDirSync     time.Duration
-	columnPublishAssetAppendCleanup     time.Duration
-	columnPublishManifestEncode         time.Duration
-	columnPublishAssetClosure           time.Duration
-	columnPublishRootDelta              time.Duration
-	columnPublishSystemDelta            time.Duration
-	columnPublishRootDeltaMaterialize   time.Duration
-	columnPublishRows                   int
-	columnPublishPreparedAssets         int
-	columnPublishRowAssetBytes          int64
-	columnPublishRowAssetCount          int
-	columnPublishTypedColumnBytes       int64
-	columnPublishTypedColumnCount       int
-	columnPublishDictionaryBytes        int64
-	columnPublishDictionaryCount        int
-	columnPublishInt64Bytes             int64
-	columnPublishInt64Count             int
-	columnPublishAggregateMetadataBytes int64
-	columnPublishAggregateMetadataCount int
-	columnPublishSharedAppendBytes      int64
-	columnPublishSharedAppendCount      int
-	columnPublishRequiredAssetBytes     int64
-	columnPublishManifestBytes          int64
+	retainedPayloadPrepare               time.Duration
+	retainedPayloadRows                  int
+	retainedPayloadDeclaredRows          int
+	retainedPayloadSemanticBlocks        int
+	retainedPayloadSemanticWorkerCount   int
+	retainedPayloadSemanticDeclaredRows  time.Duration
+	retainedPayloadSemanticBlockWall     time.Duration
+	retainedPayloadSemanticBlockCollect  time.Duration
+	retainedPayloadSemanticEncoderSetup  time.Duration
+	retainedPayloadSemanticRawEncode     time.Duration
+	retainedPayloadSemanticStoredEncode  time.Duration
+	retainedPayloadSemanticFinalize      time.Duration
+	retainedPayloadSemanticTableBuild    time.Duration
+	retainedPayloadValueLogPointerize    time.Duration
+	retainedPayloadValueLogValues        int
+	retainedPayloadValueLogBytes         int64
+	retainedStreamValueLogPointerize     time.Duration
+	retainedStreamValueLogValues         int
+	retainedStreamValueLogBytes          int64
+	publish                              time.Duration
+	columnPublishBuildColumnDelta        time.Duration
+	columnPublishBuildSystemDelta        time.Duration
+	columnPublishCommit                  time.Duration
+	columnPublishCommitExclusiveTotal    time.Duration
+	columnPublishWriteLockWait           time.Duration
+	columnPublishPreflight               time.Duration
+	columnPublishCommandWALAppend        time.Duration
+	columnPublishOrderedRootApply        time.Duration
+	columnPublishSystemRootApply         time.Duration
+	columnPublishFinalize                time.Duration
+	columnPublishFinalizePrepare         time.Duration
+	columnPublishFinalizeCandidate       time.Duration
+	columnPublishFinalizeEnqueue         time.Duration
+	columnPublishFinalizeAdmissionWait   time.Duration
+	columnPublishFinalizeDurabilityWait  time.Duration
+	columnPublishPostFinalize            time.Duration
+	columnPublishManifestMutationRecords int
+	columnPublishManifestMutationBytes   int64
+	columnPublishDocumentExtraction      time.Duration
+	columnPublishDeclaredColumn          time.Duration
+	columnPublishAssetPreparation        time.Duration
+	columnPublishRowAssetPrepare         time.Duration
+	columnPublishTypedColumnPrepare      time.Duration
+	columnPublishTypedDictionary         time.Duration
+	columnPublishTypedRows               time.Duration
+	columnPublishTypedPart               time.Duration
+	columnPublishTypedImage              time.Duration
+	columnPublishDictionaryPrepare       time.Duration
+	columnPublishInt64Prepare            time.Duration
+	columnPublishAggregateMetadata       time.Duration
+	columnPublishRowSidecarSharedBuild   time.Duration
+	columnPublishAssetAppend             time.Duration
+	columnPublishAssetAppendOpen         time.Duration
+	columnPublishAssetAppendWrite        time.Duration
+	columnPublishAssetAppendClose        time.Duration
+	columnPublishAssetAppendFileSync     time.Duration
+	columnPublishAssetAppendFileClose    time.Duration
+	columnPublishAssetAppendDirSync      time.Duration
+	columnPublishAssetAppendCleanup      time.Duration
+	columnPublishManifestEncode          time.Duration
+	columnPublishAssetClosure            time.Duration
+	columnPublishRootDelta               time.Duration
+	columnPublishSystemDelta             time.Duration
+	columnPublishRootDeltaMaterialize    time.Duration
+	columnPublishRows                    int
+	columnPublishPreparedAssets          int
+	columnPublishRowAssetBytes           int64
+	columnPublishRowAssetCount           int
+	columnPublishTypedColumnBytes        int64
+	columnPublishTypedColumnCount        int
+	columnPublishDictionaryBytes         int64
+	columnPublishDictionaryCount         int
+	columnPublishInt64Bytes              int64
+	columnPublishInt64Count              int
+	columnPublishAggregateMetadataBytes  int64
+	columnPublishAggregateMetadataCount  int
+	columnPublishSharedAppendBytes       int64
+	columnPublishSharedAppendCount       int
+	columnPublishRequiredAssetBytes      int64
+	columnPublishManifestBytes           int64
 }
 
 func (a *insertStatsAccounting) add(stats collections.CollectionInsertStats) {
@@ -169,6 +199,7 @@ func (a *insertStatsAccounting) add(stats collections.CollectionInsertStats) {
 	a.columnPublishBuildColumnDelta += stats.ColumnPublishBuildColumnDelta
 	a.columnPublishBuildSystemDelta += stats.ColumnPublishBuildSystemDelta
 	a.columnPublishCommit += stats.ColumnPublishCommit
+	a.addOptionalColumnPublishStats(stats)
 	a.columnPublishDocumentExtraction += stats.ColumnPublishDocumentExtraction
 	a.columnPublishDeclaredColumn += stats.ColumnPublishDeclaredColumnEncoding
 	a.columnPublishAssetPreparation += stats.ColumnPublishAssetPreparation
@@ -213,6 +244,27 @@ func (a *insertStatsAccounting) add(stats collections.CollectionInsertStats) {
 	a.columnPublishManifestBytes += stats.ColumnPublishManifestBytes
 }
 
+func (a *insertStatsAccounting) addOptionalColumnPublishStats(stats collections.CollectionInsertStats) {
+	// Keep this aggregate bound to the producer's definition: it is the sum of
+	// non-overlapping commit phases, including the two build phases, and must
+	// remain directly comparable to ColumnPublishCommit.
+	a.columnPublishCommitExclusiveTotal += stats.ColumnPublishCommitExclusiveTotal()
+	a.columnPublishWriteLockWait += stats.ColumnPublishWriteLockWait
+	a.columnPublishPreflight += stats.ColumnPublishPreflight
+	a.columnPublishCommandWALAppend += stats.ColumnPublishCommandWALAppend
+	a.columnPublishOrderedRootApply += stats.ColumnPublishOrderedRootApply
+	a.columnPublishSystemRootApply += stats.ColumnPublishSystemRootApply
+	a.columnPublishFinalize += stats.ColumnPublishFinalize
+	a.columnPublishFinalizePrepare += stats.ColumnPublishFinalizePrepareDurability
+	a.columnPublishFinalizeCandidate += stats.ColumnPublishFinalizeCandidateBuild
+	a.columnPublishFinalizeEnqueue += stats.ColumnPublishFinalizeEnqueueActivation
+	a.columnPublishFinalizeAdmissionWait += stats.ColumnPublishFinalizeAdmissionWait
+	a.columnPublishFinalizeDurabilityWait += stats.ColumnPublishFinalizeDurabilityWait
+	a.columnPublishPostFinalize += stats.ColumnPublishPostFinalize
+	a.columnPublishManifestMutationRecords += stats.ColumnPublishManifestMutationRecords
+	a.columnPublishManifestMutationBytes += stats.ColumnPublishManifestMutationBytes
+}
+
 func (a insertStatsAccounting) result() *insertStatsResult {
 	if !a.hasRetainedStats() && !a.hasColumnPublishStats() {
 		return nil
@@ -241,6 +293,21 @@ func (a insertStatsAccounting) result() *insertStatsResult {
 		ColumnPublishBuildColumnDeltaSec:                   a.columnPublishBuildColumnDelta.Seconds(),
 		ColumnPublishBuildSystemDeltaSec:                   a.columnPublishBuildSystemDelta.Seconds(),
 		ColumnPublishCommitSec:                             a.columnPublishCommit.Seconds(),
+		ColumnPublishCommitExclusiveTotalSec:               a.columnPublishCommitExclusiveTotal.Seconds(),
+		ColumnPublishWriteLockWaitSec:                      a.columnPublishWriteLockWait.Seconds(),
+		ColumnPublishPreflightSec:                          a.columnPublishPreflight.Seconds(),
+		ColumnPublishCommandWALAppendSec:                   a.columnPublishCommandWALAppend.Seconds(),
+		ColumnPublishOrderedRootApplySec:                   a.columnPublishOrderedRootApply.Seconds(),
+		ColumnPublishSystemRootApplySec:                    a.columnPublishSystemRootApply.Seconds(),
+		ColumnPublishFinalizeSec:                           a.columnPublishFinalize.Seconds(),
+		ColumnPublishFinalizePrepareDurabilitySec:          a.columnPublishFinalizePrepare.Seconds(),
+		ColumnPublishFinalizeCandidateBuildSec:             a.columnPublishFinalizeCandidate.Seconds(),
+		ColumnPublishFinalizeEnqueueActivationSec:          a.columnPublishFinalizeEnqueue.Seconds(),
+		ColumnPublishFinalizeAdmissionWaitSec:              a.columnPublishFinalizeAdmissionWait.Seconds(),
+		ColumnPublishFinalizeDurabilityWaitSec:             a.columnPublishFinalizeDurabilityWait.Seconds(),
+		ColumnPublishPostFinalizeSec:                       a.columnPublishPostFinalize.Seconds(),
+		ColumnPublishManifestMutationRecords:               a.columnPublishManifestMutationRecords,
+		ColumnPublishManifestMutationBytes:                 a.columnPublishManifestMutationBytes,
 		ColumnPublishDocumentExtractionSec:                 a.columnPublishDocumentExtraction.Seconds(),
 		ColumnPublishDeclaredColumnSec:                     a.columnPublishDeclaredColumn.Seconds(),
 		ColumnPublishAssetPreparationSec:                   a.columnPublishAssetPreparation.Seconds(),
@@ -313,6 +380,20 @@ func (a insertStatsAccounting) hasColumnPublishStats() bool {
 		a.columnPublishBuildColumnDelta > 0 ||
 		a.columnPublishBuildSystemDelta > 0 ||
 		a.columnPublishCommit > 0 ||
+		a.columnPublishWriteLockWait > 0 ||
+		a.columnPublishPreflight > 0 ||
+		a.columnPublishCommandWALAppend > 0 ||
+		a.columnPublishOrderedRootApply > 0 ||
+		a.columnPublishSystemRootApply > 0 ||
+		a.columnPublishFinalize > 0 ||
+		a.columnPublishFinalizePrepare > 0 ||
+		a.columnPublishFinalizeCandidate > 0 ||
+		a.columnPublishFinalizeEnqueue > 0 ||
+		a.columnPublishFinalizeAdmissionWait > 0 ||
+		a.columnPublishFinalizeDurabilityWait > 0 ||
+		a.columnPublishPostFinalize > 0 ||
+		a.columnPublishManifestMutationRecords > 0 ||
+		a.columnPublishManifestMutationBytes > 0 ||
 		a.columnPublishDocumentExtraction > 0 ||
 		a.columnPublishDeclaredColumn > 0 ||
 		a.columnPublishAssetPreparation > 0 ||

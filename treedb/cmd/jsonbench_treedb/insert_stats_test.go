@@ -166,6 +166,48 @@ func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 	}
 }
 
+func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) {
+	var accounting insertStatsAccounting
+	stats := collections.CollectionInsertStats{
+		ColumnPublishBuildColumnDelta:          13 * time.Millisecond,
+		ColumnPublishBuildSystemDelta:          14 * time.Millisecond,
+		ColumnPublishWriteLockWait:             1 * time.Millisecond,
+		ColumnPublishPreflight:                 2 * time.Millisecond,
+		ColumnPublishCommandWALAppend:          3 * time.Millisecond,
+		ColumnPublishOrderedRootApply:          4 * time.Millisecond,
+		ColumnPublishSystemRootApply:           5 * time.Millisecond,
+		ColumnPublishFinalize:                  6 * time.Millisecond,
+		ColumnPublishFinalizePrepareDurability: 7 * time.Millisecond,
+		ColumnPublishFinalizeCandidateBuild:    8 * time.Millisecond,
+		ColumnPublishFinalizeEnqueueActivation: 9 * time.Millisecond,
+		ColumnPublishFinalizeAdmissionWait:     10 * time.Millisecond,
+		ColumnPublishFinalizeDurabilityWait:    11 * time.Millisecond,
+		ColumnPublishPostFinalize:              12 * time.Millisecond,
+		ColumnPublishManifestMutationRecords:   7,
+		ColumnPublishManifestMutationBytes:     8192,
+	}
+	accounting.addOptionalColumnPublishStats(stats)
+	got := accounting.result()
+	if got == nil {
+		t.Fatal("insert stats result=nil want populated")
+	}
+	if got.ColumnPublishWriteLockWaitSec != 0.001 || got.ColumnPublishPreflightSec != 0.002 || got.ColumnPublishCommandWALAppendSec != 0.003 {
+		t.Fatalf("exclusive pre-apply timings mismatch: %+v", got)
+	}
+	if got.ColumnPublishOrderedRootApplySec != 0.004 || got.ColumnPublishSystemRootApplySec != 0.005 || got.ColumnPublishFinalizeSec != 0.006 || got.ColumnPublishPostFinalizeSec != 0.012 {
+		t.Fatalf("exclusive apply/finalize timings mismatch: %+v", got)
+	}
+	if want := stats.ColumnPublishCommitExclusiveTotal().Seconds(); got.ColumnPublishCommitExclusiveTotalSec != want {
+		t.Fatalf("exclusive total=%v want producer total=%v", got.ColumnPublishCommitExclusiveTotalSec, want)
+	}
+	if got.ColumnPublishFinalizeCandidateBuildSec != 0.008 || got.ColumnPublishFinalizeDurabilityWaitSec != 0.011 {
+		t.Fatalf("finalize child timings mismatch: %+v", got)
+	}
+	if got.ColumnPublishManifestMutationRecords != 7 || got.ColumnPublishManifestMutationBytes != 8192 {
+		t.Fatalf("manifest mutation accounting mismatch: %+v", got)
+	}
+}
+
 func TestRenderMarkdownReportIncludesTreeDBInsertStats(t *testing.T) {
 	doc := reportDocument{Rows: []reportRow{{
 		System:                                 "TreeDB",
@@ -197,6 +239,21 @@ func TestRenderMarkdownReportIncludesTreeDBInsertStats(t *testing.T) {
 		InsertStatsPublishSec:                                         1.4,
 		InsertStatsColumnPublishBuildColumnDeltaSec:                   0.2,
 		InsertStatsColumnPublishCommitSec:                             0.3,
+		InsertStatsColumnPublishCommitExclusiveTotalSec:               0.33,
+		InsertStatsColumnPublishWriteLockWaitSec:                      0.031,
+		InsertStatsColumnPublishPreflightSec:                          0.032,
+		InsertStatsColumnPublishCommandWALAppendSec:                   0.033,
+		InsertStatsColumnPublishOrderedRootApplySec:                   0.034,
+		InsertStatsColumnPublishSystemRootApplySec:                    0.035,
+		InsertStatsColumnPublishFinalizeSec:                           0.036,
+		InsertStatsColumnPublishFinalizePrepareDurabilitySec:          0.037,
+		InsertStatsColumnPublishFinalizeCandidateBuildSec:             0.038,
+		InsertStatsColumnPublishFinalizeEnqueueActivationSec:          0.039,
+		InsertStatsColumnPublishFinalizeAdmissionWaitSec:              0.040,
+		InsertStatsColumnPublishFinalizeDurabilityWaitSec:             0.041,
+		InsertStatsColumnPublishPostFinalizeSec:                       0.042,
+		InsertStatsColumnPublishManifestMutationRecords:               7,
+		InsertStatsColumnPublishManifestMutationBytes:                 8192,
 		InsertStatsColumnPublishAssetPreparationSec:                   0.4,
 		InsertStatsColumnPublishRowAssetPrepareSec:                    0.05,
 		InsertStatsColumnPublishTypedColumnPrepareSec:                 0.06,
@@ -233,8 +290,8 @@ func TestRenderMarkdownReportIncludesTreeDBInsertStats(t *testing.T) {
 		"| rows/scale | layout | load | insert | retained prepare | retained rows | declared rows | stream blocks | stream workers | declared row prep | block prep wall | block collect | encoder setup | raw encode | stored encode | finalize | table build | primary vlog pointerize | primary vlog values | primary vlog bytes | stream vlog pointerize | stream vlog values | stream vlog bytes |",
 		"| 10 rows | column-store-full-prepared:json/full | 2.000s | 1.500s | 0.1000s | 10 | 10 | 2 | 4 | 0.0110s | 0.1200s | 0.0210s | 0.0220s | 0.0230s | 0.0240s | 0.0250s | 0.0260s | 0.0300s | 8 | 800 B | 0.0400s | 2 | 200 B |",
 		"## TreeDB Column Publish Insert Stats",
-		"| rows/scale | layout | load | insert | publish | build column delta | commit | asset prepare | row asset | typed column | typed dictionary | typed rows | typed part | typed image | dictionary | int64 | aggregate metadata | shared build | asset append | append open | append write | append close | file sync | file close | dir sync | rows | assets | row asset bytes | typed column bytes | dictionary bytes | int64 bytes | aggregate metadata bytes | shared append bytes | required asset bytes | manifest bytes |",
-		"| 10 rows | column-store-full-prepared:json/full | 2.000s | 1.500s | 1.400s | 0.2000s | 0.3000s | 0.4000s | 0.0500s | 0.0600s | 0.0610s | 0.0620s | 0.0630s | 0.0640s | 0.0700s | 0.0800s | 0.0900s | 0.1100s | 0.1200s | 0.0100s | 0.0200s | 0.0300s | 0.0250s | 0.0040s | 0.0030s | 10 | 6 | 100 B | 200 B | 300 B | 400 B | 500 B | 600 B | 700 B | 800 B |",
+		"| rows/scale | layout | load | insert | publish | build column delta | commit | commit exclusive total | write lock wait | preflight | command WAL append | ordered root apply | system root apply | finalize | finalize durability prep | finalize candidate build | finalize enqueue | finalize admission wait | finalize durability wait | post finalize | manifest mutation records | manifest mutation bytes | asset prepare | row asset | typed column | typed dictionary | typed rows | typed part | typed image | dictionary | int64 | aggregate metadata | shared build | asset append | append open | append write | append close | file sync | file close | dir sync | rows | assets | row asset bytes | typed column bytes | dictionary bytes | int64 bytes | aggregate metadata bytes | shared append bytes | required asset bytes | manifest bytes |",
+		"| 10 rows | column-store-full-prepared:json/full | 2.000s | 1.500s | 1.400s | 0.2000s | 0.3000s | 0.3300s | 0.0310s | 0.0320s | 0.0330s | 0.0340s | 0.0350s | 0.0360s | 0.0370s | 0.0380s | 0.0390s | 0.0400s | 0.0410s | 0.0420s | 7 | 8.00 KiB | 0.4000s | 0.0500s | 0.0600s | 0.0610s | 0.0620s | 0.0630s | 0.0640s | 0.0700s | 0.0800s | 0.0900s | 0.1100s | 0.1200s | 0.0100s | 0.0200s | 0.0300s | 0.0250s | 0.0040s | 0.0030s | 10 | 6 | 100 B | 200 B | 300 B | 400 B | 500 B | 600 B | 700 B | 800 B |",
 	} {
 		if !strings.Contains(got, want) {
 			t.Fatalf("markdown missing %q\n%s", want, got)

@@ -171,13 +171,34 @@ type compactionResult struct {
 }
 
 type reconstructionResult struct {
-	Enabled                 bool   `json:"enabled"`
-	Rows                    int    `json:"rows"`
-	Mode                    string `json:"mode"`
-	SourceCanonicalJSONHash string `json:"source_canonical_json_hash,omitempty"`
-	StoredCanonicalJSONHash string `json:"stored_canonical_json_hash,omitempty"`
-	Valid                   bool   `json:"valid"`
-	Mismatch                string `json:"mismatch,omitempty"`
+	Enabled                 bool                     `json:"enabled"`
+	Rows                    int                      `json:"rows"`
+	Mode                    string                   `json:"mode"`
+	SourceCanonicalJSONHash string                   `json:"source_canonical_json_hash,omitempty"`
+	StoredCanonicalJSONHash string                   `json:"stored_canonical_json_hash,omitempty"`
+	Valid                   bool                     `json:"valid"`
+	Mismatch                string                   `json:"mismatch,omitempty"`
+	ScanStats               *documentScanStatsResult `json:"scan_stats,omitempty"`
+}
+
+type documentScanStatsResult struct {
+	CertifiedMonotonicPath    bool   `json:"certified_monotonic_path"`
+	GenericFallback           bool   `json:"generic_fallback"`
+	PhysicalPasses            uint64 `json:"physical_passes,omitempty"`
+	PhysicalRows              uint64 `json:"physical_rows,omitempty"`
+	PhysicalBytes             uint64 `json:"physical_bytes,omitempty"`
+	PhysicalDecodedBlocks     uint64 `json:"physical_decoded_blocks,omitempty"`
+	LocatorLookupBatches      uint64 `json:"locator_lookup_batches,omitempty"`
+	LocatorLookups            uint64 `json:"locator_lookups,omitempty"`
+	PointRowFetches           uint64 `json:"point_row_fetches,omitempty"`
+	ReconstructedRows         uint64 `json:"reconstructed_rows,omitempty"`
+	MaxRecordWindow           uint64 `json:"max_record_window,omitempty"`
+	MaxVisibleRowWindow       uint64 `json:"max_visible_row_window,omitempty"`
+	MaxTypedGenerations       uint64 `json:"max_typed_generations,omitempty"`
+	MaxTypedDecodedBytes      uint64 `json:"max_typed_decoded_bytes,omitempty"`
+	MaxTypedSourcePartBytes   uint64 `json:"max_typed_source_part_bytes,omitempty"`
+	MaxRetainedBlocks         uint64 `json:"max_retained_blocks,omitempty"`
+	PreflightProjectedColumns uint64 `json:"preflight_projected_columns,omitempty"`
 }
 
 type queryRun struct {
@@ -591,12 +612,12 @@ func openBackend(cfg runConfig) (*backenddb.DB, func() error, error) {
 	if isColumnStoreLayout(cfg.StorageLayout) {
 		// Current typed-column publication requires durable command-WAL mode even
 		// for benchmark-relaxed column-store metadata. Keep the selected profile's
-		// other performance knobs, but force the durability mode required by the
-		// public column-store write path. Let TreeDB persist the full format config
-		// during open so index layout knobs (notably outer leaf-log storage) stay in
-		// sync with the selected profile instead of pre-writing a partial config.
-		opts.Durability = treedb.DurabilityDurable
-		opts.CommandWAL = true
+		// other explicit performance knobs, but apply the immutable durable profile
+		// contract required by the public column-store write path. Let TreeDB persist
+		// the full format config during open so index layout knobs (notably outer
+		// leaf-log storage) stay in sync with the selected profile instead of
+		// pre-writing a partial config.
+		treedb.ApplyProfile(&opts, treedb.ProfileCommandWALDurable)
 	}
 	return treedb.OpenBackendWithCachedLeafLog(opts)
 }
@@ -790,6 +811,7 @@ func validateStoredReconstruction(collection *collections.Collection, cfg runCon
 		return out, fmt.Errorf("reconstruction validation scanned %d stored rows, want %d", scanned, rows)
 	}
 	out.Rows = scanned
+	out.ScanStats = readDocumentScanStats(collection)
 	out.SourceCanonicalJSONHash = sourceHash
 	out.StoredCanonicalJSONHash = hasher.Sum()
 	out.Valid = out.StoredCanonicalJSONHash == out.SourceCanonicalJSONHash
@@ -797,6 +819,35 @@ func validateStoredReconstruction(collection *collections.Collection, cfg runCon
 		out.Mismatch = fmt.Sprintf("reconstructed JSON canonical hash=%s want source hash=%s", out.StoredCanonicalJSONHash, out.SourceCanonicalJSONHash)
 	}
 	return out, nil
+}
+
+func readDocumentScanStats(source *collections.Collection) *documentScanStatsResult {
+	if source == nil {
+		return nil
+	}
+	return documentScanStatsResultFromCollectionStats(source.LastDocumentScanStats())
+}
+
+func documentScanStatsResultFromCollectionStats(stats collections.CollectionDocumentScanStats) *documentScanStatsResult {
+	return &documentScanStatsResult{
+		CertifiedMonotonicPath:    stats.CertifiedMonotonicPath,
+		GenericFallback:           stats.GenericFallback,
+		PhysicalPasses:            stats.PhysicalPasses,
+		PhysicalRows:              stats.PhysicalRows,
+		PhysicalBytes:             stats.PhysicalBytes,
+		PhysicalDecodedBlocks:     stats.PhysicalDecodedBlocks,
+		LocatorLookupBatches:      stats.LocatorLookupBatches,
+		LocatorLookups:            stats.LocatorLookups,
+		PointRowFetches:           stats.PointRowFetches,
+		ReconstructedRows:         stats.ReconstructedRows,
+		MaxRecordWindow:           stats.MaxRecordWindow,
+		MaxVisibleRowWindow:       stats.MaxVisibleRowWindow,
+		MaxTypedGenerations:       stats.MaxTypedGenerations,
+		MaxTypedDecodedBytes:      stats.MaxTypedDecodedBytes,
+		MaxTypedSourcePartBytes:   stats.MaxTypedSourcePartBytes,
+		MaxRetainedBlocks:         stats.MaxRetainedBlocks,
+		PreflightProjectedColumns: stats.PreflightProjectedColumns,
+	}
 }
 
 var errStopScan = errors.New("stop scan")
