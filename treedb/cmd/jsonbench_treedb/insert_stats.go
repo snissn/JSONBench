@@ -114,6 +114,7 @@ type insertStatsAccounting struct {
 	columnPublishBuildColumnDelta        time.Duration
 	columnPublishBuildSystemDelta        time.Duration
 	columnPublishCommit                  time.Duration
+	columnPublishCommitExclusiveTotal    time.Duration
 	columnPublishWriteLockWait           time.Duration
 	columnPublishPreflight               time.Duration
 	columnPublishCommandWALAppend        time.Duration
@@ -244,6 +245,10 @@ func (a *insertStatsAccounting) add(stats collections.CollectionInsertStats) {
 }
 
 func (a *insertStatsAccounting) addOptionalColumnPublishStats(stats collections.CollectionInsertStats) {
+	// Keep this aggregate bound to the producer's definition: it is the sum of
+	// non-overlapping commit phases, including the two build phases, and must
+	// remain directly comparable to ColumnPublishCommit.
+	a.columnPublishCommitExclusiveTotal += stats.ColumnPublishCommitExclusiveTotal()
 	a.columnPublishWriteLockWait += stats.ColumnPublishWriteLockWait
 	a.columnPublishPreflight += stats.ColumnPublishPreflight
 	a.columnPublishCommandWALAppend += stats.ColumnPublishCommandWALAppend
@@ -258,13 +263,6 @@ func (a *insertStatsAccounting) addOptionalColumnPublishStats(stats collections.
 	a.columnPublishPostFinalize += stats.ColumnPublishPostFinalize
 	a.columnPublishManifestMutationRecords += stats.ColumnPublishManifestMutationRecords
 	a.columnPublishManifestMutationBytes += stats.ColumnPublishManifestMutationBytes
-}
-
-func (a insertStatsAccounting) columnPublishCommitExclusiveTotal() time.Duration {
-	return a.columnPublishWriteLockWait + a.columnPublishPreflight +
-		a.columnPublishBuildColumnDelta + a.columnPublishBuildSystemDelta +
-		a.columnPublishCommandWALAppend + a.columnPublishOrderedRootApply +
-		a.columnPublishSystemRootApply + a.columnPublishFinalize + a.columnPublishPostFinalize
 }
 
 func (a insertStatsAccounting) result() *insertStatsResult {
@@ -295,7 +293,7 @@ func (a insertStatsAccounting) result() *insertStatsResult {
 		ColumnPublishBuildColumnDeltaSec:                   a.columnPublishBuildColumnDelta.Seconds(),
 		ColumnPublishBuildSystemDeltaSec:                   a.columnPublishBuildSystemDelta.Seconds(),
 		ColumnPublishCommitSec:                             a.columnPublishCommit.Seconds(),
-		ColumnPublishCommitExclusiveTotalSec:               a.columnPublishCommitExclusiveTotal().Seconds(),
+		ColumnPublishCommitExclusiveTotalSec:               a.columnPublishCommitExclusiveTotal.Seconds(),
 		ColumnPublishWriteLockWaitSec:                      a.columnPublishWriteLockWait.Seconds(),
 		ColumnPublishPreflightSec:                          a.columnPublishPreflight.Seconds(),
 		ColumnPublishCommandWALAppendSec:                   a.columnPublishCommandWALAppend.Seconds(),

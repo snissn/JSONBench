@@ -168,7 +168,9 @@ func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 
 func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) {
 	var accounting insertStatsAccounting
-	accounting.addOptionalColumnPublishStats(collections.CollectionInsertStats{
+	stats := collections.CollectionInsertStats{
+		ColumnPublishBuildColumnDelta:          13 * time.Millisecond,
+		ColumnPublishBuildSystemDelta:          14 * time.Millisecond,
 		ColumnPublishWriteLockWait:             1 * time.Millisecond,
 		ColumnPublishPreflight:                 2 * time.Millisecond,
 		ColumnPublishCommandWALAppend:          3 * time.Millisecond,
@@ -183,7 +185,8 @@ func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) 
 		ColumnPublishPostFinalize:              12 * time.Millisecond,
 		ColumnPublishManifestMutationRecords:   7,
 		ColumnPublishManifestMutationBytes:     8192,
-	})
+	}
+	accounting.addOptionalColumnPublishStats(stats)
 	got := accounting.result()
 	if got == nil {
 		t.Fatal("insert stats result=nil want populated")
@@ -194,8 +197,8 @@ func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) 
 	if got.ColumnPublishOrderedRootApplySec != 0.004 || got.ColumnPublishSystemRootApplySec != 0.005 || got.ColumnPublishFinalizeSec != 0.006 || got.ColumnPublishPostFinalizeSec != 0.012 {
 		t.Fatalf("exclusive apply/finalize timings mismatch: %+v", got)
 	}
-	if got.ColumnPublishCommitExclusiveTotalSec != 0.033 {
-		t.Fatalf("exclusive total=%v want 0.033", got.ColumnPublishCommitExclusiveTotalSec)
+	if want := stats.ColumnPublishCommitExclusiveTotal().Seconds(); got.ColumnPublishCommitExclusiveTotalSec != want {
+		t.Fatalf("exclusive total=%v want producer total=%v", got.ColumnPublishCommitExclusiveTotalSec, want)
 	}
 	if got.ColumnPublishFinalizeCandidateBuildSec != 0.008 || got.ColumnPublishFinalizeDurabilityWaitSec != 0.011 {
 		t.Fatalf("finalize child timings mismatch: %+v", got)

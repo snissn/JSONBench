@@ -283,7 +283,10 @@ type reportRow struct {
 	Compacted                                                     bool      `json:"compacted,omitempty"`
 	RetainsJSON                                                   *bool     `json:"retains_json_structure,omitempty"`
 	ReconstructionValid                                           *bool     `json:"reconstruction_valid,omitempty"`
-	Source                                                        string    `json:"source"`
+
+	ReconstructionScanStats *documentScanStatsResult `json:"reconstruction_scan_stats,omitempty"`
+
+	Source string `json:"source"`
 }
 
 type jsonBenchBaselineResult struct {
@@ -440,9 +443,11 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 			compactionSec = result.Compaction.WallSec
 		}
 		var reconstructionValid *bool
+		var reconstructionScanStats *documentScanStatsResult
 		if result.Reconstruction != nil {
 			valid := result.Reconstruction.Valid
 			reconstructionValid = &valid
+			reconstructionScanStats = result.Reconstruction.ScanStats
 		}
 		columnAssetBytes := storageCategoryBytes(result.Storage, "column_asset_segments", "column_asset_indexes", "column_asset_metadata", "column_asset_quarantine")
 		typedColumnPartBytes := int64(0)
@@ -665,6 +670,7 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				Compacted:                          compactionEnabled,
 				RetainsJSON:                        &retainsJSON,
 				ReconstructionValid:                reconstructionValid,
+				ReconstructionScanStats:            reconstructionScanStats,
 				Source:                             path,
 			}
 			applyQExprTypedScanEvidence(&row, q, diagnostics)
@@ -938,6 +944,15 @@ func reportHasTreeDBRetainedInsertStats(rows []reportRow) bool {
 func reportHasTreeDBColumnPublishInsertStats(rows []reportRow) bool {
 	for _, row := range rows {
 		if row.System == "TreeDB" && reportRowHasColumnPublishInsertStats(row) {
+			return true
+		}
+	}
+	return false
+}
+
+func reportHasTreeDBReconstructionScanStats(rows []reportRow) bool {
+	for _, row := range rows {
+		if row.System == "TreeDB" && row.ReconstructionScanStats != nil {
 			return true
 		}
 	}
@@ -1320,6 +1335,55 @@ func renderMarkdownReport(doc reportDocument) []byte {
 			formatBytes(row.StorageDurableBytesWALExcluded),
 			formatBytes(row.StorageWALBytesExcludedFromDurable),
 		)
+	}
+	if reportHasTreeDBReconstructionScanStats(doc.Rows) {
+		fmt.Fprintf(&buf, "\n## TreeDB Reconstruction Scan Stats\n\n")
+		headers := []string{
+			"rows/scale", "layout", "certified monotonic", "generic fallback", "physical passes", "physical rows",
+			"physical bytes", "decoded blocks", "locator batches", "locator lookups", "point row fetches", "reconstructed rows",
+			"max record window", "max visible row window", "max typed generations", "max typed decoded bytes",
+			"max typed source part bytes", "max retained blocks", "preflight projected columns",
+		}
+		separators := make([]string, len(headers))
+		for i := range separators {
+			separators[i] = "---"
+		}
+		fmt.Fprintf(&buf, "| %s |\n", strings.Join(headers, " | "))
+		fmt.Fprintf(&buf, "|%s|\n", strings.Join(separators, "|"))
+		seen := make(map[string]struct{})
+		for _, row := range doc.Rows {
+			if row.System != "TreeDB" || row.ReconstructionScanStats == nil {
+				continue
+			}
+			key := strings.Join([]string{row.Source, row.Scale, row.StorageLayout, row.Projection}, "\x00")
+			if _, ok := seen[key]; ok {
+				continue
+			}
+			seen[key] = struct{}{}
+			stats := row.ReconstructionScanStats
+			cells := []string{
+				row.Scale,
+				reportRowLayout(row),
+				strconv.FormatBool(stats.CertifiedMonotonicPath),
+				strconv.FormatBool(stats.GenericFallback),
+				strconv.FormatUint(stats.PhysicalPasses, 10),
+				strconv.FormatUint(stats.PhysicalRows, 10),
+				formatUintBytes(stats.PhysicalBytes),
+				strconv.FormatUint(stats.PhysicalDecodedBlocks, 10),
+				strconv.FormatUint(stats.LocatorLookupBatches, 10),
+				strconv.FormatUint(stats.LocatorLookups, 10),
+				strconv.FormatUint(stats.PointRowFetches, 10),
+				strconv.FormatUint(stats.ReconstructedRows, 10),
+				strconv.FormatUint(stats.MaxRecordWindow, 10),
+				strconv.FormatUint(stats.MaxVisibleRowWindow, 10),
+				strconv.FormatUint(stats.MaxTypedGenerations, 10),
+				formatUintBytes(stats.MaxTypedDecodedBytes),
+				formatUintBytes(stats.MaxTypedSourcePartBytes),
+				strconv.FormatUint(stats.MaxRetainedBlocks, 10),
+				strconv.FormatUint(stats.PreflightProjectedColumns, 10),
+			}
+			fmt.Fprintf(&buf, "| %s |\n", strings.Join(cells, " | "))
+		}
 	}
 	if reportHasTreeDBRetainedInsertStats(doc.Rows) {
 		fmt.Fprintf(&buf, "\n## TreeDB Insert Stats\n\n")
@@ -1947,4 +2011,11 @@ func formatBytes(value int64) string {
 		return fmt.Sprintf("%d B", value)
 	}
 	return fmt.Sprintf("%.2f %s", f, units[unit])
+}
+
+func formatUintBytes(value uint64) string {
+	if value > math.MaxInt64 {
+		return strconv.FormatUint(value, 10) + " B"
+	}
+	return formatBytes(int64(value))
 }
