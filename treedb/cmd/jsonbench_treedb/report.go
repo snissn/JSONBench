@@ -235,6 +235,8 @@ type reportRow struct {
 	InsertStatsColumnPublishFinalizeAdmissionWaitSec              float64   `json:"insert_stats_column_publish_finalize_admission_wait_seconds,omitempty"`
 	InsertStatsColumnPublishFinalizeDurabilityWaitSec             float64   `json:"insert_stats_column_publish_finalize_durability_wait_seconds,omitempty"`
 	InsertStatsColumnPublishPostFinalizeSec                       float64   `json:"insert_stats_column_publish_post_finalize_seconds,omitempty"`
+	InsertStatsColumnPublishManifestMutationRecords               int       `json:"insert_stats_column_publish_manifest_mutation_records,omitempty"`
+	InsertStatsColumnPublishManifestMutationBytes                 int64     `json:"insert_stats_column_publish_manifest_mutation_bytes,omitempty"`
 	InsertStatsColumnPublishDocumentExtractionSec                 float64   `json:"insert_stats_column_publish_document_extraction_seconds,omitempty"`
 	InsertStatsColumnPublishDeclaredColumnSec                     float64   `json:"insert_stats_column_publish_declared_column_encoding_seconds,omitempty"`
 	InsertStatsColumnPublishAssetPreparationSec                   float64   `json:"insert_stats_column_publish_asset_preparation_seconds,omitempty"`
@@ -986,6 +988,8 @@ func reportRowHasColumnPublishInsertStats(row reportRow) bool {
 		row.InsertStatsColumnPublishFinalizeAdmissionWaitSec > 0 ||
 		row.InsertStatsColumnPublishFinalizeDurabilityWaitSec > 0 ||
 		row.InsertStatsColumnPublishPostFinalizeSec > 0 ||
+		row.InsertStatsColumnPublishManifestMutationRecords > 0 ||
+		row.InsertStatsColumnPublishManifestMutationBytes > 0 ||
 		row.InsertStatsColumnPublishDocumentExtractionSec > 0 ||
 		row.InsertStatsColumnPublishDeclaredColumnSec > 0 ||
 		row.InsertStatsColumnPublishAssetPreparationSec > 0 ||
@@ -1070,6 +1074,8 @@ func applyReportRowInsertStats(row *reportRow, stats *insertStatsResult) {
 	row.InsertStatsColumnPublishFinalizeAdmissionWaitSec = stats.ColumnPublishFinalizeAdmissionWaitSec
 	row.InsertStatsColumnPublishFinalizeDurabilityWaitSec = stats.ColumnPublishFinalizeDurabilityWaitSec
 	row.InsertStatsColumnPublishPostFinalizeSec = stats.ColumnPublishPostFinalizeSec
+	row.InsertStatsColumnPublishManifestMutationRecords = stats.ColumnPublishManifestMutationRecords
+	row.InsertStatsColumnPublishManifestMutationBytes = stats.ColumnPublishManifestMutationBytes
 	row.InsertStatsColumnPublishDocumentExtractionSec = stats.ColumnPublishDocumentExtractionSec
 	row.InsertStatsColumnPublishDeclaredColumnSec = stats.ColumnPublishDeclaredColumnSec
 	row.InsertStatsColumnPublishAssetPreparationSec = stats.ColumnPublishAssetPreparationSec

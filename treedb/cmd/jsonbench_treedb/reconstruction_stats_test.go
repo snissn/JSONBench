@@ -1,31 +1,13 @@
 package main
 
-import "testing"
+import (
+	"testing"
 
-type testDocumentScanStats struct {
-	CertifiedMonotonicPath    bool
-	GenericFallback           bool
-	PhysicalPasses            uint64
-	PhysicalRows              uint64
-	PhysicalBytes             uint64
-	PhysicalDecodedBlocks     uint64
-	LocatorLookupBatches      uint64
-	LocatorLookups            uint64
-	PointRowFetches           uint64
-	ReconstructedRows         uint64
-	MaxRecordWindow           uint64
-	MaxVisibleRowWindow       uint64
-	MaxTypedGenerations       uint64
-	MaxTypedDecodedBytes      uint64
-	MaxTypedSourcePartBytes   uint64
-	MaxRetainedBlocks         uint64
-	PreflightProjectedColumns uint64
-}
+	"github.com/snissn/gomap/TreeDB/collections"
+)
 
-type testDocumentScanStatsSource struct{}
-
-func (testDocumentScanStatsSource) LastDocumentScanStats() testDocumentScanStats {
-	return testDocumentScanStats{
+func TestReadDocumentScanStats(t *testing.T) {
+	got := documentScanStatsResultFromCollectionStats(collections.CollectionDocumentScanStats{
 		GenericFallback:         true,
 		LocatorLookupBatches:    3,
 		LocatorLookups:          10,
@@ -37,11 +19,7 @@ func (testDocumentScanStatsSource) LastDocumentScanStats() testDocumentScanStats
 		MaxTypedDecodedBytes:    4096,
 		MaxTypedSourcePartBytes: 8192,
 		MaxRetainedBlocks:       8,
-	}
-}
-
-func TestReadDocumentScanStats(t *testing.T) {
-	got := readDocumentScanStats(testDocumentScanStatsSource{})
+	})
 	if got == nil || !got.GenericFallback || got.LocatorLookupBatches != 3 || got.LocatorLookups != 10 || got.PointRowFetches != 10 || got.ReconstructedRows != 10 {
 		t.Fatalf("scan stats mismatch: %+v", got)
 	}

@@ -17,7 +17,6 @@ import (
 	"os"
 	stdpath "path"
 	"path/filepath"
-	"reflect"
 	"sort"
 	"strconv"
 	"strings"
@@ -613,12 +612,12 @@ func openBackend(cfg runConfig) (*backenddb.DB, func() error, error) {
 	if isColumnStoreLayout(cfg.StorageLayout) {
 		// Current typed-column publication requires durable command-WAL mode even
 		// for benchmark-relaxed column-store metadata. Keep the selected profile's
-		// other performance knobs, but force the durability mode required by the
-		// public column-store write path. Let TreeDB persist the full format config
-		// during open so index layout knobs (notably outer leaf-log storage) stay in
-		// sync with the selected profile instead of pre-writing a partial config.
-		opts.Durability = treedb.DurabilityDurable
-		opts.CommandWAL = true
+		// other explicit performance knobs, but apply the immutable durable profile
+		// contract required by the public column-store write path. Let TreeDB persist
+		// the full format config during open so index layout knobs (notably outer
+		// leaf-log storage) stay in sync with the selected profile instead of
+		// pre-writing a partial config.
+		treedb.ApplyProfile(&opts, treedb.ProfileCommandWALDurable)
 	}
 	return treedb.OpenBackendWithCachedLeafLog(opts)
 }
@@ -822,63 +821,32 @@ func validateStoredReconstruction(collection *collections.Collection, cfg runCon
 	return out, nil
 }
 
-func readDocumentScanStats(source any) *documentScanStatsResult {
-	value := reflect.ValueOf(source)
-	if !value.IsValid() {
+func readDocumentScanStats(source *collections.Collection) *documentScanStatsResult {
+	if source == nil {
 		return nil
 	}
-	method := value.MethodByName("LastDocumentScanStats")
-	if !method.IsValid() || method.Type().NumIn() != 0 || method.Type().NumOut() != 1 {
-		return nil
-	}
-	values := method.Call(nil)
-	if len(values) != 1 {
-		return nil
-	}
-	stats := values[0]
-	if stats.Kind() == reflect.Pointer {
-		if stats.IsNil() {
-			return nil
-		}
-		stats = stats.Elem()
-	}
-	if stats.Kind() != reflect.Struct {
-		return nil
-	}
-	boolField := func(name string) bool {
-		field := stats.FieldByName(name)
-		return field.IsValid() && field.Kind() == reflect.Bool && field.Bool()
-	}
-	uintField := func(name string) uint64 {
-		field := stats.FieldByName(name)
-		if !field.IsValid() {
-			return 0
-		}
-		switch field.Kind() {
-		case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-			return field.Uint()
-		default:
-			return 0
-		}
-	}
+	return documentScanStatsResultFromCollectionStats(source.LastDocumentScanStats())
+}
+
+func documentScanStatsResultFromCollectionStats(stats collections.CollectionDocumentScanStats) *documentScanStatsResult {
 	return &documentScanStatsResult{
-		CertifiedMonotonicPath:    boolField("CertifiedMonotonicPath"),
-		GenericFallback:           boolField("GenericFallback"),
-		PhysicalPasses:            uintField("PhysicalPasses"),
-		PhysicalRows:              uintField("PhysicalRows"),
-		PhysicalBytes:             uintField("PhysicalBytes"),
-		PhysicalDecodedBlocks:     uintField("PhysicalDecodedBlocks"),
-		LocatorLookupBatches:      uintField("LocatorLookupBatches"),
-		LocatorLookups:            uintField("LocatorLookups"),
-		PointRowFetches:           uintField("PointRowFetches"),
-		ReconstructedRows:         uintField("ReconstructedRows"),
-		MaxRecordWindow:           uintField("MaxRecordWindow"),
-		MaxVisibleRowWindow:       uintField("MaxVisibleRowWindow"),
-		MaxTypedGenerations:       uintField("MaxTypedGenerations"),
-		MaxTypedDecodedBytes:      uintField("MaxTypedDecodedBytes"),
-		MaxTypedSourcePartBytes:   uintField("MaxTypedSourcePartBytes"),
-		MaxRetainedBlocks:         uintField("MaxRetainedBlocks"),
-		PreflightProjectedColumns: uintField("PreflightProjectedColumns"),
+		CertifiedMonotonicPath:    stats.CertifiedMonotonicPath,
+		GenericFallback:           stats.GenericFallback,
+		PhysicalPasses:            stats.PhysicalPasses,
+		PhysicalRows:              stats.PhysicalRows,
+		PhysicalBytes:             stats.PhysicalBytes,
+		PhysicalDecodedBlocks:     stats.PhysicalDecodedBlocks,
+		LocatorLookupBatches:      stats.LocatorLookupBatches,
+		LocatorLookups:            stats.LocatorLookups,
+		PointRowFetches:           stats.PointRowFetches,
+		ReconstructedRows:         stats.ReconstructedRows,
+		MaxRecordWindow:           stats.MaxRecordWindow,
+		MaxVisibleRowWindow:       stats.MaxVisibleRowWindow,
+		MaxTypedGenerations:       stats.MaxTypedGenerations,
+		MaxTypedDecodedBytes:      stats.MaxTypedDecodedBytes,
+		MaxTypedSourcePartBytes:   stats.MaxTypedSourcePartBytes,
+		MaxRetainedBlocks:         stats.MaxRetainedBlocks,
+		PreflightProjectedColumns: stats.PreflightProjectedColumns,
 	}
 }
 

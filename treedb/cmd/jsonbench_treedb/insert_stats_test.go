@@ -167,23 +167,8 @@ func TestInsertStatsAccountingReportsColumnPublishStats(t *testing.T) {
 }
 
 func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) {
-	type optionalPublishStats struct {
-		ColumnPublishWriteLockWait             time.Duration
-		ColumnPublishPreflight                 time.Duration
-		ColumnPublishCommandWALAppend          time.Duration
-		ColumnPublishOrderedRootApply          time.Duration
-		ColumnPublishSystemRootApply           time.Duration
-		ColumnPublishFinalize                  time.Duration
-		ColumnPublishFinalizePrepareDurability time.Duration
-		ColumnPublishFinalizeCandidateBuild    time.Duration
-		ColumnPublishFinalizeEnqueueActivation time.Duration
-		ColumnPublishFinalizeAdmissionWait     time.Duration
-		ColumnPublishFinalizeDurabilityWait    time.Duration
-		ColumnPublishPostFinalize              time.Duration
-	}
-
 	var accounting insertStatsAccounting
-	accounting.addOptionalColumnPublishStats(optionalPublishStats{
+	accounting.addOptionalColumnPublishStats(collections.CollectionInsertStats{
 		ColumnPublishWriteLockWait:             1 * time.Millisecond,
 		ColumnPublishPreflight:                 2 * time.Millisecond,
 		ColumnPublishCommandWALAppend:          3 * time.Millisecond,
@@ -196,6 +181,8 @@ func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) 
 		ColumnPublishFinalizeAdmissionWait:     10 * time.Millisecond,
 		ColumnPublishFinalizeDurabilityWait:    11 * time.Millisecond,
 		ColumnPublishPostFinalize:              12 * time.Millisecond,
+		ColumnPublishManifestMutationRecords:   7,
+		ColumnPublishManifestMutationBytes:     8192,
 	})
 	got := accounting.result()
 	if got == nil {
@@ -212,6 +199,9 @@ func TestInsertStatsAccountingReportsExclusiveColumnPublishPhases(t *testing.T) 
 	}
 	if got.ColumnPublishFinalizeCandidateBuildSec != 0.008 || got.ColumnPublishFinalizeDurabilityWaitSec != 0.011 {
 		t.Fatalf("finalize child timings mismatch: %+v", got)
+	}
+	if got.ColumnPublishManifestMutationRecords != 7 || got.ColumnPublishManifestMutationBytes != 8192 {
+		t.Fatalf("manifest mutation accounting mismatch: %+v", got)
 	}
 }
 
