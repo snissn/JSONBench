@@ -199,6 +199,19 @@ type reportRow struct {
 	StorageMeasurementPhase                                       string    `json:"storage_measurement_phase,omitempty"`
 	LoadSec                                                       float64   `json:"load_seconds,omitempty"`
 	InsertSec                                                     float64   `json:"insert_seconds,omitempty"`
+	LoadPipelineDepth                                             int       `json:"load_pipeline_depth"`
+	LoadProducerElapsedSec                                        float64   `json:"load_producer_elapsed_seconds,omitempty"`
+	LoadProducerWorkSec                                           float64   `json:"load_producer_work_seconds,omitempty"`
+	LoadProducerWaitSec                                           float64   `json:"load_producer_wait_seconds,omitempty"`
+	LoadConsumerWaitSec                                           float64   `json:"load_consumer_wait_seconds,omitempty"`
+	LoadOverlapSec                                                float64   `json:"load_overlap_seconds,omitempty"`
+	LoadMaxQueuedBatches                                          int       `json:"load_max_queued_batches,omitempty"`
+	LoadMaxBatchBytes                                             int64     `json:"load_max_batch_bytes,omitempty"`
+	LoadMaxInFlightBytesBound                                     int64     `json:"load_max_in_flight_bytes_bound,omitempty"`
+	LoadAllocatedBytes                                            uint64    `json:"load_allocated_bytes,omitempty"`
+	LoadAllocations                                               uint64    `json:"load_allocations,omitempty"`
+	LoadAllocatedBytesPerRow                                      float64   `json:"load_allocated_bytes_per_row,omitempty"`
+	LoadAllocationsPerRow                                         float64   `json:"load_allocations_per_row,omitempty"`
 	InsertStatsRetainedPayloadPrepareSec                          float64   `json:"insert_stats_retained_payload_prepare_seconds,omitempty"`
 	InsertStatsRetainedPayloadRows                                int       `json:"insert_stats_retained_payload_rows,omitempty"`
 	InsertStatsRetainedPayloadDeclaredRows                        int       `json:"insert_stats_retained_payload_declared_rows,omitempty"`
@@ -666,6 +679,19 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				StorageMeasurementPhase:            result.Storage.MeasurementPhase,
 				LoadSec:                            result.Load.WallSec,
 				InsertSec:                          result.Load.InsertSec,
+				LoadPipelineDepth:                  result.Load.PipelineDepth,
+				LoadProducerElapsedSec:             result.Load.ProducerElapsedSec,
+				LoadProducerWorkSec:                result.Load.ProducerWorkSec,
+				LoadProducerWaitSec:                result.Load.ProducerWaitSec,
+				LoadConsumerWaitSec:                result.Load.ConsumerWaitSec,
+				LoadOverlapSec:                     result.Load.OverlapSec,
+				LoadMaxQueuedBatches:               result.Load.MaxQueuedBatches,
+				LoadMaxBatchBytes:                  result.Load.MaxBatchBytes,
+				LoadMaxInFlightBytesBound:          result.Load.MaxInFlightBytesBound,
+				LoadAllocatedBytes:                 result.Load.AllocatedBytes,
+				LoadAllocations:                    result.Load.Allocations,
+				LoadAllocatedBytesPerRow:           result.Load.AllocatedBytesPerRow,
+				LoadAllocationsPerRow:              result.Load.AllocationsPerRow,
 				CompactionSec:                      compactionSec,
 				Compacted:                          compactionEnabled,
 				RetainsJSON:                        &retainsJSON,

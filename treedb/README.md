@@ -89,6 +89,16 @@ column scans even when aggregate metadata is available, pass
 
 The run fails if fewer rows are available than requested.
 
+TreeDB loads use a bounded ordered producer/consumer handoff by default:
+`-load-pipeline-depth 1` permits one prepared batch to wait ahead of the batch
+currently in `InsertBatch`. Use `-load-pipeline-depth 0` as the exact serial
+control. The result JSON and generated report export producer work/wait,
+consumer wait, estimated overlap, maximum queued batches, maximum logical batch
+bytes, the conservative logical in-flight byte bound, total load allocations,
+bytes/row, and allocations/row. Batch insertion order,
+document IDs, malformed-row accounting, and reconstruction hashes are unchanged.
+The matrix scripts expose the same setting as `LOAD_PIPELINE_DEPTH`.
+
 To make the reported TreeDB storage column represent a post-load fully
 compacted database, enable post-load maintenance:
 
@@ -326,6 +336,7 @@ go run ./cmd/jsonbench_treedb run \
   -reset \
   -scale 1m \
   -format template-v1 \
+  -load-pipeline-depth 1 \
   -projection q1 \
   -queries q1 \
   -out /tmp/jsonbench_treedb_q1.json
