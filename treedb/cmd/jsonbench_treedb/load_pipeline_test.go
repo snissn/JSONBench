@@ -63,14 +63,35 @@ func TestRunPreparedLoadPipelinePreparesNextBatchWhileInsertBlocked(t *testing.T
 	if stats.Depth != 1 {
 		t.Fatalf("depth=%d want 1", stats.Depth)
 	}
-	if stats.MaxQueuedBatches > 1 {
-		t.Fatalf("max queued batches=%d want <=1", stats.MaxQueuedBatches)
+	if stats.MaxQueuedBatches != 0 {
+		t.Fatalf("max queued batches=%d want 0 for depth one", stats.MaxQueuedBatches)
 	}
 	if stats.MaxBatchBytes != 4 {
 		t.Fatalf("max batch bytes=%d want 4", stats.MaxBatchBytes)
 	}
 	if stats.MaxInFlightBytesBound != 8 {
 		t.Fatalf("max in-flight bytes bound=%d want 8", stats.MaxInFlightBytesBound)
+	}
+}
+
+func TestResetPreparedLoadBuffersReusesOnlySerialBuffers(t *testing.T) {
+	ids := make([][]byte, 1, 4)
+	docs := make([][]byte, 1, 4)
+	originalIDSlot := &ids[:cap(ids)][0]
+	originalDocSlot := &docs[:cap(docs)][0]
+
+	serialIDs, serialDocs := resetPreparedLoadBuffers(ids, docs, 4, true)
+	serialIDs = append(serialIDs, nil)
+	serialDocs = append(serialDocs, nil)
+	if &serialIDs[0] != originalIDSlot || &serialDocs[0] != originalDocSlot {
+		t.Fatal("serial reset replaced reusable batch buffers")
+	}
+
+	pipelinedIDs, pipelinedDocs := resetPreparedLoadBuffers(ids, docs, 4, false)
+	pipelinedIDs = append(pipelinedIDs, nil)
+	pipelinedDocs = append(pipelinedDocs, nil)
+	if &pipelinedIDs[0] == originalIDSlot || &pipelinedDocs[0] == originalDocSlot {
+		t.Fatal("pipelined reset reused buffers still owned by the consumer")
 	}
 }
 

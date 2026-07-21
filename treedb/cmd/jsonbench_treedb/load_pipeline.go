@@ -36,9 +36,9 @@ type loadProducerOutcome struct {
 }
 
 // runPreparedLoadPipeline preserves producer order and uses depth as the
-// maximum number of prepared batches queued ahead of the batch being inserted.
-// Depth zero is the exact serial control: emit does not return until insert
-// completes.
+// maximum number of batches being prepared or waiting ahead of the batch being
+// inserted. Depth zero is the exact serial control: emit does not return until
+// insert completes.
 func runPreparedLoadPipeline(
 	ctx context.Context,
 	depth int,
@@ -68,7 +68,9 @@ func runPreparedLoadPipeline(
 
 	pipeCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
-	batches := make(chan preparedLoadBatch, depth)
+	// The producer itself may own one complete batch while blocked in emit, so
+	// reserve only depth-1 channel slots to keep the configured ahead bound exact.
+	batches := make(chan preparedLoadBatch, depth-1)
 	outcomes := make(chan loadProducerOutcome, 1)
 	wallStart := time.Now()
 	go func() {
@@ -138,4 +140,11 @@ func runPreparedLoadPipeline(
 		return stats, insertErr
 	}
 	return stats, outcome.err
+}
+
+func resetPreparedLoadBuffers(ids, docs [][]byte, batchSize int, reuse bool) ([][]byte, [][]byte) {
+	if reuse {
+		return ids[:0], docs[:0]
+	}
+	return make([][]byte, 0, batchSize), make([][]byte, 0, batchSize)
 }

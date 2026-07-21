@@ -724,8 +724,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			if err := emit(ctx, batch); err != nil {
 				return err
 			}
-			ids = make([][]byte, 0, cfg.BatchSize)
-			docs = make([][]byte, 0, cfg.BatchSize)
+			ids, docs = resetPreparedLoadBuffers(ids, docs, cfg.BatchSize, cfg.LoadPipelineDepth == 0)
 			logicalBytes = 0
 			return nil
 		}
