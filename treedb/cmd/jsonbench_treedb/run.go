@@ -17,6 +17,7 @@ import (
 	"os"
 	stdpath "path"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -51,6 +52,7 @@ type runConfig struct {
 	Projection              string
 	Queries                 []string
 	BatchSize               int
+	LoadPipelineDepth       int
 	Profile                 string
 	QueryProfileDir         string
 	DataRoot                string
@@ -111,6 +113,19 @@ type loadResult struct {
 	Batches                            int                `json:"batches"`
 	GenerationSec                      float64            `json:"generation_seconds"`
 	InsertSec                          float64            `json:"insert_seconds"`
+	PipelineDepth                      int                `json:"pipeline_depth"`
+	ProducerElapsedSec                 float64            `json:"producer_elapsed_seconds"`
+	ProducerWorkSec                    float64            `json:"producer_work_seconds"`
+	ProducerWaitSec                    float64            `json:"producer_wait_seconds"`
+	ConsumerWaitSec                    float64            `json:"consumer_wait_seconds"`
+	OverlapSec                         float64            `json:"overlap_seconds"`
+	MaxQueuedBatches                   int                `json:"max_queued_batches"`
+	MaxBatchBytes                      int64              `json:"max_batch_bytes"`
+	MaxInFlightBytesBound              int64              `json:"max_in_flight_bytes_bound"`
+	AllocatedBytes                     uint64             `json:"allocated_bytes"`
+	Allocations                        uint64             `json:"allocations"`
+	AllocatedBytesPerRow               float64            `json:"allocated_bytes_per_row"`
+	AllocationsPerRow                  float64            `json:"allocations_per_row"`
 	AggregateMetadataPrepareSec        float64            `json:"aggregate_metadata_prepare_seconds,omitempty"`
 	AggregateMetadataAppendShareSec    float64            `json:"aggregate_metadata_append_share_seconds,omitempty"`
 	AggregateMetadataInsertCostSec     float64            `json:"aggregate_metadata_insert_cost_seconds,omitempty"`
@@ -221,21 +236,22 @@ type queryRow map[string]any
 
 func parseRunFlags(args []string) (runConfig, error) {
 	cfg := runConfig{
-		DataDir:          "~/data/bluesky",
-		Scale:            "subset",
-		Format:           "json",
-		StorageLayout:    storageLayoutRow,
-		QueryMode:        queryModeOneShotEndToEnd,
-		MetadataMode:     metadataModeAutoAggregateMetadata,
-		Projection:       "full",
-		BatchSize:        defaultBatchSize,
-		Profile:          "fast",
-		DataRoot:         "fast",
-		Collection:       defaultCollectionName,
-		Checkpoint:       true,
-		CompactBatchSize: defaultBatchSize,
-		Tries:            1,
-		Queries:          append([]string(nil), jsonBenchQueryNames...),
+		DataDir:           "~/data/bluesky",
+		Scale:             "subset",
+		Format:            "json",
+		StorageLayout:     storageLayoutRow,
+		QueryMode:         queryModeOneShotEndToEnd,
+		MetadataMode:      metadataModeAutoAggregateMetadata,
+		Projection:        "full",
+		BatchSize:         defaultBatchSize,
+		LoadPipelineDepth: 1,
+		Profile:           "fast",
+		DataRoot:          "fast",
+		Collection:        defaultCollectionName,
+		Checkpoint:        true,
+		CompactBatchSize:  defaultBatchSize,
+		Tries:             1,
+		Queries:           append([]string(nil), jsonBenchQueryNames...),
 	}
 	var queryList string
 	var deprecatedAllowShortData bool
@@ -256,6 +272,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.StringVar(&cfg.Projection, "projection", cfg.Projection, "Projection: full, minimal, q1, q2, q3, q4, q4a, q4b, q5, qexpr")
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q4a, q4b, q5, qexpr")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
+	fs.IntVar(&cfg.LoadPipelineDepth, "load-pipeline-depth", cfg.LoadPipelineDepth, "Prepared load batches queued ahead of InsertBatch; 0 preserves serial loading")
 	fs.StringVar(&cfg.Profile, "profile", cfg.Profile, "TreeDB profile: fast, wal_on_fast, durable, bench")
 	fs.StringVar(&cfg.QueryProfileDir, "query-profile-dir", "", "Directory for per-query timed-attempt CPU and allocs pprof artifacts; disabled when empty")
 	fs.StringVar(&cfg.DataRoot, "data-root", cfg.DataRoot, "Collection data root storage: fast or compressed")
@@ -312,6 +329,9 @@ func parseRunFlags(args []string) (runConfig, error) {
 	}
 	if cfg.BatchSize <= 0 {
 		return cfg, errors.New("-batch-size must be positive")
+	}
+	if cfg.LoadPipelineDepth < 0 {
+		return cfg, errors.New("-load-pipeline-depth must be non-negative")
 	}
 	if cfg.CompactBatchSize <= 0 {
 		return cfg, errors.New("-compact-batch-size must be positive")
@@ -662,98 +682,128 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	if err != nil {
 		return loadResult{}, err
 	}
-	var encoder collections.TemplateV1Encoder
-	ids := make([][]byte, 0, cfg.BatchSize)
-	docs := make([][]byte, 0, cfg.BatchSize)
+	var memBefore runtime.MemStats
+	runtime.ReadMemStats(&memBefore)
 	out := loadResult{Files: make([]string, 0, len(files))}
 	var batches int
 	var generationElapsed time.Duration
-	var insertElapsed time.Duration
 	var insertStats insertStatsAccounting
 	var aggregateMetadataAccounting aggregateMetadataLoadAccounting
 	var flushElapsed time.Duration
 	var checkpointElapsed time.Duration
 	wallStart := time.Now()
-	lastProgress := time.Now()
 	var sourceHasher *canonicalJSONHasher
 	if cfg.ValidateReconstruction {
 		sourceHasher = newCanonicalJSONHasher()
 	}
-	targetReached := func() bool {
-		if cfg.AllowErrors {
-			return out.InputRows >= cfg.Rows
-		}
-		return out.Rows >= cfg.Rows
-	}
 
-	flushBatch := func() error {
-		if len(ids) == 0 {
+	prepare := func(ctx context.Context, emit func(context.Context, preparedLoadBatch) error) error {
+		var encoder collections.TemplateV1Encoder
+		ids := make([][]byte, 0, cfg.BatchSize)
+		docs := make([][]byte, 0, cfg.BatchSize)
+		var logicalBytes int64
+		batchOrdinal := 0
+		lastProgress := time.Now()
+		targetReached := func() bool {
+			if cfg.AllowErrors {
+				return out.InputRows >= cfg.Rows
+			}
+			return out.Rows >= cfg.Rows
+		}
+		emitBatch := func() error {
+			if len(ids) == 0 {
+				return nil
+			}
+			batchOrdinal++
+			batch := preparedLoadBatch{
+				ordinal:      batchOrdinal,
+				ids:          ids,
+				docs:         docs,
+				logicalBytes: logicalBytes,
+			}
+			if err := emit(ctx, batch); err != nil {
+				return err
+			}
+			ids = make([][]byte, 0, cfg.BatchSize)
+			docs = make([][]byte, 0, cfg.BatchSize)
+			logicalBytes = 0
 			return nil
 		}
-		start := time.Now()
-		if _, err := collection.InsertBatch(ids, docs); err != nil {
-			return err
-		}
-		lastInsertStats := collection.LastInsertStats()
-		insertStats.add(lastInsertStats)
-		aggregateMetadataAccounting.addInsertStats(lastInsertStats)
-		insertElapsed += time.Since(start)
-		batches++
-		ids = ids[:0]
-		docs = docs[:0]
-		return nil
-	}
 
-	for _, path := range files {
-		if targetReached() {
-			break
-		}
-		readBytes, compressedBytes, err := scanInputFile(path, func(raw []byte) error {
+		for _, path := range files {
 			if targetReached() {
-				return errStopScan
+				break
 			}
-			out.InputRows++
-			if !json.Valid(raw) {
-				if cfg.AllowErrors {
-					out.SkippedInvalidJSONRows++
-					return nil
+			readBytes, compressedBytes, err := scanInputFile(path, func(raw []byte) error {
+				select {
+				case <-ctx.Done():
+					return ctx.Err()
+				default:
 				}
-				return fmt.Errorf("invalid source JSON input row %d", out.InputRows)
-			}
-			if sourceHasher != nil {
-				if err := sourceHasher.Add(raw); err != nil {
-					return fmt.Errorf("hash source JSON input row %d: %w", out.InputRows, err)
+				if targetReached() {
+					return errStopScan
 				}
-			}
-			genStart := time.Now()
-			doc, err := buildDocument(raw, format, cfg.Projection, cfg.StorageLayout, &encoder)
+				out.InputRows++
+				if !json.Valid(raw) {
+					if cfg.AllowErrors {
+						out.SkippedInvalidJSONRows++
+						return nil
+					}
+					return fmt.Errorf("invalid source JSON input row %d", out.InputRows)
+				}
+				if sourceHasher != nil {
+					if err := sourceHasher.Add(raw); err != nil {
+						return fmt.Errorf("hash source JSON input row %d: %w", out.InputRows, err)
+					}
+				}
+				genStart := time.Now()
+				doc, err := buildDocument(raw, format, cfg.Projection, cfg.StorageLayout, &encoder)
+				if err != nil {
+					return fmt.Errorf("build document input row %d: %w", out.InputRows, err)
+				}
+				id := documentID(uint64(out.Rows + 1))
+				generationElapsed += time.Since(genStart)
+				ids = append(ids, id)
+				docs = append(docs, doc)
+				logicalBytes += int64(len(id) + len(doc))
+				out.Rows++
+				if len(ids) >= cfg.BatchSize {
+					if err := emitBatch(); err != nil {
+						return err
+					}
+				}
+				if cfg.Progress && time.Since(lastProgress) >= time.Second {
+					fmt.Fprintf(os.Stderr, "loaded %d/%d rows into %s\n", out.Rows, cfg.Rows, cfg.DBDir)
+					lastProgress = time.Now()
+				}
+				return nil
+			})
 			if err != nil {
-				return fmt.Errorf("build document input row %d: %w", out.InputRows, err)
+				return fmt.Errorf("read %s: %w", path, err)
 			}
-			id := documentID(uint64(out.Rows + 1))
-			generationElapsed += time.Since(genStart)
-			ids = append(ids, id)
-			docs = append(docs, doc)
-			out.Rows++
-			if len(ids) >= cfg.BatchSize {
-				if err := flushBatch(); err != nil {
-					return err
-				}
-			}
-			if cfg.Progress && time.Since(lastProgress) >= time.Second {
-				fmt.Fprintf(os.Stderr, "loaded %d/%d rows into %s\n", out.Rows, cfg.Rows, cfg.DBDir)
-				lastProgress = time.Now()
-			}
-			return nil
-		})
-		if err != nil {
-			return loadResult{}, fmt.Errorf("read %s: %w", path, err)
+			out.Files = append(out.Files, path)
+			out.BytesRead += readBytes
+			out.CompressedBytes += compressedBytes
 		}
-		out.Files = append(out.Files, path)
-		out.BytesRead += readBytes
-		out.CompressedBytes += compressedBytes
+		return emitBatch()
 	}
-	if err := flushBatch(); err != nil {
+
+	pipelineStats, err := runPreparedLoadPipeline(
+		context.Background(),
+		cfg.LoadPipelineDepth,
+		prepare,
+		func(batch preparedLoadBatch) error {
+			if _, err := collection.InsertBatch(batch.ids, batch.docs); err != nil {
+				return err
+			}
+			lastInsertStats := collection.LastInsertStats()
+			insertStats.add(lastInsertStats)
+			aggregateMetadataAccounting.addInsertStats(lastInsertStats)
+			batches++
+			return nil
+		},
+	)
+	if err != nil {
 		return loadResult{}, err
 	}
 	flushStart := time.Now()
@@ -769,9 +819,30 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		checkpointElapsed = time.Since(checkpointStart)
 	}
 	wallElapsed := time.Since(wallStart)
+	var memAfter runtime.MemStats
+	runtime.ReadMemStats(&memAfter)
 	out.Batches = batches
 	out.GenerationSec = generationElapsed.Seconds()
-	out.InsertSec = insertElapsed.Seconds()
+	out.InsertSec = pipelineStats.InsertElapsed.Seconds()
+	out.PipelineDepth = pipelineStats.Depth
+	out.ProducerElapsedSec = pipelineStats.ProducerElapsed.Seconds()
+	out.ProducerWorkSec = pipelineStats.ProducerWork.Seconds()
+	out.ProducerWaitSec = pipelineStats.ProducerWait.Seconds()
+	out.ConsumerWaitSec = pipelineStats.ConsumerWait.Seconds()
+	out.OverlapSec = pipelineStats.Overlap.Seconds()
+	out.MaxQueuedBatches = pipelineStats.MaxQueuedBatches
+	out.MaxBatchBytes = pipelineStats.MaxBatchBytes
+	out.MaxInFlightBytesBound = pipelineStats.MaxInFlightBytesBound
+	if memAfter.TotalAlloc >= memBefore.TotalAlloc {
+		out.AllocatedBytes = memAfter.TotalAlloc - memBefore.TotalAlloc
+	}
+	if memAfter.Mallocs >= memBefore.Mallocs {
+		out.Allocations = memAfter.Mallocs - memBefore.Mallocs
+	}
+	if out.Rows > 0 {
+		out.AllocatedBytesPerRow = float64(out.AllocatedBytes) / float64(out.Rows)
+		out.AllocationsPerRow = float64(out.Allocations) / float64(out.Rows)
+	}
 	out.InsertStats = insertStats.result()
 	aggregateMetadataAccounting.apply(&out)
 	out.FlushSec = flushElapsed.Seconds()
