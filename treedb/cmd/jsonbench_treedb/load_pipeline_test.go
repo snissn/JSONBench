@@ -357,6 +357,23 @@ func TestRunTreeDBBenchmarkEnginePrepareResourceLimitFailsClosed(t *testing.T) {
 	assertNoRowAfterRejectedEnginePrepare(t, cfg)
 }
 
+func TestBuildDocumentFullPreparedChargesExactCloneCapacity(t *testing.T) {
+	for _, size := range []int{1, 8, 63, 1023, 128 << 10} {
+		raw := []byte(strings.Repeat("x", size))
+		doc, err := buildDocument(raw, collections.DocumentFormatJSON, "full", storageLayoutColumnStoreFullPrepared, nil)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(doc) != size || cap(doc) != size || !reflect.DeepEqual(doc, raw) {
+			t.Fatalf("size %d: len=%d cap=%d equal=%v", size, len(doc), cap(doc), reflect.DeepEqual(doc, raw))
+		}
+		doc[0] = 'y'
+		if raw[0] != 'x' {
+			t.Fatalf("size %d: clone aliases source", size)
+		}
+	}
+}
+
 func TestRunTreeDBBenchmarkEnginePrepareDocumentAboveEligibilityFailsClosed(t *testing.T) {
 	dataDir := t.TempDir()
 	row := `{"did":"did:plc:large","time_us":1700000000000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.post"},"extra":"` + strings.Repeat("x", 130<<10) + `"}` + "\n"

@@ -1363,6 +1363,14 @@ func buildDocument(raw []byte, format collections.DocumentFormat, projection, st
 		if format == collections.DocumentFormatTemplateV1 {
 			return collections.EncodeTemplateV1DocumentJSON(raw)
 		}
+		if storageLayout == storageLayoutColumnStoreFullPrepared {
+			// Source credit is acquired before this clone using len(raw).
+			// make with an explicit length gives the charged target lane an
+			// exact-capacity backing, unlike bytes.Clone's append growth.
+			doc := make([]byte, len(raw))
+			copy(doc, raw)
+			return doc, nil
+		}
 		return bytes.Clone(raw), nil
 	}
 	fields, err := projectionFields(projection)
