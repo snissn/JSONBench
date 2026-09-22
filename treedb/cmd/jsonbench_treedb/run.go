@@ -736,7 +736,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	engineTarget := cfg.StorageLayout == storageLayoutColumnStoreFullPrepared && cfg.Projection == "full" && format == collections.DocumentFormatJSON &&
 		retainedEncoding == string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1) && cfg.EnginePrepareMaxBytes > 0
 	const preparedSourceScratchReserve = 2 << 20 // Scanner token and gzip/buffered-reader scratch.
-	const preparedSourceBatchCeiling = 16 << 20
+	const preparedSourceBatchCeiling = 10 << 20
 	var sourceBatchCeiling, sourceSlotBytes int64
 	var engineReservation *enginePrepareReservation
 	if engineTarget {

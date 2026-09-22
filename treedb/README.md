@@ -103,7 +103,7 @@ engine charges are not yet proven upper bounds for transient preparation,
 typed-part, WAL, or root-publication allocations, so the ledger is not a proven
 peak heap cap. For the full-prepared semantic-stream target, both engine depths accept
 at most 16,384 rows per batch, cap a source line at 1 MiB, and bound
-source-side batch bytes to the lesser of 16 MiB and the larger of 1 MiB or
+source-side batch bytes to the lesser of 10 MiB and the larger of 1 MiB or
 one-sixteenth of the engine byte limit. A separate source slot stays free
 while the consumer prepares the depth-zero control, so source reading can
 overlap that preparation and commit. With `-validate-reconstruction`, source
