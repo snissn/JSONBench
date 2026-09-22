@@ -128,12 +128,15 @@ type loadResult struct {
 	EngineCommitSec                    float64            `json:"engine_commit_seconds"`
 	EngineOverlapSec                   float64            `json:"engine_prepare_commit_overlap_seconds"`
 	EnginePeakOwnedBytes               int64              `json:"engine_peak_owned_bytes"`
+	EnginePeakReservedBytes            int64              `json:"engine_peak_reserved_bytes"`
 	EnginePeakOwnedBatches             int                `json:"engine_peak_owned_batches"`
 	ProducerElapsedSec                 float64            `json:"producer_elapsed_seconds"`
 	ProducerWorkSec                    float64            `json:"producer_work_seconds"`
 	ProducerWaitSec                    float64            `json:"producer_wait_seconds"`
+	ProducerCreditWaitSec              float64            `json:"producer_credit_wait_seconds"`
 	ConsumerWaitSec                    float64            `json:"consumer_wait_seconds"`
 	OverlapSec                         float64            `json:"overlap_seconds"`
+	InputOverlapSec                    float64            `json:"input_overlap_seconds"`
 	MaxQueuedBatches                   int                `json:"max_queued_batches"`
 	MaxBatchBytes                      int64              `json:"max_batch_bytes"`
 	MaxInFlightBytesBound              int64              `json:"max_in_flight_bytes_bound"`
@@ -723,8 +726,23 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	retainedEncoding, _ := collections.ColumnRetainedPayloadEncodingStatus(collection.Meta().Options.ColumnStore)
 	// Direct programmatic configs with an unset limit keep the historical
 	// ordinary path. Parsed target CLI configs require a positive limit.
-	engineTarget := cfg.StorageLayout == storageLayoutColumnStoreFullPrepared &&
+	engineTarget := cfg.StorageLayout == storageLayoutColumnStoreFullPrepared && cfg.Projection == "full" && format == collections.DocumentFormatJSON &&
 		retainedEncoding == string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1) && cfg.EnginePrepareMaxBytes > 0
+	const preparedSourceScratchReserve = 2 << 20 // Scanner token and gzip/buffered-reader scratch.
+	const preparedSourceBatchCeiling = 16 << 20
+	var sourceBatchCeiling, sourceSlotBytes int64
+	var engineReservation *enginePrepareReservation
+	if engineTarget {
+		if cfg.EnginePrepareMaxBytes <= preparedSourceScratchReserve {
+			return loadResult{}, fmt.Errorf("%w: prepared engine byte limit %d cannot reserve source scratch", collections.ErrPreparedInsertResourceLimit, cfg.EnginePrepareMaxBytes)
+		}
+		engineReservation = newEnginePrepareReservation(cfg.EnginePrepareMaxBytes - preparedSourceScratchReserve)
+		sourceBatchCeiling = min(int64(preparedSourceBatchCeiling), max(int64(1<<20), cfg.EnginePrepareMaxBytes/16))
+		sourceSlotBytes = sourceBatchCeiling + int64(2*cfg.BatchSize)*24
+		if sourceSlotBytes >= engineReservation.limit {
+			return loadResult{}, fmt.Errorf("%w: prepared source slot %d exceeds byte limit %d", collections.ErrPreparedInsertResourceLimit, sourceSlotBytes, cfg.EnginePrepareMaxBytes)
+		}
+	}
 	var memBefore runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
 	out := loadResult{Files: make([]string, 0, len(files))}
@@ -739,6 +757,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var enginePrepared, engineCommitted int
 	var engineAbandoned atomic.Int64
 	var engineFallbackBatches atomic.Int64
+	var producerCreditWait atomic.Int64
 	var engineFallbackReason string
 	var engineLiveBytes, enginePeakOwnedBytes atomic.Int64
 	var engineLiveBatches, enginePeakOwnedBatches atomic.Int64
@@ -760,16 +779,96 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		engineLiveBytes.Add(-prepared.OwnedBytes())
 		engineLiveBatches.Add(-1)
 	}
+	prepareEngineBatch := func(ctx context.Context, batch *preparedLoadBatch) error {
+		if !engineTarget {
+			return nil
+		}
+		for {
+			creditWaitStart := time.Now()
+			extra, err := engineReservation.acquireAvailable(ctx, sourceSlotBytes)
+			if cfg.EnginePrepareDepth == 1 {
+				producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+			}
+			if err != nil {
+				if batch.prepCreditReady != nil {
+					close(batch.prepCreditReady)
+				}
+				return err
+			}
+			batch.reservation += extra
+			if batch.prepCreditReady != nil {
+				close(batch.prepCreditReady)
+				batch.prepCreditReady = nil
+			}
+			hadOther := engineReservation.otherOwner(batch.reservation)
+			batch.enginePrepareStart = time.Now()
+			batch.engine, err = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, batch.reservation)
+			batch.enginePrepareEnd = time.Now()
+			enginePrepareElapsed += batch.enginePrepareEnd.Sub(batch.enginePrepareStart)
+			if err == nil {
+				enginePrepared++
+				trackPrepared(batch.engine)
+				engineReservation.shrink(batch.reservation, batch.engine.ReservedBytes())
+				batch.reservation = batch.engine.ReservedBytes()
+				return nil
+			}
+			if cfg.EnginePrepareDepth == 1 && errors.Is(err, collections.ErrPreparedInsertResourceLimit) && hadOther {
+				// A temporary shortfall is not a structural resource rejection.
+				// Retire excess credit so the ordered committer can finish, then
+				// retry once its reservation has been returned.
+				engineReservation.release(extra)
+				batch.reservation -= extra
+				creditWaitStart = time.Now()
+				err := engineReservation.waitForOtherOwner(ctx, batch.reservation)
+				producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			if errors.Is(err, collections.ErrPreparedInsertResourceLimit) || !errors.Is(err, collections.ErrPreparedInsertIneligible) {
+				return err
+			}
+			engineFallbackReason = err.Error()
+			engineFallbackBatches.Add(1)
+			return nil
+		}
+	}
 	wallStart := time.Now()
 	var sourceHasher *canonicalJSONHasher
-	if cfg.ValidateReconstruction {
+	if cfg.ValidateReconstruction && !engineTarget {
 		sourceHasher = newCanonicalJSONHasher()
 	}
 
 	prepare := func(ctx context.Context, emit func(context.Context, preparedLoadBatch) error) error {
 		var encoder collections.TemplateV1Encoder
-		ids := make([][]byte, 0, cfg.BatchSize)
-		docs := make([][]byte, 0, cfg.BatchSize)
+		var ids, docs [][]byte
+		if !engineTarget {
+			ids = make([][]byte, 0, cfg.BatchSize)
+			docs = make([][]byte, 0, cfg.BatchSize)
+		}
+		var currentReservation int64
+		defer func() {
+			if currentReservation != 0 {
+				engineReservation.release(currentReservation)
+			}
+		}()
+		ensureBatchBuffers := func() error {
+			if !engineTarget || currentReservation != 0 {
+				return nil
+			}
+			outerBytes := int64(2*cfg.BatchSize) * 24
+			creditWaitStart := time.Now()
+			err := engineReservation.acquire(ctx, outerBytes)
+			producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+			if err != nil {
+				return err
+			}
+			currentReservation = outerBytes
+			ids = make([][]byte, 0, cfg.BatchSize)
+			docs = make([][]byte, 0, cfg.BatchSize)
+			return nil
+		}
 		var logicalBytes int64
 		batchOrdinal := 0
 		lastProgress := time.Now()
@@ -789,33 +888,50 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				ids:          ids,
 				docs:         docs,
 				logicalBytes: logicalBytes,
+				reservation:  currentReservation,
 			}
-			if engineTarget && cfg.EnginePrepareDepth == 1 {
-				batch.enginePrepareStart = time.Now()
-				var prepareErr error
-				batch.engine, prepareErr = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, cfg.EnginePrepareMaxBytes)
-				batch.enginePrepareEnd = time.Now()
-				enginePrepareElapsed += batch.enginePrepareEnd.Sub(batch.enginePrepareStart)
-				if prepareErr != nil {
-					if errors.Is(prepareErr, collections.ErrPreparedInsertResourceLimit) || !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
-						return prepareErr
+			if engineTarget {
+				if cfg.EnginePrepareDepth == 1 {
+					if err := prepareEngineBatch(ctx, &batch); err != nil {
+						currentReservation = batch.reservation
+						return err
 					}
-					engineFallbackReason = prepareErr.Error()
-					engineFallbackBatches.Add(1)
-				} else {
-					enginePrepared++
-					trackPrepared(batch.engine)
+				} else if cfg.LoadPipelineDepth > 0 {
+					batch.prepCreditReady = make(chan struct{})
 				}
 			}
+			currentReservation = 0 // ownership transfers to the emitted batch
 			if err := emit(ctx, batch); err != nil {
-				if batch.engine != nil {
-					batch.engine.Abandon()
-					releasePrepared(batch.engine)
-					engineAbandoned.Add(1)
+				// Depth zero invokes insert synchronously, so the consumer has
+				// already released this batch. At depth one, a failed send did not
+				// transfer it to the consumer.
+				if cfg.LoadPipelineDepth > 0 {
+					if batch.engine != nil {
+						batch.engine.Abandon()
+						releasePrepared(batch.engine)
+						engineAbandoned.Add(1)
+					}
+					if engineReservation != nil {
+						engineReservation.release(batch.reservation)
+					}
 				}
 				return err
 			}
-			ids, docs = resetPreparedLoadBuffers(ids, docs, cfg.BatchSize, cfg.LoadPipelineDepth == 0)
+			if batch.prepCreditReady != nil {
+				creditWaitStart := time.Now()
+				select {
+				case <-batch.prepCreditReady:
+				case <-ctx.Done():
+					producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+					return ctx.Err()
+				}
+				producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+			}
+			if engineTarget {
+				ids, docs = nil, nil // allocate successor backing only after admission
+			} else {
+				ids, docs = resetPreparedLoadBuffers(ids, docs, cfg.BatchSize, cfg.LoadPipelineDepth == 0)
+			}
 			logicalBytes = 0
 			return nil
 		}
@@ -847,6 +963,30 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 					}
 					return fmt.Errorf("invalid source JSON input row %d", out.InputRows)
 				}
+				if err := ensureBatchBuffers(); err != nil {
+					return err
+				}
+				if engineTarget {
+					// The full projection clones this source row. Check the request
+					// and outer slice capacities before the clone can allocate.
+					outerBytes := int64(cap(ids)+cap(docs)) * 24
+					needed := outerBytes + logicalBytes + int64(len(raw)) + 8
+					if needed > currentReservation {
+						if needed > engineReservation.limit {
+							return fmt.Errorf("%w: source batch needs %d bytes before input row %d, limit %d", collections.ErrPreparedInsertResourceLimit, needed, out.InputRows, engineReservation.limit)
+						}
+						creditWaitStart := time.Now()
+						err := engineReservation.acquire(ctx, needed-currentReservation)
+						producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+						if err != nil {
+							return err
+						}
+						currentReservation = needed
+					}
+					if logicalBytes+int64(len(raw)+8) > sourceBatchCeiling {
+						return fmt.Errorf("%w: prepared source batch exceeds %d bytes at input row %d", collections.ErrPreparedInsertResourceLimit, sourceBatchCeiling, out.InputRows)
+					}
+				}
 				if sourceHasher != nil {
 					if err := sourceHasher.Add(raw); err != nil {
 						return fmt.Errorf("hash source JSON input row %d: %w", out.InputRows, err)
@@ -858,9 +998,6 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 					return fmt.Errorf("build document input row %d: %w", out.InputRows, err)
 				}
 				id := documentID(uint64(out.Rows + 1))
-				if engineTarget && logicalBytes+int64(len(id)+len(doc)) > max(int64(1<<20), cfg.EnginePrepareMaxBytes/2) {
-					return fmt.Errorf("prepared input batch exceeds source-side byte ceiling at input row %d", out.InputRows)
-				}
 				generationElapsed += time.Since(genStart)
 				ids = append(ids, id)
 				docs = append(docs, doc)
@@ -892,7 +1029,16 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		cfg.LoadPipelineDepth,
 		prepare,
 		func(batch preparedLoadBatch) error {
+			if engineReservation != nil {
+				defer func() { engineReservation.release(batch.reservation) }()
+			}
 			prepared := batch.engine
+			if engineTarget && cfg.EnginePrepareDepth == 0 {
+				if err := prepareEngineBatch(context.Background(), &batch); err != nil {
+					return err
+				}
+				prepared = batch.engine
+			}
 			if prepared != nil && !previousCommitStart.IsZero() {
 				start := batch.enginePrepareStart
 				if start.Before(previousCommitStart) {
@@ -904,22 +1050,6 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				}
 				if end.After(start) {
 					engineOverlapElapsed += end.Sub(start)
-				}
-			}
-			if engineTarget && cfg.EnginePrepareDepth == 0 {
-				start := time.Now()
-				var prepareErr error
-				prepared, prepareErr = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, cfg.EnginePrepareMaxBytes)
-				enginePrepareElapsed += time.Since(start)
-				if prepareErr != nil {
-					if errors.Is(prepareErr, collections.ErrPreparedInsertResourceLimit) || !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
-						return prepareErr
-					}
-					engineFallbackReason = prepareErr.Error()
-					engineFallbackBatches.Add(1)
-				} else {
-					enginePrepared++
-					trackPrepared(prepared)
 				}
 			}
 			start := time.Now()
@@ -946,6 +1076,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			return nil
 		},
 		func(batch preparedLoadBatch) {
+			if engineReservation != nil {
+				engineReservation.release(batch.reservation)
+			}
 			if batch.engine != nil {
 				batch.engine.Abandon()
 				releasePrepared(batch.engine)
@@ -953,8 +1086,47 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			}
 		},
 	)
+	// Pipeline work excludes only channel-send wait. Reservation admission and
+	// the depth-zero credit handoff also leave the producer idle; remove those
+	// waits before reporting work or overlap. Depth-one preparation is producer
+	// work, so expose source overlap separately from engine/commit overlap.
+	pipelineStats.ProducerCreditWait = time.Duration(producerCreditWait.Load())
+	pipelineStats.ProducerWork = max(0, pipelineStats.ProducerWork-pipelineStats.ProducerCreditWait)
+	pipelineStats.Overlap = max(0, pipelineStats.Overlap-pipelineStats.ProducerCreditWait)
+	pipelineStats.InputOverlap = max(0, pipelineStats.Overlap-engineOverlapElapsed)
 	if err != nil {
 		return loadResult{}, err
+	}
+	if cfg.ValidateReconstruction && engineTarget {
+		// Canonicalization decodes into dynamic Go maps. Keep that validation
+		// pass outside the bounded producer/committer window so its scratch
+		// cannot coexist with either prepared token or commit buffers.
+		sourceHasher = newCanonicalJSONHasher()
+		remaining := out.Rows
+		for _, path := range out.Files {
+			if remaining == 0 {
+				break
+			}
+			_, _, scanErr := scanInputFile(path, 1<<20, func(raw []byte) error {
+				if remaining == 0 {
+					return errStopScan
+				}
+				if !json.Valid(raw) {
+					return nil
+				}
+				if err := sourceHasher.Add(raw); err != nil {
+					return err
+				}
+				remaining--
+				return nil
+			})
+			if scanErr != nil {
+				return loadResult{}, fmt.Errorf("hash source after bounded load %s: %w", path, scanErr)
+			}
+		}
+		if remaining != 0 {
+			return loadResult{}, fmt.Errorf("source hash pass found %d of %d loaded rows", out.Rows-remaining, out.Rows)
+		}
 	}
 	flushStart := time.Now()
 	if err := collection.Flush(); err != nil {
@@ -992,12 +1164,17 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	out.EngineCommitSec = engineCommitElapsed.Seconds()
 	out.EngineOverlapSec = engineOverlapElapsed.Seconds()
 	out.EnginePeakOwnedBytes = enginePeakOwnedBytes.Load()
+	if engineReservation != nil {
+		out.EnginePeakReservedBytes = engineReservation.peak() + preparedSourceScratchReserve
+	}
 	out.EnginePeakOwnedBatches = int(enginePeakOwnedBatches.Load())
 	out.ProducerElapsedSec = pipelineStats.ProducerElapsed.Seconds()
 	out.ProducerWorkSec = pipelineStats.ProducerWork.Seconds()
 	out.ProducerWaitSec = pipelineStats.ProducerWait.Seconds()
+	out.ProducerCreditWaitSec = pipelineStats.ProducerCreditWait.Seconds()
 	out.ConsumerWaitSec = pipelineStats.ConsumerWait.Seconds()
 	out.OverlapSec = pipelineStats.Overlap.Seconds()
+	out.InputOverlapSec = pipelineStats.InputOverlap.Seconds()
 	out.MaxQueuedBatches = pipelineStats.MaxQueuedBatches
 	out.MaxBatchBytes = pipelineStats.MaxBatchBytes
 	out.MaxInFlightBytesBound = pipelineStats.MaxInFlightBytesBound

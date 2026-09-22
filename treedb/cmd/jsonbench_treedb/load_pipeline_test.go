@@ -322,6 +322,7 @@ func TestRunTreeDBBenchmarkEnginePrepareDepthMatchesControl(t *testing.T) {
 		if result.Load.EnginePreparePath != "prepared" || result.Load.EnginePreparedBatches != 2 ||
 			result.Load.EngineCommittedBatches != 2 || result.Load.EngineAbandonedBatches != 0 ||
 			result.Load.EnginePeakOwnedBytes <= 0 || result.Load.EnginePeakOwnedBytes > 2*(16<<20) ||
+			result.Load.EnginePeakReservedBytes <= 0 || result.Load.EnginePeakReservedBytes > 16<<20 ||
 			result.Load.EnginePeakOwnedBatches < 1 || result.Load.EnginePeakOwnedBatches > 2 {
 			t.Fatalf("engine accounting=%+v", result.Load)
 		}
@@ -422,29 +423,30 @@ func TestRunTreeDBBenchmarkNonTargetLargeRowKeepsOrdinarySourcePolicy(t *testing
 
 func TestCollectTreeDBRowsExportsLoadPipelineAccounting(t *testing.T) {
 	rows := collectTreeDBRowsForMetadataCostTest(t, loadResult{
-		EnginePrepareDepth:     1,
-		EnginePreparePath:      "prepared",
-		EnginePreparedBatches:  4,
-		EngineCommittedBatches: 4,
-		EngineFallbackBatches:  1,
-		EnginePrepareSec:       1.1,
-		EngineCommitSec:        3.2,
-		EngineOverlapSec:       0.7,
-		EnginePeakOwnedBytes:   123456,
-		EnginePeakOwnedBatches: 2,
-		PipelineDepth:          1,
-		ProducerElapsedSec:     3.5,
-		ProducerWorkSec:        3.0,
-		ProducerWaitSec:        0.5,
-		ConsumerWaitSec:        0.25,
-		OverlapSec:             2.0,
-		MaxQueuedBatches:       1,
-		MaxBatchBytes:          8_000_000,
-		MaxInFlightBytesBound:  16_000_000,
-		AllocatedBytes:         24_000_000,
-		Allocations:            12_000,
-		AllocatedBytesPerRow:   4_000_000,
-		AllocationsPerRow:      2_000,
+		EnginePrepareDepth:      1,
+		EnginePreparePath:       "prepared",
+		EnginePreparedBatches:   4,
+		EngineCommittedBatches:  4,
+		EngineFallbackBatches:   1,
+		EnginePrepareSec:        1.1,
+		EngineCommitSec:         3.2,
+		EngineOverlapSec:        0.7,
+		EnginePeakOwnedBytes:    123456,
+		EnginePeakReservedBytes: 654321,
+		EnginePeakOwnedBatches:  2,
+		PipelineDepth:           1,
+		ProducerElapsedSec:      3.5,
+		ProducerWorkSec:         3.0,
+		ProducerWaitSec:         0.5,
+		ConsumerWaitSec:         0.25,
+		OverlapSec:              2.0,
+		MaxQueuedBatches:        1,
+		MaxBatchBytes:           8_000_000,
+		MaxInFlightBytesBound:   16_000_000,
+		AllocatedBytes:          24_000_000,
+		Allocations:             12_000,
+		AllocatedBytesPerRow:    4_000_000,
+		AllocationsPerRow:       2_000,
 	})
 	if len(rows) != 1 {
 		t.Fatalf("report rows=%d want 1", len(rows))
@@ -453,7 +455,7 @@ func TestCollectTreeDBRowsExportsLoadPipelineAccounting(t *testing.T) {
 	if row.LoadEnginePrepareDepth != 1 || row.LoadEnginePreparePath != "prepared" ||
 		row.LoadEnginePreparedBatches != 4 || row.LoadEngineCommittedBatches != 4 || row.LoadEngineFallbackBatches != 1 ||
 		row.LoadEnginePrepareSec != 1.1 || row.LoadEngineCommitSec != 3.2 || row.LoadEngineOverlapSec != 0.7 ||
-		row.LoadEnginePeakOwnedBytes != 123456 || row.LoadEnginePeakOwnedBatches != 2 {
+		row.LoadEnginePeakOwnedBytes != 123456 || row.LoadEnginePeakReservedBytes != 654321 || row.LoadEnginePeakOwnedBatches != 2 {
 		t.Fatalf("engine prepare report row=%+v", row)
 	}
 	if row.LoadPipelineDepth != 1 || row.LoadProducerWorkSec != 3.0 ||

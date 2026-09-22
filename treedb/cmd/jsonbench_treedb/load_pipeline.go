@@ -15,6 +15,8 @@ type preparedLoadBatch struct {
 	docs               [][]byte
 	logicalBytes       int64
 	engine             *collections.PreparedInsertBatch
+	reservation        int64
+	prepCreditReady    chan struct{}
 	enginePrepareStart time.Time
 	enginePrepareEnd   time.Time
 }
@@ -23,10 +25,12 @@ type loadPipelineStats struct {
 	Depth                 int
 	ProducerElapsed       time.Duration
 	ProducerWait          time.Duration
+	ProducerCreditWait    time.Duration
 	ProducerWork          time.Duration
 	ConsumerWait          time.Duration
 	InsertElapsed         time.Duration
 	Overlap               time.Duration
+	InputOverlap          time.Duration
 	MaxQueuedBatches      int
 	MaxBatchBytes         int64
 	MaxInFlightBytesBound int64

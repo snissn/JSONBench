@@ -95,19 +95,30 @@ input batch ahead. For eligible no-index full-retained JSON collections,
 rows for batch N+1 while the single committer publishes N. The same-refactor
 engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
 serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
-`-engine-prepare-max-bytes` defaults to 512 MiB per prepared batch. It screens
-input and estimated preparation/commit reservations, but is not a proven peak
-heap cap. For the full-prepared semantic-stream target, both engine depths accept
+`-engine-prepare-max-bytes` defaults to 512 MiB for the shared producer and
+committer reservation ledger. The loader reserves source scratch and acquires
+batch credits before cloning a source row; after preparation it retains the
+engine's estimated commit reservation until ordered commit or abandon. Those
+engine charges are not yet proven upper bounds for transient preparation,
+typed-part, WAL, or root-publication allocations, so the ledger is not a proven
+peak heap cap. For the full-prepared semantic-stream target, both engine depths accept
 at most 16,384 rows per batch, cap a source line at 1 MiB, and bound
-source-side batch bytes to the larger of 1 MiB and half the engine byte limit.
+source-side batch bytes to the lesser of 16 MiB and the larger of 1 MiB or
+one-sixteenth of the engine byte limit. A separate source slot stays free
+while the consumer prepares the depth-zero control, so source reading can
+overlap that preparation and commit. With `-validate-reconstruction`, source
+canonicalization runs in a separate pass after all load tokens have retired;
+its dynamic JSON-map scratch is outside the concurrent load reservation ledger.
 A source or engine resource-limit rejection fails the load without falling back
 to an ordinary insert; a 129 KiB to 1 MiB document reaches the engine and is
 rejected there. Unsupported collection configurations use ordinary `InsertBatch`
 and record the fallback reason. Non-target layouts retain their ordinary input
 policy. The result JSON and
 report export selected path, fallback reason and count, prepared/committed/abandoned counts, engine work
-and measured prepare/commit overlap, peak live prepared bytes/batches, input
-producer work/wait and conservative logical in-flight input bytes, total load
+and measured prepare/commit overlap, peak live prepared bytes/batches, peak
+reserved credits (including the fixed source reserve), input
+producer work/channel wait/credit wait, input-only overlap (with concurrent
+engine preparation subtracted), and conservative logical in-flight input bytes, total load
 allocations, bytes/row, and allocations/row. Peak prepared bytes cover the
 owned prepared objects, not total DB/cache RSS; collect process RSS separately.
 Batch order, row numbering, malformed-row accounting, source hashes, query
