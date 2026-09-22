@@ -32,6 +32,10 @@ github.com/snissn/gomap v0.6.2-0.20260922220302-ebda7bd353e7 h1:Pg94+R5IDlemTwMY
 github.com/snissn/gomap v0.6.2-0.20260922220302-ebda7bd353e7/go.mod h1:anx8CZFVRtVoJpKLgET9qIRFE0PMqTCLbS+oKmJ/goo=
 github.com/snissn/gomap v0.6.2-0.20260922222145-68cc5d6d7423 h1:XXVtn7drzcULOl6i62wmspzGtSBDoKGqk7B+AB9fbw8=
 github.com/snissn/gomap v0.6.2-0.20260922222145-68cc5d6d7423/go.mod h1:anx8CZFVRtVoJpKLgET9qIRFE0PMqTCLbS+oKmJ/goo=
+github.com/snissn/gomap v0.6.2-0.20260922224650-32be9498981b h1:yaX4dyHhud1KDjCYznLBz4FGS7CYKjiitICBy4MsJnU=
+github.com/snissn/gomap v0.6.2-0.20260922224650-32be9498981b/go.mod h1:anx8CZFVRtVoJpKLgET9qIRFE0PMqTCLbS+oKmJ/goo=
+github.com/snissn/gomap v0.6.2-0.20260922224947-582e2787553a h1:72EExitz0ZIpXAPe/eml1xNBTvun4idufwnOIak4J8s=
+github.com/snissn/gomap v0.6.2-0.20260922224947-582e2787553a/go.mod h1:anx8CZFVRtVoJpKLgET9qIRFE0PMqTCLbS+oKmJ/goo=
 github.com/stretchr/testify v1.11.1 h1:7s2iGBzp5EwR7/aIZr8ao5+dra3wiQyKjjFuvgVKu7U=
 github.com/stretchr/testify v1.11.1/go.mod h1:wZwfW3scLgRK+23gO65QZefKpKQRnfz6sD981Nm4B6U=
 github.com/tidwall/btree v1.8.1 h1:27ehoXvm5AG/g+1VxLS1SD3vRhp/H7LuEfwNvddEdmA=

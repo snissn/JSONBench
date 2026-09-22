@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/snissn/gomap/TreeDB/collections"
 )
 
 func TestRunPreparedLoadPipelinePreparesNextBatchWhileInsertBlocked(t *testing.T) {
@@ -234,7 +236,7 @@ func TestParseRunFlagsRejectsNegativeLoadPipelineDepth(t *testing.T) {
 }
 
 func TestParseRunFlagsRejectsOversizedEnginePreparedBatch(t *testing.T) {
-	if _, err := parseRunFlags([]string{"-scale", "1m", "-engine-prepare-depth", "1", "-batch-size", "16385"}); err == nil {
+	if _, err := parseRunFlags([]string{"-scale", "1m", "-storage-layout", "column-store-full-prepared", "-engine-prepare-depth", "1", "-batch-size", "16385"}); err == nil {
 		t.Fatal("oversized engine prepared batch accepted")
 	}
 }
@@ -339,7 +341,7 @@ func TestRunTreeDBBenchmarkEnginePrepareDepthMatchesControl(t *testing.T) {
 	}
 }
 
-func TestRunTreeDBBenchmarkEnginePrepareOversizedFallback(t *testing.T) {
+func TestRunTreeDBBenchmarkEnginePrepareResourceLimitFailsClosed(t *testing.T) {
 	dataDir := writeMalformedJSONBenchFixture(t)
 	cfg := malformedJSONBenchRunConfig(t, dataDir)
 	cfg.AllowErrors = true
@@ -347,19 +349,14 @@ func TestRunTreeDBBenchmarkEnginePrepareOversizedFallback(t *testing.T) {
 	cfg.LoadPipelineDepth = 1
 	cfg.EnginePrepareDepth = 1
 	cfg.EnginePrepareMaxBytes = 1
-	result, err := runTreeDBBenchmark(cfg)
-	if err != nil {
-		t.Fatal(err)
+	_, err := runTreeDBBenchmark(cfg)
+	if !errors.Is(err, collections.ErrPreparedInsertResourceLimit) {
+		t.Fatalf("load error=%v, want resource limit", err)
 	}
-	if result.Load.EnginePreparePath != "mixed-or-fallback" || result.Load.EngineFallbackReason == "" ||
-		result.Load.EngineFallbackBatches != 2 ||
-		result.Load.EnginePreparedBatches != 0 || result.Load.EngineCommittedBatches != 0 || result.Load.Rows != 2 ||
-		result.Reconstruction == nil || !result.Reconstruction.Valid {
-		t.Fatalf("fallback result=%+v reconstruction=%+v", result.Load, result.Reconstruction)
-	}
+	assertNoRowAfterRejectedEnginePrepare(t, cfg)
 }
 
-func TestRunTreeDBBenchmarkEnginePrepareDocumentAboveEligibilityFallsBack(t *testing.T) {
+func TestRunTreeDBBenchmarkEnginePrepareDocumentAboveEligibilityFailsClosed(t *testing.T) {
 	dataDir := t.TempDir()
 	row := `{"did":"did:plc:large","time_us":1700000000000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.post"},"extra":"` + strings.Repeat("x", 130<<10) + `"}` + "\n"
 	if err := os.WriteFile(filepath.Join(dataDir, "file_0001.json"), []byte(row), 0600); err != nil {
@@ -371,13 +368,55 @@ func TestRunTreeDBBenchmarkEnginePrepareDocumentAboveEligibilityFallsBack(t *tes
 	cfg.LoadPipelineDepth = 1
 	cfg.EnginePrepareDepth = 1
 	cfg.EnginePrepareMaxBytes = 512 << 20
+	_, err := runTreeDBBenchmark(cfg)
+	if !errors.Is(err, collections.ErrPreparedInsertResourceLimit) {
+		t.Fatalf("load error=%v, want resource limit", err)
+	}
+	assertNoRowAfterRejectedEnginePrepare(t, cfg)
+}
+
+func assertNoRowAfterRejectedEnginePrepare(t *testing.T, cfg runConfig) {
+	t.Helper()
+	backend, cleanup, err := openBackend(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer cleanup()
+	col, err := collections.NewCollectionManager(backend).OpenCollection(cfg.Collection)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got, err := col.Get(documentID(1)); err != nil || got != nil {
+		t.Fatalf("resource-rejected row was inserted: %s, %v", got, err)
+	}
+}
+
+func TestRunTreeDBBenchmarkNonTargetLargeRowKeepsOrdinarySourcePolicy(t *testing.T) {
+	dataDir := t.TempDir()
+	row := `{"did":"did:plc:large","time_us":1700000000000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.post"},"extra":"` + strings.Repeat("x", 1<<20) + `"}` + "\n"
+	if err := os.WriteFile(filepath.Join(dataDir, "file_0001.json"), []byte(row), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := malformedJSONBenchRunConfig(t, dataDir)
+	cfg.Rows = 1
+	cfg.BatchSize = 1
+	cfg.StorageLayout = storageLayoutRow
+	cfg.ValidateReconstruction = false
+	cfg.LoadPipelineDepth = 1
+	cfg.EnginePrepareDepth = 1
 	result, err := runTreeDBBenchmark(cfg)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if result.Load.EngineFallbackBatches != 1 || result.Load.EnginePreparedBatches != 0 ||
-		result.Load.EngineCommittedBatches != 0 || result.Reconstruction == nil || !result.Reconstruction.Valid {
-		t.Fatalf("fallback=%+v reconstruction=%+v", result.Load, result.Reconstruction)
+	if result.Load.Rows != 1 || result.Load.EnginePreparePath != "ordinary" || result.Load.EnginePreparedBatches != 0 {
+		t.Fatalf("ordinary non-target load=%+v", result.Load)
+	}
+	parsed, err := parseRunFlags([]string{"-storage-layout", "row", "-load-pipeline-depth", "0"})
+	if err != nil {
+		t.Fatalf("historical serial row-store flags: %v", err)
+	}
+	if parsed.LoadPipelineDepth != 0 || parsed.EnginePrepareDepth != 1 {
+		t.Fatalf("parsed historical serial row-store flags=%+v", parsed)
 	}
 }
 

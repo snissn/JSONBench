@@ -352,11 +352,8 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if cfg.LoadPipelineDepth < 0 {
 		return cfg, errors.New("-load-pipeline-depth must be non-negative")
 	}
-	if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 || cfg.EnginePrepareMaxBytes <= 0 || (cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1) {
-		return cfg, errors.New("-engine-prepare-depth requires 0 or 1; depth 1 requires -load-pipeline-depth 1 and a positive byte limit")
-	}
-	if cfg.EnginePrepareDepth == 1 && cfg.BatchSize > 16<<10 {
-		return cfg, errors.New("-engine-prepare-depth 1 requires -batch-size at most 16384")
+	if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 {
+		return cfg, errors.New("-engine-prepare-depth requires 0 or 1")
 	}
 	if cfg.CompactBatchSize <= 0 {
 		return cfg, errors.New("-compact-batch-size must be positive")
@@ -382,6 +379,14 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if isColumnStoreLayout(cfg.StorageLayout) {
 		if _, err := columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout, cfg.RetainedPayloadEncoding); err != nil {
 			return cfg, err
+		}
+	}
+	if enginePreparationTargetConfig(cfg) {
+		if cfg.EnginePrepareMaxBytes <= 0 || cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1 {
+			return cfg, errors.New("target engine preparation requires a positive byte limit and depth 1 requires -load-pipeline-depth 1")
+		}
+		if cfg.BatchSize > 16<<10 {
+			return cfg, errors.New("target engine preparation requires -batch-size at most 16384")
 		}
 	}
 	if cfg.ValidateReconstruction && !isFullDataColumnStoreLayout(cfg.StorageLayout) {
@@ -702,11 +707,24 @@ func createCollection(manager *collections.CollectionManager, cfg runConfig) (*c
 	return collection, nil
 }
 
+func enginePreparationTargetConfig(cfg runConfig) bool {
+	if cfg.StorageLayout != storageLayoutColumnStoreFullPrepared {
+		return false
+	}
+	encoding, _ := columnStoreRetainedPayloadEncodingStatus(cfg)
+	return encoding == string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1)
+}
+
 func loadData(collection *collections.Collection, backend *backenddb.DB, cfg runConfig, files []string) (loadResult, error) {
 	format, err := collectionFormat(cfg.Format)
 	if err != nil {
 		return loadResult{}, err
 	}
+	retainedEncoding, _ := collections.ColumnRetainedPayloadEncodingStatus(collection.Meta().Options.ColumnStore)
+	// Direct programmatic configs with an unset limit keep the historical
+	// ordinary path. Parsed target CLI configs require a positive limit.
+	engineTarget := cfg.StorageLayout == storageLayoutColumnStoreFullPrepared &&
+		retainedEncoding == string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1) && cfg.EnginePrepareMaxBytes > 0
 	var memBefore runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
 	out := loadResult{Files: make([]string, 0, len(files))}
@@ -772,14 +790,14 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				docs:         docs,
 				logicalBytes: logicalBytes,
 			}
-			if cfg.EnginePrepareDepth == 1 {
+			if engineTarget && cfg.EnginePrepareDepth == 1 {
 				batch.enginePrepareStart = time.Now()
 				var prepareErr error
 				batch.engine, prepareErr = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, cfg.EnginePrepareMaxBytes)
 				batch.enginePrepareEnd = time.Now()
 				enginePrepareElapsed += batch.enginePrepareEnd.Sub(batch.enginePrepareStart)
 				if prepareErr != nil {
-					if !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
+					if errors.Is(prepareErr, collections.ErrPreparedInsertResourceLimit) || !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
 						return prepareErr
 					}
 					engineFallbackReason = prepareErr.Error()
@@ -807,7 +825,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				break
 			}
 			maxInputLineBytes := 1 << 30
-			if cfg.EnginePrepareDepth == 1 {
+			if engineTarget {
 				// The prepared lane fails closed on unusually large source rows
 				// before Scanner can grow to its ordinary 1 GiB token limit.
 				maxInputLineBytes = 1 << 20
@@ -840,7 +858,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 					return fmt.Errorf("build document input row %d: %w", out.InputRows, err)
 				}
 				id := documentID(uint64(out.Rows + 1))
-				if cfg.EnginePrepareDepth == 1 && logicalBytes+int64(len(id)+len(doc)) > max(int64(1<<20), cfg.EnginePrepareMaxBytes/2) {
+				if engineTarget && logicalBytes+int64(len(id)+len(doc)) > max(int64(1<<20), cfg.EnginePrepareMaxBytes/2) {
 					return fmt.Errorf("prepared input batch exceeds source-side byte ceiling at input row %d", out.InputRows)
 				}
 				generationElapsed += time.Since(genStart)
@@ -888,13 +906,13 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 					engineOverlapElapsed += end.Sub(start)
 				}
 			}
-			if cfg.EnginePrepareDepth == 0 {
+			if engineTarget && cfg.EnginePrepareDepth == 0 {
 				start := time.Now()
 				var prepareErr error
 				prepared, prepareErr = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, cfg.EnginePrepareMaxBytes)
 				enginePrepareElapsed += time.Since(start)
 				if prepareErr != nil {
-					if !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
+					if errors.Is(prepareErr, collections.ErrPreparedInsertResourceLimit) || !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
 						return prepareErr
 					}
 					engineFallbackReason = prepareErr.Error()
@@ -958,7 +976,10 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	out.InsertSec = pipelineStats.InsertElapsed.Seconds()
 	out.PipelineDepth = pipelineStats.Depth
 	out.EnginePrepareDepth = cfg.EnginePrepareDepth
-	out.EnginePreparePath = "prepared"
+	out.EnginePreparePath = "ordinary"
+	if engineTarget {
+		out.EnginePreparePath = "prepared"
+	}
 	if engineFallbackReason != "" {
 		out.EnginePreparePath = "mixed-or-fallback"
 	}

@@ -97,12 +97,14 @@ engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historic
 serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
 `-engine-prepare-max-bytes` defaults to 512 MiB per prepared batch. It screens
 input and estimated preparation/commit reservations, but is not a proven peak
-heap cap. Engine depth 1 accepts at most 16,384 rows per batch, caps a source
-line at 1 MiB, and bounds source-side batch bytes to the larger of 1 MiB and
-half the engine byte limit. A line or batch beyond those source limits fails
-the load before unbounded input growth. An engine-ineligible batch within the
-source limits uses ordinary `InsertBatch` and records the fallback reason;
-hard preparation errors fail the load. The result JSON and
+heap cap. For the full-prepared semantic-stream target, both engine depths accept
+at most 16,384 rows per batch, cap a source line at 1 MiB, and bound
+source-side batch bytes to the larger of 1 MiB and half the engine byte limit.
+A source or engine resource-limit rejection fails the load without falling back
+to an ordinary insert; a 129 KiB to 1 MiB document reaches the engine and is
+rejected there. Unsupported collection configurations use ordinary `InsertBatch`
+and record the fallback reason. Non-target layouts retain their ordinary input
+policy. The result JSON and
 report export selected path, fallback reason and count, prepared/committed/abandoned counts, engine work
 and measured prepare/commit overlap, peak live prepared bytes/batches, input
 producer work/wait and conservative logical in-flight input bytes, total load
