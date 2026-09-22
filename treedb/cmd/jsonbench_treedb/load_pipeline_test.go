@@ -3,7 +3,10 @@ package main
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"reflect"
+	"strings"
 	"testing"
 	"time"
 )
@@ -230,6 +233,25 @@ func TestParseRunFlagsRejectsNegativeLoadPipelineDepth(t *testing.T) {
 	}
 }
 
+func TestParseRunFlagsRejectsOversizedEnginePreparedBatch(t *testing.T) {
+	if _, err := parseRunFlags([]string{"-scale", "1m", "-engine-prepare-depth", "1", "-batch-size", "16385"}); err == nil {
+		t.Fatal("oversized engine prepared batch accepted")
+	}
+}
+
+func TestPreparedInputScannerFailsClosedOnLargeLine(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "input.json")
+	if err := os.WriteFile(path, []byte(`{"value":"`+strings.Repeat("x", 2<<20)+`"}`+"\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, _, err := scanInputFile(path, 1<<20, func([]byte) error {
+		t.Fatal("oversized line reached document builder")
+		return nil
+	}); err == nil || !strings.Contains(err.Error(), "source line 1") || !strings.Contains(err.Error(), path) {
+		t.Fatalf("oversized line error=%v, want path and line", err)
+	}
+}
+
 func TestRunTreeDBBenchmarkPipelinedLoadMatchesSerialReconstruction(t *testing.T) {
 	dataDir := writeMalformedJSONBenchFixture(t)
 	serialCfg := malformedJSONBenchRunConfig(t, dataDir)
@@ -279,7 +301,7 @@ func TestRunTreeDBBenchmarkEnginePrepareDepthMatchesControl(t *testing.T) {
 	controlCfg.BatchSize = 1
 	controlCfg.LoadPipelineDepth = 1
 	controlCfg.EnginePrepareDepth = 0
-	controlCfg.EnginePrepareMaxBytes = 1 << 20
+	controlCfg.EnginePrepareMaxBytes = 16 << 20
 	control, err := runTreeDBBenchmark(controlCfg)
 	if err != nil {
 		t.Fatal(err)
@@ -297,7 +319,7 @@ func TestRunTreeDBBenchmarkEnginePrepareDepthMatchesControl(t *testing.T) {
 		}
 		if result.Load.EnginePreparePath != "prepared" || result.Load.EnginePreparedBatches != 2 ||
 			result.Load.EngineCommittedBatches != 2 || result.Load.EngineAbandonedBatches != 0 ||
-			result.Load.EnginePeakOwnedBytes <= 0 || result.Load.EnginePeakOwnedBytes > 2*(1<<20) ||
+			result.Load.EnginePeakOwnedBytes <= 0 || result.Load.EnginePeakOwnedBytes > 2*(16<<20) ||
 			result.Load.EnginePeakOwnedBatches < 1 || result.Load.EnginePeakOwnedBatches > 2 {
 			t.Fatalf("engine accounting=%+v", result.Load)
 		}
@@ -334,6 +356,28 @@ func TestRunTreeDBBenchmarkEnginePrepareOversizedFallback(t *testing.T) {
 		result.Load.EnginePreparedBatches != 0 || result.Load.EngineCommittedBatches != 0 || result.Load.Rows != 2 ||
 		result.Reconstruction == nil || !result.Reconstruction.Valid {
 		t.Fatalf("fallback result=%+v reconstruction=%+v", result.Load, result.Reconstruction)
+	}
+}
+
+func TestRunTreeDBBenchmarkEnginePrepareDocumentAboveEligibilityFallsBack(t *testing.T) {
+	dataDir := t.TempDir()
+	row := `{"did":"did:plc:large","time_us":1700000000000000,"kind":"commit","commit":{"operation":"create","collection":"app.bsky.feed.post"},"extra":"` + strings.Repeat("x", 130<<10) + `"}` + "\n"
+	if err := os.WriteFile(filepath.Join(dataDir, "file_0001.json"), []byte(row), 0600); err != nil {
+		t.Fatal(err)
+	}
+	cfg := malformedJSONBenchRunConfig(t, dataDir)
+	cfg.Rows = 1
+	cfg.BatchSize = 1
+	cfg.LoadPipelineDepth = 1
+	cfg.EnginePrepareDepth = 1
+	cfg.EnginePrepareMaxBytes = 512 << 20
+	result, err := runTreeDBBenchmark(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Load.EngineFallbackBatches != 1 || result.Load.EnginePreparedBatches != 0 ||
+		result.Load.EngineCommittedBatches != 0 || result.Reconstruction == nil || !result.Reconstruction.Valid {
+		t.Fatalf("fallback=%+v reconstruction=%+v", result.Load, result.Reconstruction)
 	}
 }
 

@@ -95,9 +95,14 @@ input batch ahead. For eligible no-index full-retained JSON collections,
 rows for batch N+1 while the single committer publishes N. The same-refactor
 engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
 serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
-`-engine-prepare-max-bytes` defaults to 512 MiB per owned prepared batch. An
-ineligible or oversized batch uses ordinary `InsertBatch` and records the
-fallback reason; hard preparation errors fail the load. The result JSON and
+`-engine-prepare-max-bytes` defaults to 512 MiB per prepared batch. It screens
+input and estimated preparation/commit reservations, but is not a proven peak
+heap cap. Engine depth 1 accepts at most 16,384 rows per batch, caps a source
+line at 1 MiB, and bounds source-side batch bytes to the larger of 1 MiB and
+half the engine byte limit. A line or batch beyond those source limits fails
+the load before unbounded input growth. An engine-ineligible batch within the
+source limits uses ordinary `InsertBatch` and records the fallback reason;
+hard preparation errors fail the load. The result JSON and
 report export selected path, fallback reason and count, prepared/committed/abandoned counts, engine work
 and measured prepare/commit overlap, peak live prepared bytes/batches, input
 producer work/wait and conservative logical in-flight input bytes, total load

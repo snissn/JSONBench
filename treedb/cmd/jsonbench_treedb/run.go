@@ -355,6 +355,9 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 || cfg.EnginePrepareMaxBytes <= 0 || (cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1) {
 		return cfg, errors.New("-engine-prepare-depth requires 0 or 1; depth 1 requires -load-pipeline-depth 1 and a positive byte limit")
 	}
+	if cfg.EnginePrepareDepth == 1 && cfg.BatchSize > 16<<10 {
+		return cfg, errors.New("-engine-prepare-depth 1 requires -batch-size at most 16384")
+	}
 	if cfg.CompactBatchSize <= 0 {
 		return cfg, errors.New("-compact-batch-size must be positive")
 	}
@@ -803,7 +806,13 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			if targetReached() {
 				break
 			}
-			readBytes, compressedBytes, err := scanInputFile(path, func(raw []byte) error {
+			maxInputLineBytes := 1 << 30
+			if cfg.EnginePrepareDepth == 1 {
+				// The prepared lane fails closed on unusually large source rows
+				// before Scanner can grow to its ordinary 1 GiB token limit.
+				maxInputLineBytes = 1 << 20
+			}
+			readBytes, compressedBytes, err := scanInputFile(path, maxInputLineBytes, func(raw []byte) error {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -831,6 +840,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 					return fmt.Errorf("build document input row %d: %w", out.InputRows, err)
 				}
 				id := documentID(uint64(out.Rows + 1))
+				if cfg.EnginePrepareDepth == 1 && logicalBytes+int64(len(id)+len(doc)) > max(int64(1<<20), cfg.EnginePrepareMaxBytes/2) {
+					return fmt.Errorf("prepared input batch exceeds source-side byte ceiling at input row %d", out.InputRows)
+				}
 				generationElapsed += time.Since(genStart)
 				ids = append(ids, id)
 				docs = append(docs, doc)
@@ -1058,7 +1070,7 @@ func documentScanStatsResultFromCollectionStats(stats collections.CollectionDocu
 
 var errStopScan = errors.New("stop scan")
 
-func scanInputFile(path string, fn func(raw []byte) error) (readBytes int64, compressedBytes int64, err error) {
+func scanInputFile(path string, maxInputLineBytes int, fn func(raw []byte) error) (readBytes int64, compressedBytes int64, err error) {
 	stat, statErr := os.Stat(path)
 	if statErr == nil {
 		compressedBytes = stat.Size()
@@ -1080,8 +1092,10 @@ func scanInputFile(path string, fn func(raw []byte) error) (readBytes int64, com
 	}
 	counting := &countingReader{reader: reader}
 	scanner := bufio.NewScanner(counting)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024*1024)
+	scanner.Buffer(make([]byte, 0, min(1<<20, maxInputLineBytes)), maxInputLineBytes)
+	var lineNumber int
 	for scanner.Scan() {
+		lineNumber++
 		raw := bytes.TrimSpace(scanner.Bytes())
 		if len(raw) == 0 {
 			continue
@@ -1094,7 +1108,7 @@ func scanInputFile(path string, fn func(raw []byte) error) (readBytes int64, com
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return counting.n, compressedBytes, err
+		return counting.n, compressedBytes, fmt.Errorf("source line %d in %s: %w", lineNumber+1, path, err)
 	}
 	return counting.n, compressedBytes, nil
 }
