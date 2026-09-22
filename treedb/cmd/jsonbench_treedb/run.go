@@ -129,11 +129,18 @@ type loadResult struct {
 	EngineOverlapSec                   float64            `json:"engine_prepare_commit_overlap_seconds"`
 	EnginePeakOwnedBytes               int64              `json:"engine_peak_owned_bytes"`
 	EnginePeakReservedBytes            int64              `json:"engine_peak_reserved_bytes"`
+	EngineMaxTokenReservedBytes        int64              `json:"engine_max_token_reserved_bytes"`
+	EngineBudgetRetryBatches           int                `json:"engine_budget_retry_batches"`
+	EngineFirstBudgetRetryReason       string             `json:"engine_first_budget_retry_reason,omitempty"`
 	EnginePeakOwnedBatches             int                `json:"engine_peak_owned_batches"`
 	ProducerElapsedSec                 float64            `json:"producer_elapsed_seconds"`
 	ProducerWorkSec                    float64            `json:"producer_work_seconds"`
 	ProducerWaitSec                    float64            `json:"producer_wait_seconds"`
 	ProducerCreditWaitSec              float64            `json:"producer_credit_wait_seconds"`
+	ProducerSourceCreditWaitSec        float64            `json:"producer_source_credit_wait_seconds"`
+	ProducerPrepareCreditWaitSec       float64            `json:"producer_prepare_credit_wait_seconds"`
+	ProducerRetryWaitSec               float64            `json:"producer_retry_wait_seconds"`
+	ProducerHandoffWaitSec             float64            `json:"producer_handoff_wait_seconds"`
 	ConsumerWaitSec                    float64            `json:"consumer_wait_seconds"`
 	OverlapSec                         float64            `json:"overlap_seconds"`
 	InputOverlapSec                    float64            `json:"input_overlap_seconds"`
@@ -758,6 +765,10 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var engineAbandoned atomic.Int64
 	var engineFallbackBatches atomic.Int64
 	var producerCreditWait atomic.Int64
+	var producerSourceCreditWait, producerPrepareCreditWait, producerRetryWait, producerHandoffWait atomic.Int64
+	var engineMaxTokenReservedBytes atomic.Int64
+	var engineBudgetRetryBatches atomic.Int64
+	var engineFirstBudgetRetryReason string
 	var engineFallbackReason string
 	var engineLiveBytes, enginePeakOwnedBytes atomic.Int64
 	var engineLiveBatches, enginePeakOwnedBatches atomic.Int64
@@ -787,7 +798,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			creditWaitStart := time.Now()
 			extra, err := engineReservation.acquireAvailable(ctx, sourceSlotBytes)
 			if cfg.EnginePrepareDepth == 1 {
-				producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+				elapsed := int64(time.Since(creditWaitStart))
+				producerCreditWait.Add(elapsed)
+				producerPrepareCreditWait.Add(elapsed)
 			}
 			if err != nil {
 				if batch.prepCreditReady != nil {
@@ -808,11 +821,17 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			if err == nil {
 				enginePrepared++
 				trackPrepared(batch.engine)
+				for peak := engineMaxTokenReservedBytes.Load(); batch.engine.ReservedBytes() > peak && !engineMaxTokenReservedBytes.CompareAndSwap(peak, batch.engine.ReservedBytes()); peak = engineMaxTokenReservedBytes.Load() {
+				}
 				engineReservation.shrink(batch.reservation, batch.engine.ReservedBytes())
 				batch.reservation = batch.engine.ReservedBytes()
 				return nil
 			}
 			if cfg.EnginePrepareDepth == 1 && errors.Is(err, collections.ErrPreparedInsertResourceLimit) && hadOther {
+				engineBudgetRetryBatches.Add(1)
+				if engineFirstBudgetRetryReason == "" {
+					engineFirstBudgetRetryReason = err.Error()
+				}
 				// A temporary shortfall is not a structural resource rejection.
 				// Retire excess credit so the ordered committer can finish, then
 				// retry once its reservation has been returned.
@@ -820,7 +839,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				batch.reservation -= extra
 				creditWaitStart = time.Now()
 				err := engineReservation.waitForOtherOwner(ctx, batch.reservation)
-				producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+				elapsed := int64(time.Since(creditWaitStart))
+				producerCreditWait.Add(elapsed)
+				producerRetryWait.Add(elapsed)
 				if err != nil {
 					return err
 				}
@@ -860,7 +881,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			outerBytes := int64(2*cfg.BatchSize) * 24
 			creditWaitStart := time.Now()
 			err := engineReservation.acquire(ctx, outerBytes)
-			producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+			elapsed := int64(time.Since(creditWaitStart))
+			producerCreditWait.Add(elapsed)
+			producerSourceCreditWait.Add(elapsed)
 			if err != nil {
 				return err
 			}
@@ -922,10 +945,14 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				select {
 				case <-batch.prepCreditReady:
 				case <-ctx.Done():
-					producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+					elapsed := int64(time.Since(creditWaitStart))
+					producerCreditWait.Add(elapsed)
+					producerHandoffWait.Add(elapsed)
 					return ctx.Err()
 				}
-				producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+				elapsed := int64(time.Since(creditWaitStart))
+				producerCreditWait.Add(elapsed)
+				producerHandoffWait.Add(elapsed)
 			}
 			if engineTarget {
 				ids, docs = nil, nil // allocate successor backing only after admission
@@ -977,7 +1004,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 						}
 						creditWaitStart := time.Now()
 						err := engineReservation.acquire(ctx, needed-currentReservation)
-						producerCreditWait.Add(int64(time.Since(creditWaitStart)))
+						elapsed := int64(time.Since(creditWaitStart))
+						producerCreditWait.Add(elapsed)
+						producerSourceCreditWait.Add(elapsed)
 						if err != nil {
 							return err
 						}
@@ -1168,10 +1197,17 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		out.EnginePeakReservedBytes = engineReservation.peak() + preparedSourceScratchReserve
 	}
 	out.EnginePeakOwnedBatches = int(enginePeakOwnedBatches.Load())
+	out.EngineMaxTokenReservedBytes = engineMaxTokenReservedBytes.Load()
+	out.EngineBudgetRetryBatches = int(engineBudgetRetryBatches.Load())
+	out.EngineFirstBudgetRetryReason = engineFirstBudgetRetryReason
 	out.ProducerElapsedSec = pipelineStats.ProducerElapsed.Seconds()
 	out.ProducerWorkSec = pipelineStats.ProducerWork.Seconds()
 	out.ProducerWaitSec = pipelineStats.ProducerWait.Seconds()
 	out.ProducerCreditWaitSec = pipelineStats.ProducerCreditWait.Seconds()
+	out.ProducerSourceCreditWaitSec = time.Duration(producerSourceCreditWait.Load()).Seconds()
+	out.ProducerPrepareCreditWaitSec = time.Duration(producerPrepareCreditWait.Load()).Seconds()
+	out.ProducerRetryWaitSec = time.Duration(producerRetryWait.Load()).Seconds()
+	out.ProducerHandoffWaitSec = time.Duration(producerHandoffWait.Load()).Seconds()
 	out.ConsumerWaitSec = pipelineStats.ConsumerWait.Seconds()
 	out.OverlapSec = pipelineStats.Overlap.Seconds()
 	out.InputOverlapSec = pipelineStats.InputOverlap.Seconds()

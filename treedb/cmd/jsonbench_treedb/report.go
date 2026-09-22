@@ -212,11 +212,17 @@ type reportRow struct {
 	LoadEngineOverlapSec                                          float64   `json:"load_engine_prepare_commit_overlap_seconds,omitempty"`
 	LoadEnginePeakOwnedBytes                                      int64     `json:"load_engine_peak_owned_bytes,omitempty"`
 	LoadEnginePeakReservedBytes                                   int64     `json:"load_engine_peak_reserved_bytes,omitempty"`
+	LoadEngineMaxTokenReservedBytes                                int64     `json:"load_engine_max_token_reserved_bytes,omitempty"`
+	LoadEngineBudgetRetryBatches                                  int       `json:"load_engine_budget_retry_batches,omitempty"`
 	LoadEnginePeakOwnedBatches                                    int       `json:"load_engine_peak_owned_batches,omitempty"`
 	LoadProducerElapsedSec                                        float64   `json:"load_producer_elapsed_seconds,omitempty"`
 	LoadProducerWorkSec                                           float64   `json:"load_producer_work_seconds,omitempty"`
 	LoadProducerWaitSec                                           float64   `json:"load_producer_wait_seconds,omitempty"`
 	LoadProducerCreditWaitSec                                     float64   `json:"load_producer_credit_wait_seconds,omitempty"`
+	LoadProducerSourceCreditWaitSec                               float64   `json:"load_producer_source_credit_wait_seconds,omitempty"`
+	LoadProducerPrepareCreditWaitSec                              float64   `json:"load_producer_prepare_credit_wait_seconds,omitempty"`
+	LoadProducerRetryWaitSec                                      float64   `json:"load_producer_retry_wait_seconds,omitempty"`
+	LoadProducerHandoffWaitSec                                    float64   `json:"load_producer_handoff_wait_seconds,omitempty"`
 	LoadConsumerWaitSec                                           float64   `json:"load_consumer_wait_seconds,omitempty"`
 	LoadOverlapSec                                                float64   `json:"load_overlap_seconds,omitempty"`
 	LoadInputOverlapSec                                           float64   `json:"load_input_overlap_seconds,omitempty"`
@@ -707,11 +713,17 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				LoadEngineOverlapSec:               result.Load.EngineOverlapSec,
 				LoadEnginePeakOwnedBytes:           result.Load.EnginePeakOwnedBytes,
 				LoadEnginePeakReservedBytes:        result.Load.EnginePeakReservedBytes,
+				LoadEngineMaxTokenReservedBytes:     result.Load.EngineMaxTokenReservedBytes,
+				LoadEngineBudgetRetryBatches:       result.Load.EngineBudgetRetryBatches,
 				LoadEnginePeakOwnedBatches:         result.Load.EnginePeakOwnedBatches,
 				LoadProducerElapsedSec:             result.Load.ProducerElapsedSec,
 				LoadProducerWorkSec:                result.Load.ProducerWorkSec,
 				LoadProducerWaitSec:                result.Load.ProducerWaitSec,
 				LoadProducerCreditWaitSec:          result.Load.ProducerCreditWaitSec,
+				LoadProducerSourceCreditWaitSec:    result.Load.ProducerSourceCreditWaitSec,
+				LoadProducerPrepareCreditWaitSec:   result.Load.ProducerPrepareCreditWaitSec,
+				LoadProducerRetryWaitSec:           result.Load.ProducerRetryWaitSec,
+				LoadProducerHandoffWaitSec:         result.Load.ProducerHandoffWaitSec,
 				LoadConsumerWaitSec:                result.Load.ConsumerWaitSec,
 				LoadOverlapSec:                     result.Load.OverlapSec,
 				LoadInputOverlapSec:                result.Load.InputOverlapSec,

@@ -118,7 +118,8 @@ report export selected path, fallback reason and count, prepared/committed/aband
 and measured prepare/commit overlap, peak live prepared bytes/batches, peak
 reserved credits (including the fixed source reserve), input
 producer work/channel wait/credit wait, input-only overlap (with concurrent
-engine preparation subtracted), and conservative logical in-flight input bytes, total load
+engine preparation subtracted), credit-wait stage breakdown and prepared-token
+reservation/retry counters, and conservative logical in-flight input bytes, total load
 allocations, bytes/row, and allocations/row. Peak prepared bytes cover the
 owned prepared objects, not total DB/cache RSS; collect process RSS separately.
 Batch order, row numbering, malformed-row accounting, source hashes, query
