@@ -3,15 +3,20 @@ package main
 import (
 	"context"
 	"time"
+
+	"github.com/snissn/gomap/TreeDB/collections"
 )
 
 // preparedLoadBatch owns all IDs and documents for one ordered InsertBatch
 // handoff. The producer must not reuse these slices after emit returns.
 type preparedLoadBatch struct {
-	ordinal      int
-	ids          [][]byte
-	docs         [][]byte
-	logicalBytes int64
+	ordinal            int
+	ids                [][]byte
+	docs               [][]byte
+	logicalBytes       int64
+	engine             *collections.PreparedInsertBatch
+	enginePrepareStart time.Time
+	enginePrepareEnd   time.Time
 }
 
 type loadPipelineStats struct {
@@ -44,6 +49,7 @@ func runPreparedLoadPipeline(
 	depth int,
 	prepare func(context.Context, func(context.Context, preparedLoadBatch) error) error,
 	insert func(preparedLoadBatch) error,
+	discard ...func(preparedLoadBatch),
 ) (loadPipelineStats, error) {
 	stats := loadPipelineStats{Depth: depth}
 	if depth <= 0 {
@@ -112,6 +118,9 @@ func runPreparedLoadPipeline(
 		if insertErr != nil {
 			// Drain already-prepared work so the producer can observe cancellation
 			// and terminate; never insert another batch after the first failure.
+			if len(discard) != 0 {
+				discard[0](batch)
+			}
 			continue
 		}
 		insertStart := time.Now()

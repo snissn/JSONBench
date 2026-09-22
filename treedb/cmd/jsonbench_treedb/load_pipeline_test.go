@@ -158,6 +158,34 @@ func TestRunPreparedLoadPipelineCancelsProducerAfterInsertError(t *testing.T) {
 	}
 }
 
+func TestRunPreparedLoadPipelineDiscardsQueuedBatchAfterFirstError(t *testing.T) {
+	wantErr := errors.New("first commit failed")
+	queued := make(chan struct{})
+	var inserted, discarded []int
+	_, err := runPreparedLoadPipeline(
+		context.Background(), 2,
+		func(ctx context.Context, emit func(context.Context, preparedLoadBatch) error) error {
+			if err := emit(ctx, preparedLoadBatch{ordinal: 1}); err != nil {
+				return err
+			}
+			if err := emit(ctx, preparedLoadBatch{ordinal: 2}); err != nil {
+				return err
+			}
+			close(queued)
+			return nil
+		},
+		func(batch preparedLoadBatch) error {
+			inserted = append(inserted, batch.ordinal)
+			<-queued
+			return wantErr
+		},
+		func(batch preparedLoadBatch) { discarded = append(discarded, batch.ordinal) },
+	)
+	if !errors.Is(err, wantErr) || !reflect.DeepEqual(inserted, []int{1}) || !reflect.DeepEqual(discarded, []int{2}) {
+		t.Fatalf("error=%v inserted=%v discarded=%v", err, inserted, discarded)
+	}
+}
+
 func TestRunPreparedLoadPipelineDepthZeroIsSerial(t *testing.T) {
 	inserted := false
 	stats, err := runPreparedLoadPipeline(
@@ -244,26 +272,107 @@ func TestRunTreeDBBenchmarkPipelinedLoadMatchesSerialReconstruction(t *testing.T
 	}
 }
 
+func TestRunTreeDBBenchmarkEnginePrepareDepthMatchesControl(t *testing.T) {
+	dataDir := writeMalformedJSONBenchFixture(t)
+	controlCfg := malformedJSONBenchRunConfig(t, dataDir)
+	controlCfg.AllowErrors = true
+	controlCfg.BatchSize = 1
+	controlCfg.LoadPipelineDepth = 1
+	controlCfg.EnginePrepareDepth = 0
+	controlCfg.EnginePrepareMaxBytes = 1 << 20
+	control, err := runTreeDBBenchmark(controlCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	enabledCfg := controlCfg
+	enabledCfg.DBDir = t.TempDir()
+	enabledCfg.EnginePrepareDepth = 1
+	enabled, err := runTreeDBBenchmark(enabledCfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, result := range []runResult{control, enabled} {
+		if result.Load.InputRows != 3 || result.Load.Rows != 2 || result.Load.SkippedInvalidJSONRows != 1 {
+			t.Fatalf("load accounting=%+v", result.Load)
+		}
+		if result.Load.EnginePreparePath != "prepared" || result.Load.EnginePreparedBatches != 2 ||
+			result.Load.EngineCommittedBatches != 2 || result.Load.EngineAbandonedBatches != 0 ||
+			result.Load.EnginePeakOwnedBytes <= 0 || result.Load.EnginePeakOwnedBytes > 2*(1<<20) ||
+			result.Load.EnginePeakOwnedBatches < 1 || result.Load.EnginePeakOwnedBatches > 2 {
+			t.Fatalf("engine accounting=%+v", result.Load)
+		}
+		if result.Reconstruction == nil || !result.Reconstruction.Valid {
+			t.Fatalf("reconstruction=%+v", result.Reconstruction)
+		}
+	}
+	if control.Load.SourceCanonicalJSONHash != enabled.Load.SourceCanonicalJSONHash ||
+		control.Reconstruction.StoredCanonicalJSONHash != enabled.Reconstruction.StoredCanonicalJSONHash ||
+		len(control.Queries) != len(enabled.Queries) {
+		t.Fatalf("control/enabled hashes or query count differ")
+	}
+	for i := range control.Queries {
+		if control.Queries[i].Name != enabled.Queries[i].Name || control.Queries[i].ResultHash != enabled.Queries[i].ResultHash {
+			t.Fatalf("query %d differs: control=%+v enabled=%+v", i, control.Queries[i], enabled.Queries[i])
+		}
+	}
+}
+
+func TestRunTreeDBBenchmarkEnginePrepareOversizedFallback(t *testing.T) {
+	dataDir := writeMalformedJSONBenchFixture(t)
+	cfg := malformedJSONBenchRunConfig(t, dataDir)
+	cfg.AllowErrors = true
+	cfg.BatchSize = 1
+	cfg.LoadPipelineDepth = 1
+	cfg.EnginePrepareDepth = 1
+	cfg.EnginePrepareMaxBytes = 1
+	result, err := runTreeDBBenchmark(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if result.Load.EnginePreparePath != "mixed-or-fallback" || result.Load.EngineFallbackReason == "" ||
+		result.Load.EngineFallbackBatches != 2 ||
+		result.Load.EnginePreparedBatches != 0 || result.Load.EngineCommittedBatches != 0 || result.Load.Rows != 2 ||
+		result.Reconstruction == nil || !result.Reconstruction.Valid {
+		t.Fatalf("fallback result=%+v reconstruction=%+v", result.Load, result.Reconstruction)
+	}
+}
+
 func TestCollectTreeDBRowsExportsLoadPipelineAccounting(t *testing.T) {
 	rows := collectTreeDBRowsForMetadataCostTest(t, loadResult{
-		PipelineDepth:         1,
-		ProducerElapsedSec:    3.5,
-		ProducerWorkSec:       3.0,
-		ProducerWaitSec:       0.5,
-		ConsumerWaitSec:       0.25,
-		OverlapSec:            2.0,
-		MaxQueuedBatches:      1,
-		MaxBatchBytes:         8_000_000,
-		MaxInFlightBytesBound: 16_000_000,
-		AllocatedBytes:        24_000_000,
-		Allocations:           12_000,
-		AllocatedBytesPerRow:  4_000_000,
-		AllocationsPerRow:     2_000,
+		EnginePrepareDepth:     1,
+		EnginePreparePath:      "prepared",
+		EnginePreparedBatches:  4,
+		EngineCommittedBatches: 4,
+		EngineFallbackBatches:  1,
+		EnginePrepareSec:       1.1,
+		EngineCommitSec:        3.2,
+		EngineOverlapSec:       0.7,
+		EnginePeakOwnedBytes:   123456,
+		EnginePeakOwnedBatches: 2,
+		PipelineDepth:          1,
+		ProducerElapsedSec:     3.5,
+		ProducerWorkSec:        3.0,
+		ProducerWaitSec:        0.5,
+		ConsumerWaitSec:        0.25,
+		OverlapSec:             2.0,
+		MaxQueuedBatches:       1,
+		MaxBatchBytes:          8_000_000,
+		MaxInFlightBytesBound:  16_000_000,
+		AllocatedBytes:         24_000_000,
+		Allocations:            12_000,
+		AllocatedBytesPerRow:   4_000_000,
+		AllocationsPerRow:      2_000,
 	})
 	if len(rows) != 1 {
 		t.Fatalf("report rows=%d want 1", len(rows))
 	}
 	row := rows[0]
+	if row.LoadEnginePrepareDepth != 1 || row.LoadEnginePreparePath != "prepared" ||
+		row.LoadEnginePreparedBatches != 4 || row.LoadEngineCommittedBatches != 4 || row.LoadEngineFallbackBatches != 1 ||
+		row.LoadEnginePrepareSec != 1.1 || row.LoadEngineCommitSec != 3.2 || row.LoadEngineOverlapSec != 0.7 ||
+		row.LoadEnginePeakOwnedBytes != 123456 || row.LoadEnginePeakOwnedBatches != 2 {
+		t.Fatalf("engine prepare report row=%+v", row)
+	}
 	if row.LoadPipelineDepth != 1 || row.LoadProducerWorkSec != 3.0 ||
 		row.LoadProducerWaitSec != 0.5 || row.LoadOverlapSec != 2.0 ||
 		row.LoadMaxQueuedBatches != 1 || row.LoadMaxInFlightBytesBound != 16_000_000 {

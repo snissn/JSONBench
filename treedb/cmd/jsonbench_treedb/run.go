@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	treedb "github.com/snissn/gomap/TreeDB"
@@ -53,6 +54,8 @@ type runConfig struct {
 	Queries                 []string
 	BatchSize               int
 	LoadPipelineDepth       int
+	EnginePrepareDepth      int
+	EnginePrepareMaxBytes   int64
 	Profile                 string
 	QueryProfileDir         string
 	DataRoot                string
@@ -114,6 +117,18 @@ type loadResult struct {
 	GenerationSec                      float64            `json:"generation_seconds"`
 	InsertSec                          float64            `json:"insert_seconds"`
 	PipelineDepth                      int                `json:"pipeline_depth"`
+	EnginePrepareDepth                 int                `json:"engine_prepare_depth"`
+	EnginePreparePath                  string             `json:"engine_prepare_path"`
+	EngineFallbackReason               string             `json:"engine_fallback_reason,omitempty"`
+	EngineFallbackBatches              int                `json:"engine_fallback_batches"`
+	EnginePreparedBatches              int                `json:"engine_prepared_batches"`
+	EngineCommittedBatches             int                `json:"engine_committed_batches"`
+	EngineAbandonedBatches             int                `json:"engine_abandoned_batches"`
+	EnginePrepareSec                   float64            `json:"engine_prepare_seconds"`
+	EngineCommitSec                    float64            `json:"engine_commit_seconds"`
+	EngineOverlapSec                   float64            `json:"engine_prepare_commit_overlap_seconds"`
+	EnginePeakOwnedBytes               int64              `json:"engine_peak_owned_bytes"`
+	EnginePeakOwnedBatches             int                `json:"engine_peak_owned_batches"`
 	ProducerElapsedSec                 float64            `json:"producer_elapsed_seconds"`
 	ProducerWorkSec                    float64            `json:"producer_work_seconds"`
 	ProducerWaitSec                    float64            `json:"producer_wait_seconds"`
@@ -236,22 +251,24 @@ type queryRow map[string]any
 
 func parseRunFlags(args []string) (runConfig, error) {
 	cfg := runConfig{
-		DataDir:           "~/data/bluesky",
-		Scale:             "subset",
-		Format:            "json",
-		StorageLayout:     storageLayoutRow,
-		QueryMode:         queryModeOneShotEndToEnd,
-		MetadataMode:      metadataModeAutoAggregateMetadata,
-		Projection:        "full",
-		BatchSize:         defaultBatchSize,
-		LoadPipelineDepth: 1,
-		Profile:           "fast",
-		DataRoot:          "fast",
-		Collection:        defaultCollectionName,
-		Checkpoint:        true,
-		CompactBatchSize:  defaultBatchSize,
-		Tries:             1,
-		Queries:           append([]string(nil), jsonBenchQueryNames...),
+		DataDir:               "~/data/bluesky",
+		Scale:                 "subset",
+		Format:                "json",
+		StorageLayout:         storageLayoutRow,
+		QueryMode:             queryModeOneShotEndToEnd,
+		MetadataMode:          metadataModeAutoAggregateMetadata,
+		Projection:            "full",
+		BatchSize:             defaultBatchSize,
+		LoadPipelineDepth:     1,
+		EnginePrepareDepth:    1,
+		EnginePrepareMaxBytes: 512 << 20,
+		Profile:               "fast",
+		DataRoot:              "fast",
+		Collection:            defaultCollectionName,
+		Checkpoint:            true,
+		CompactBatchSize:      defaultBatchSize,
+		Tries:                 1,
+		Queries:               append([]string(nil), jsonBenchQueryNames...),
 	}
 	var queryList string
 	var deprecatedAllowShortData bool
@@ -273,6 +290,8 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q4a, q4b, q5, qexpr")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
 	fs.IntVar(&cfg.LoadPipelineDepth, "load-pipeline-depth", cfg.LoadPipelineDepth, "Prepared load batches queued ahead of InsertBatch; 0 preserves serial loading")
+	fs.IntVar(&cfg.EnginePrepareDepth, "engine-prepare-depth", cfg.EnginePrepareDepth, "Engine batches prepared ahead of ordered commit (0 or 1)")
+	fs.Int64Var(&cfg.EnginePrepareMaxBytes, "engine-prepare-max-bytes", cfg.EnginePrepareMaxBytes, "Maximum owned bytes for one engine-prepared batch")
 	fs.StringVar(&cfg.Profile, "profile", cfg.Profile, "TreeDB profile: fast, wal_on_fast, durable, bench")
 	fs.StringVar(&cfg.QueryProfileDir, "query-profile-dir", "", "Directory for per-query timed-attempt CPU and allocs pprof artifacts; disabled when empty")
 	fs.StringVar(&cfg.DataRoot, "data-root", cfg.DataRoot, "Collection data root storage: fast or compressed")
@@ -332,6 +351,9 @@ func parseRunFlags(args []string) (runConfig, error) {
 	}
 	if cfg.LoadPipelineDepth < 0 {
 		return cfg, errors.New("-load-pipeline-depth must be non-negative")
+	}
+	if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 || cfg.EnginePrepareMaxBytes <= 0 || (cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1) {
+		return cfg, errors.New("-engine-prepare-depth requires 0 or 1; depth 1 requires -load-pipeline-depth 1 and a positive byte limit")
 	}
 	if cfg.CompactBatchSize <= 0 {
 		return cfg, errors.New("-compact-batch-size must be positive")
@@ -691,6 +713,32 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var aggregateMetadataAccounting aggregateMetadataLoadAccounting
 	var flushElapsed time.Duration
 	var checkpointElapsed time.Duration
+	var enginePrepareElapsed, engineCommitElapsed, engineOverlapElapsed time.Duration
+	var previousCommitStart, previousCommitEnd time.Time
+	var enginePrepared, engineCommitted int
+	var engineAbandoned atomic.Int64
+	var engineFallbackBatches atomic.Int64
+	var engineFallbackReason string
+	var engineLiveBytes, enginePeakOwnedBytes atomic.Int64
+	var engineLiveBatches, enginePeakOwnedBatches atomic.Int64
+	trackPrepared := func(prepared *collections.PreparedInsertBatch) {
+		if prepared == nil {
+			return
+		}
+		liveBytes := engineLiveBytes.Add(prepared.OwnedBytes())
+		liveBatches := engineLiveBatches.Add(1)
+		for peak := enginePeakOwnedBytes.Load(); liveBytes > peak && !enginePeakOwnedBytes.CompareAndSwap(peak, liveBytes); peak = enginePeakOwnedBytes.Load() {
+		}
+		for peak := enginePeakOwnedBatches.Load(); liveBatches > peak && !enginePeakOwnedBatches.CompareAndSwap(peak, liveBatches); peak = enginePeakOwnedBatches.Load() {
+		}
+	}
+	releasePrepared := func(prepared *collections.PreparedInsertBatch) {
+		if prepared == nil {
+			return
+		}
+		engineLiveBytes.Add(-prepared.OwnedBytes())
+		engineLiveBatches.Add(-1)
+	}
 	wallStart := time.Now()
 	var sourceHasher *canonicalJSONHasher
 	if cfg.ValidateReconstruction {
@@ -721,7 +769,29 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				docs:         docs,
 				logicalBytes: logicalBytes,
 			}
+			if cfg.EnginePrepareDepth == 1 {
+				batch.enginePrepareStart = time.Now()
+				var prepareErr error
+				batch.engine, prepareErr = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, cfg.EnginePrepareMaxBytes)
+				batch.enginePrepareEnd = time.Now()
+				enginePrepareElapsed += batch.enginePrepareEnd.Sub(batch.enginePrepareStart)
+				if prepareErr != nil {
+					if !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
+						return prepareErr
+					}
+					engineFallbackReason = prepareErr.Error()
+					engineFallbackBatches.Add(1)
+				} else {
+					enginePrepared++
+					trackPrepared(batch.engine)
+				}
+			}
 			if err := emit(ctx, batch); err != nil {
+				if batch.engine != nil {
+					batch.engine.Abandon()
+					releasePrepared(batch.engine)
+					engineAbandoned.Add(1)
+				}
 				return err
 			}
 			ids, docs = resetPreparedLoadBuffers(ids, docs, cfg.BatchSize, cfg.LoadPipelineDepth == 0)
@@ -792,14 +862,65 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		cfg.LoadPipelineDepth,
 		prepare,
 		func(batch preparedLoadBatch) error {
-			if _, err := collection.InsertBatch(batch.ids, batch.docs); err != nil {
-				return err
+			prepared := batch.engine
+			if prepared != nil && !previousCommitStart.IsZero() {
+				start := batch.enginePrepareStart
+				if start.Before(previousCommitStart) {
+					start = previousCommitStart
+				}
+				end := batch.enginePrepareEnd
+				if end.After(previousCommitEnd) {
+					end = previousCommitEnd
+				}
+				if end.After(start) {
+					engineOverlapElapsed += end.Sub(start)
+				}
+			}
+			if cfg.EnginePrepareDepth == 0 {
+				start := time.Now()
+				var prepareErr error
+				prepared, prepareErr = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, cfg.EnginePrepareMaxBytes)
+				enginePrepareElapsed += time.Since(start)
+				if prepareErr != nil {
+					if !errors.Is(prepareErr, collections.ErrPreparedInsertIneligible) {
+						return prepareErr
+					}
+					engineFallbackReason = prepareErr.Error()
+					engineFallbackBatches.Add(1)
+				} else {
+					enginePrepared++
+					trackPrepared(prepared)
+				}
+			}
+			start := time.Now()
+			var commitErr error
+			if prepared != nil {
+				_, commitErr = prepared.Commit()
+				releasePrepared(prepared)
+				if commitErr == nil {
+					engineCommitted++
+				}
+			} else {
+				_, commitErr = collection.InsertBatch(batch.ids, batch.docs)
+			}
+			commitEnd := time.Now()
+			engineCommitElapsed += commitEnd.Sub(start)
+			previousCommitStart, previousCommitEnd = start, commitEnd
+			if commitErr != nil {
+				return commitErr
 			}
 			lastInsertStats := collection.LastInsertStats()
 			insertStats.add(lastInsertStats)
 			aggregateMetadataAccounting.addInsertStats(lastInsertStats)
 			batches++
 			return nil
+		},
+		func(batch preparedLoadBatch) {
+			if batch.engine != nil {
+				batch.engine.Abandon()
+				releasePrepared(batch.engine)
+				engineAbandoned.Add(1)
+			}
 		},
 	)
 	if err != nil {
@@ -824,6 +945,21 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	out.GenerationSec = generationElapsed.Seconds()
 	out.InsertSec = pipelineStats.InsertElapsed.Seconds()
 	out.PipelineDepth = pipelineStats.Depth
+	out.EnginePrepareDepth = cfg.EnginePrepareDepth
+	out.EnginePreparePath = "prepared"
+	if engineFallbackReason != "" {
+		out.EnginePreparePath = "mixed-or-fallback"
+	}
+	out.EngineFallbackReason = engineFallbackReason
+	out.EngineFallbackBatches = int(engineFallbackBatches.Load())
+	out.EnginePreparedBatches = enginePrepared
+	out.EngineCommittedBatches = engineCommitted
+	out.EngineAbandonedBatches = int(engineAbandoned.Load())
+	out.EnginePrepareSec = enginePrepareElapsed.Seconds()
+	out.EngineCommitSec = engineCommitElapsed.Seconds()
+	out.EngineOverlapSec = engineOverlapElapsed.Seconds()
+	out.EnginePeakOwnedBytes = enginePeakOwnedBytes.Load()
+	out.EnginePeakOwnedBatches = int(enginePeakOwnedBatches.Load())
 	out.ProducerElapsedSec = pipelineStats.ProducerElapsed.Seconds()
 	out.ProducerWorkSec = pipelineStats.ProducerWork.Seconds()
 	out.ProducerWaitSec = pipelineStats.ProducerWait.Seconds()

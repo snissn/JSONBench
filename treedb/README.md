@@ -89,15 +89,24 @@ column scans even when aggregate metadata is available, pass
 
 The run fails if fewer rows are available than requested.
 
-TreeDB loads use a bounded ordered producer/consumer handoff by default:
-`-load-pipeline-depth 1` permits one prepared batch to wait ahead of the batch
-currently in `InsertBatch`. Use `-load-pipeline-depth 0` as the exact serial
-control. The result JSON and generated report export producer work/wait,
-consumer wait, estimated overlap, maximum queued batches, maximum logical batch
-bytes, the conservative logical in-flight byte bound, total load allocations,
-bytes/row, and allocations/row. Batch insertion order,
-document IDs, malformed-row accounting, and reconstruction hashes are unchanged.
-The matrix scripts expose the same setting as `LOAD_PIPELINE_DEPTH`.
+TreeDB loads use two bounded stages. `-load-pipeline-depth 1` keeps one raw
+input batch ahead. For eligible no-index full-retained JSON collections,
+`-engine-prepare-depth 1` (default) also prepares retained blocks and declared
+rows for batch N+1 while the single committer publishes N. The same-refactor
+engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
+serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
+`-engine-prepare-max-bytes` defaults to 512 MiB per owned prepared batch. An
+ineligible or oversized batch uses ordinary `InsertBatch` and records the
+fallback reason; hard preparation errors fail the load. The result JSON and
+report export selected path, fallback reason and count, prepared/committed/abandoned counts, engine work
+and measured prepare/commit overlap, peak live prepared bytes/batches, input
+producer work/wait and conservative logical in-flight input bytes, total load
+allocations, bytes/row, and allocations/row. Peak prepared bytes cover the
+owned prepared objects, not total DB/cache RSS; collect process RSS separately.
+Batch order, row numbering, malformed-row accounting, source hashes, query
+hashes, and separate reopen reconstruction remain comparable. The matrix scripts
+expose `LOAD_PIPELINE_DEPTH`, `ENGINE_PREPARE_DEPTH`, and
+`ENGINE_PREPARE_MAX_BYTES`.
 
 To make the reported TreeDB storage column represent a post-load fully
 compacted database, enable post-load maintenance:
