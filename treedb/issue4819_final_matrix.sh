@@ -43,7 +43,7 @@ fi
 actual_fixture=$(sha256sum "$OUT/fixture-files.sha256" | awk '{print $1}')
 [[ "$actual_fixture" == "$FIXTURE_SHA256" ]] || { echo "fixture hash mismatch: $actual_fixture" >&2; exit 2; }
 printf 'engine=%s\nloader=%s\nbinary_sha256=%s\nfixture_sha256=%s\nengine_prepare_max_bytes=%s\nengine_idle_scratch_reserve_bytes=%s\ngo_inspect_sha256=%s\nbaseline_1m_sha256=%s\nbaseline_10m_sha256=%s\n' "$ENGINE_SHA" "$LOADER_SHA" "$actual_binary" "$actual_fixture" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" "$go_inspect_sha" "$(sha256sum "$OUT/1m-query-hashes.json" | awk '{print $1}')" "$(sha256sum "$OUT/10m-query-hashes.json" | awk '{print $1}')" > "$OUT/identity.txt"
-{ date -u; uname -a; lscpu; df -h "$OUT" "$DATA_DIR"; uptime; } > "$OUT/host-start.txt"
+{ date -u; uname -a; lscpu; free -h; df -h "$OUT" "$DATA_DIR"; uptime; } > "$OUT/host-start.txt"
 printf 'GOWORK=off\nGOMAXPROCS=12\nGO_INSPECT=%s\nGOROOT=%s\n' "$go_inspect_path" "${GOROOT:-}" > "$OUT/environment.txt"
 
 run_cell() {
@@ -112,5 +112,5 @@ run_cell 10m historical 0 0
 ) > "$OUT/fixture-files-after.sha256"
 cmp "$OUT/fixture-files.sha256" "$OUT/fixture-files-after.sha256"
 [[ "$(sha256sum "$BIN" | awk '{print $1}')" == "$BIN_SHA256" ]] || { echo "binary changed during matrix" >&2; exit 2; }
-{ date -u; df -h "$OUT"; uptime; } > "$OUT/host-finish.txt"
+{ date -u; free -h; df -h "$OUT"; uptime; } > "$OUT/host-finish.txt"
 date -u > "$OUT/complete.txt"
