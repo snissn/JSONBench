@@ -252,6 +252,28 @@ func TestDirectEnginePreparedBatchSizeFailsBeforeLoad(t *testing.T) {
 	assertNoRowAfterRejectedEnginePrepare(t, cfg)
 }
 
+func TestDirectEnginePreparedDepthFailsBeforeLoad(t *testing.T) {
+	for _, tc := range []struct {
+		name              string
+		depth, inputDepth int
+	}{
+		{name: "unsupported engine depth", depth: 2, inputDepth: 1},
+		{name: "ahead without input queue", depth: 1, inputDepth: 0},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			cfg := malformedJSONBenchRunConfig(t, writeMalformedJSONBenchFixture(t))
+			cfg.EnginePrepareMaxBytes = 512 << 20
+			cfg.EnginePrepareDepth = tc.depth
+			cfg.LoadPipelineDepth = tc.inputDepth
+			cfg.AllowErrors = true
+			if _, err := runTreeDBBenchmark(cfg); err == nil {
+				t.Fatal("invalid direct engine depth accepted")
+			}
+			assertNoRowAfterRejectedEnginePrepare(t, cfg)
+		})
+	}
+}
+
 func TestPreparedInputScannerFailsClosedOnLargeLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "input.json")
 	if err := os.WriteFile(path, []byte(`{"value":"`+strings.Repeat("x", 2<<20)+`"}`+"\n"), 0600); err != nil {
