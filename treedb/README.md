@@ -306,7 +306,9 @@ manifest contains
 retain the build command and module information with it. The fixture hash is
 the SHA-256 of the sorted per-file `sha256sum` list, computed by the runner
 before and after the matrix. The runner also checks that the binary embeds
-the pinned engine version without a local module replacement. The script runs
+the pinned engine version without a local module replacement. On a host
+without `go` on `PATH`, set `GO_INSPECT` to a Go inspector binary and `GOROOT`
+if that binary requires it; the runner records the inspector hash. The script runs
 five fresh 1M and 10M pairs in
 predeclared A-B-B-A-A-B-B-A-A-B order, plus separate historical input controls.
 Its analyzer checks the declared paired timing rule; the result is not a

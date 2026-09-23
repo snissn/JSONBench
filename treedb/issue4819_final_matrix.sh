@@ -10,6 +10,9 @@ done
 (( ENGINE_PREPARE_MAX_BYTES > ENGINE_IDLE_SCRATCH_RESERVE_BYTES )) || { echo "memory gate must exceed idle scratch reserve" >&2; exit 2; }
 [[ ! -e "$OUT" ]] || { echo "refusing existing output: $OUT" >&2; exit 2; }
 [[ -x "$BIN" && -f "$BUILD_MANIFEST" && -d "$DATA_DIR" && -f "$ANALYZER" ]] || { echo "binary, build manifest, fixture, or analyzer missing" >&2; exit 2; }
+GO_INSPECT=${GO_INSPECT:-go}
+go_inspect_path=$(command -v "$GO_INSPECT") || { echo "missing Go build-info inspector: $GO_INSPECT" >&2; exit 2; }
+go_inspect_sha=$(sha256sum "$go_inspect_path" | awk '{print $1}')
 actual_binary=$(sha256sum "$BIN" | awk '{print $1}')
 [[ "$actual_binary" == "$BIN_SHA256" ]] || { echo "binary hash mismatch: $actual_binary" >&2; exit 2; }
 for identity in "engine=$ENGINE_SHA" "loader=$LOADER_SHA" "binary_sha256=$actual_binary"; do
@@ -22,7 +25,7 @@ cp "$ANALYZER" "$OUT/analyze.py"
 sha256sum "$OUT/analyze.py" > "$OUT/analyze.sha256"
 cp "$BUILD_MANIFEST" "$OUT/build-manifest.txt"
 sha256sum "$OUT/build-manifest.txt" > "$OUT/build-manifest.sha256"
-go version -m "$BIN" > "$OUT/go-build-info.txt"
+"$go_inspect_path" version -m "$BIN" > "$OUT/go-build-info.txt"
 gomap_build=$(grep -F $'\tdep\tgithub.com/snissn/gomap\t' "$OUT/go-build-info.txt" || true)
 [[ "$gomap_build" == *"-${ENGINE_SHA:0:12}"* ]] || { echo "binary does not embed the pinned engine version" >&2; exit 2; }
 if grep -F -A1 $'\tdep\tgithub.com/snissn/gomap\t' "$OUT/go-build-info.txt" | grep -q $'\t=>'; then
@@ -34,9 +37,9 @@ fi
 ) > "$OUT/fixture-files.sha256"
 actual_fixture=$(sha256sum "$OUT/fixture-files.sha256" | awk '{print $1}')
 [[ "$actual_fixture" == "$FIXTURE_SHA256" ]] || { echo "fixture hash mismatch: $actual_fixture" >&2; exit 2; }
-printf 'engine=%s\nloader=%s\nbinary_sha256=%s\nfixture_sha256=%s\nengine_prepare_max_bytes=%s\nengine_idle_scratch_reserve_bytes=%s\n' "$ENGINE_SHA" "$LOADER_SHA" "$actual_binary" "$actual_fixture" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" > "$OUT/identity.txt"
+printf 'engine=%s\nloader=%s\nbinary_sha256=%s\nfixture_sha256=%s\nengine_prepare_max_bytes=%s\nengine_idle_scratch_reserve_bytes=%s\ngo_inspect_sha256=%s\n' "$ENGINE_SHA" "$LOADER_SHA" "$actual_binary" "$actual_fixture" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" "$go_inspect_sha" > "$OUT/identity.txt"
 { date -u; uname -a; lscpu; df -h "$OUT" "$DATA_DIR"; uptime; } > "$OUT/host-start.txt"
-printf 'GOWORK=off\nGOMAXPROCS=12\n' > "$OUT/environment.txt"
+printf 'GOWORK=off\nGOMAXPROCS=12\nGO_INSPECT=%s\nGOROOT=%s\n' "$go_inspect_path" "${GOROOT:-}" > "$OUT/environment.txt"
 
 run_cell() {
   local scale="$1" ordinal="$2" depth="$3" input_depth="$4"
