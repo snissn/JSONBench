@@ -301,7 +301,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
 	fs.IntVar(&cfg.LoadPipelineDepth, "load-pipeline-depth", cfg.LoadPipelineDepth, "Prepared load batches queued ahead of InsertBatch; 0 preserves serial loading")
 	fs.IntVar(&cfg.EnginePrepareDepth, "engine-prepare-depth", cfg.EnginePrepareDepth, "Engine batches prepared ahead of ordered commit (0 or 1)")
-	fs.Int64Var(&cfg.EnginePrepareMaxBytes, "engine-prepare-max-bytes", cfg.EnginePrepareMaxBytes, "Maximum owned bytes for one engine-prepared batch")
+	fs.Int64Var(&cfg.EnginePrepareMaxBytes, "engine-prepare-max-bytes", cfg.EnginePrepareMaxBytes, "Total in-flight source and engine reservation bytes (commit headroom is estimated)")
 	fs.StringVar(&cfg.Profile, "profile", cfg.Profile, "TreeDB profile: fast, wal_on_fast, durable, bench")
 	fs.StringVar(&cfg.QueryProfileDir, "query-profile-dir", "", "Directory for per-query timed-attempt CPU and allocs pprof artifacts; disabled when empty")
 	fs.StringVar(&cfg.DataRoot, "data-root", cfg.DataRoot, "Collection data root storage: fast or compressed")
