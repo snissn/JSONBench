@@ -95,7 +95,7 @@ input batch ahead. For eligible no-index full-retained JSON collections,
 rows for batch N+1 while the single committer publishes N. The same-refactor
 engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
 serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
-`-engine-prepare-max-bytes` defaults to 1 GiB for the shared producer and
+`-engine-prepare-max-bytes` defaults to 1.25 GiB for the shared producer and
 committer reservation ledger. The loader reserves source scratch and acquires
 batch credits before cloning a source row; after preparation it retains the
 engine's estimated commit reservation until ordered commit or abandon. Those
@@ -309,7 +309,7 @@ Its analyzer checks the declared paired timing rule; the result is not a
 canonical ClickHouse comparison. Run `-validate-reconstruction` separately
 on the same frozen product and fixture, and retain source/stored hashes and
 q1–q5/qexpr hashes. The current reserved-byte counter is an estimate; it
-cannot by itself prove the 1 GiB total preparation cap.
+cannot by itself prove the 1.25 GiB total preparation cap.
 
 ## 1MM and 10MM Run
 

@@ -13,7 +13,7 @@ QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5 qexpr}"
 BATCH_SIZE="${BATCH_SIZE:-16000}"
 LOAD_PIPELINE_DEPTH="${LOAD_PIPELINE_DEPTH:-1}"
 ENGINE_PREPARE_DEPTH="${ENGINE_PREPARE_DEPTH:-1}"
-ENGINE_PREPARE_MAX_BYTES="${ENGINE_PREPARE_MAX_BYTES:-1073741824}"
+ENGINE_PREPARE_MAX_BYTES="${ENGINE_PREPARE_MAX_BYTES:-1342177280}"
 if [[ -z "${TRIES+x}" ]]; then
   case "$QUERY_MODE" in
     one_shot_end_to_end|one-shot|one_shot|oneshot|one-shot-end-to-end|first_touch_after_open|first-touch|first_touch|first-touch-after-open)
@@ -64,7 +64,7 @@ Environment:
                       1; set to 0 for the serial load control.
   ENGINE_PREPARE_DEPTH Engine preparation ahead of ordered commit: 1 (default)
                       or 0 for the same-input-pipeline engine control.
-  ENGINE_PREPARE_MAX_BYTES Shared source and engine reservation limit. Defaults to 1073741824 (1 GiB).
+  ENGINE_PREPARE_MAX_BYTES Shared source and engine reservation limit. Defaults to 1342177280 (1.25 GiB).
   TRIES               Query attempts per cell. Defaults to 1 for
                       one_shot_end_to_end and first_touch_after_open; defaults
                       to 3 otherwise.

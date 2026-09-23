@@ -271,7 +271,7 @@ func parseRunFlags(args []string) (runConfig, error) {
 		BatchSize:             defaultBatchSize,
 		LoadPipelineDepth:     1,
 		EnginePrepareDepth:    1,
-		EnginePrepareMaxBytes: 1 << 30,
+		EnginePrepareMaxBytes: 5 << 28,
 		Profile:               "fast",
 		DataRoot:              "fast",
 		Collection:            defaultCollectionName,
