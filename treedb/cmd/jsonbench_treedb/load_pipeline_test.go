@@ -241,6 +241,12 @@ func TestParseRunFlagsRejectsOversizedEnginePreparedBatch(t *testing.T) {
 	}
 }
 
+func TestParseRunFlagsRejectsDeepTargetInputQueue(t *testing.T) {
+	if _, err := parseRunFlags([]string{"-scale", "1m", "-storage-layout", "column-store-full-prepared", "-engine-prepare-depth", "0", "-load-pipeline-depth", "2"}); err == nil {
+		t.Fatal("deep target input queue accepted")
+	}
+}
+
 func TestDirectEnginePreparedBatchSizeFailsBeforeLoad(t *testing.T) {
 	cfg := malformedJSONBenchRunConfig(t, writeMalformedJSONBenchFixture(t))
 	cfg.BatchSize = 16385
@@ -259,6 +265,7 @@ func TestDirectEnginePreparedDepthFailsBeforeLoad(t *testing.T) {
 	}{
 		{name: "unsupported engine depth", depth: 2, inputDepth: 1},
 		{name: "ahead without input queue", depth: 1, inputDepth: 0},
+		{name: "deep input queue", depth: 0, inputDepth: 2},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			cfg := malformedJSONBenchRunConfig(t, writeMalformedJSONBenchFixture(t))

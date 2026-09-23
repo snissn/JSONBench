@@ -392,8 +392,8 @@ func parseRunFlags(args []string) (runConfig, error) {
 		}
 	}
 	if enginePreparationTargetConfig(cfg) {
-		if cfg.EnginePrepareMaxBytes <= 0 || cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1 {
-			return cfg, errors.New("target engine preparation requires a positive byte limit and depth 1 requires -load-pipeline-depth 1")
+		if cfg.EnginePrepareMaxBytes <= 0 || cfg.LoadPipelineDepth > 1 || cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1 {
+			return cfg, errors.New("target engine preparation requires a positive byte limit, input depth at most 1, and input depth 1 when engine depth is 1")
 		}
 		if cfg.BatchSize > 16<<10 {
 			return cfg, errors.New("target engine preparation requires -batch-size at most 16384")
@@ -740,8 +740,8 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var sourceBatchCeiling, sourceSlotBytes int64
 	var engineReservation *enginePrepareReservation
 	if engineTarget {
-		if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 || cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1 {
-			return loadResult{}, fmt.Errorf("target engine preparation requires depth 0 or 1; depth 1 requires input depth 1")
+		if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 || cfg.LoadPipelineDepth < 0 || cfg.LoadPipelineDepth > 1 || cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1 {
+			return loadResult{}, fmt.Errorf("target engine preparation requires engine and input depths 0 or 1; engine depth 1 requires input depth 1")
 		}
 		if cfg.BatchSize <= 0 || cfg.BatchSize > 16<<10 {
 			return loadResult{}, fmt.Errorf("%w: target batch size %d must be between 1 and 16384 rows", collections.ErrPreparedInsertResourceLimit, cfg.BatchSize)
