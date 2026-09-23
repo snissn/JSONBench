@@ -305,7 +305,10 @@ with its sibling `issue4819_analyze_matrix.py`. The runner requires `BIN`,
 fixture (`cf0c282fd2eb885966f8cf9abee365257709eff23370ab91b13b93c4a6afb796`).
 Those q1–q5/qexpr controls come from the pre-change `.185` baseline results
 `/home/mikers/column-alloc-20260922-fonMf5/timing/{1m,10m}-baseline-1/result.json`;
-the runner copies and hashes them before checking every cell. Set the two
+their respective result SHA-256 values are
+`20b45e7225a184b4db20bbfe525a077f21cce0b3d3a8dc96820f164bd2cccd68` and
+`2bb1f23e1aca21be538067b3620cfc5f8cc54d87cb9f0ff3a5e48f111182be44`.
+The runner copies and hashes them before checking every cell. Set the two
 memory values from the reviewed engine bound and loader scratch reserve. The
 manifest contains
 `engine=<sha>`, `loader=<sha>`, and `binary_sha256=<sha>` from that build;
