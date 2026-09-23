@@ -12,6 +12,8 @@ SUITE="${SUITE:-minimal}"
 QUERY_CELLS="${QUERY_CELLS:-q1 q2 q3 q4 q4a q4b q5 qexpr}"
 BATCH_SIZE="${BATCH_SIZE:-16000}"
 LOAD_PIPELINE_DEPTH="${LOAD_PIPELINE_DEPTH:-1}"
+ENGINE_PREPARE_DEPTH="${ENGINE_PREPARE_DEPTH:-1}"
+ENGINE_PREPARE_MAX_BYTES="${ENGINE_PREPARE_MAX_BYTES:-4831838208}"
 if [[ -z "${TRIES+x}" ]]; then
   case "$QUERY_MODE" in
     one_shot_end_to_end|one-shot|one_shot|oneshot|one-shot-end-to-end|first_touch_after_open|first-touch|first_touch|first-touch-after-open)
@@ -60,6 +62,9 @@ Environment:
   SUBSET_ROWS         Rows for subset scale. Defaults to 10000.
   LOAD_PIPELINE_DEPTH Prepared batches queued ahead of InsertBatch. Defaults to
                       1; set to 0 for the serial load control.
+  ENGINE_PREPARE_DEPTH Engine preparation ahead of ordered commit: 1 (default)
+                      or 0 for the same-input-pipeline engine control.
+  ENGINE_PREPARE_MAX_BYTES Shared source and engine reservation limit. Defaults to 4831838208 (4.5 GiB).
   TRIES               Query attempts per cell. Defaults to 1 for
                       one_shot_end_to_end and first_touch_after_open; defaults
                       to 3 otherwise.
@@ -208,6 +213,8 @@ run_cell() {
     -queries "$queries" \
     -batch-size "$BATCH_SIZE" \
     -load-pipeline-depth "$LOAD_PIPELINE_DEPTH" \
+    -engine-prepare-depth "$ENGINE_PREPARE_DEPTH" \
+    -engine-prepare-max-bytes "$ENGINE_PREPARE_MAX_BYTES" \
     -tries "$TRIES" \
     -profile "$PROFILE" \
     -data-root "$DATA_ROOT"

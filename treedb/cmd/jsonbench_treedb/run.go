@@ -21,6 +21,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	treedb "github.com/snissn/gomap/TreeDB"
@@ -53,6 +54,8 @@ type runConfig struct {
 	Queries                 []string
 	BatchSize               int
 	LoadPipelineDepth       int
+	EnginePrepareDepth      int
+	EnginePrepareMaxBytes   int64
 	Profile                 string
 	QueryProfileDir         string
 	DataRoot                string
@@ -114,11 +117,34 @@ type loadResult struct {
 	GenerationSec                      float64            `json:"generation_seconds"`
 	InsertSec                          float64            `json:"insert_seconds"`
 	PipelineDepth                      int                `json:"pipeline_depth"`
+	EnginePrepareDepth                 int                `json:"engine_prepare_depth"`
+	EnginePreparePath                  string             `json:"engine_prepare_path"`
+	EngineFallbackReason               string             `json:"engine_fallback_reason,omitempty"`
+	EngineFallbackBatches              int                `json:"engine_fallback_batches"`
+	EnginePreparedBatches              int                `json:"engine_prepared_batches"`
+	EngineCommittedBatches             int                `json:"engine_committed_batches"`
+	EngineAbandonedBatches             int                `json:"engine_abandoned_batches"`
+	EnginePrepareSec                   float64            `json:"engine_prepare_seconds"`
+	EngineCommitSec                    float64            `json:"engine_commit_seconds"`
+	EngineOverlapSec                   float64            `json:"engine_prepare_commit_overlap_seconds"`
+	EnginePeakOwnedBytes               int64              `json:"engine_peak_owned_bytes"`
+	EnginePeakReservedBytes            int64              `json:"engine_peak_reserved_bytes"`
+	EngineIdleScratchReserveBytes      int64              `json:"engine_idle_scratch_reserve_bytes"`
+	EngineMaxTokenReservedBytes        int64              `json:"engine_max_token_reserved_bytes"`
+	EngineBudgetRetryBatches           int                `json:"engine_budget_retry_batches"`
+	EngineFirstBudgetRetryReason       string             `json:"engine_first_budget_retry_reason,omitempty"`
+	EnginePeakOwnedBatches             int                `json:"engine_peak_owned_batches"`
 	ProducerElapsedSec                 float64            `json:"producer_elapsed_seconds"`
 	ProducerWorkSec                    float64            `json:"producer_work_seconds"`
 	ProducerWaitSec                    float64            `json:"producer_wait_seconds"`
+	ProducerCreditWaitSec              float64            `json:"producer_credit_wait_seconds"`
+	ProducerSourceCreditWaitSec        float64            `json:"producer_source_credit_wait_seconds"`
+	ProducerPrepareCreditWaitSec       float64            `json:"producer_prepare_credit_wait_seconds"`
+	ProducerRetryWaitSec               float64            `json:"producer_retry_wait_seconds"`
+	ProducerHandoffWaitSec             float64            `json:"producer_handoff_wait_seconds"`
 	ConsumerWaitSec                    float64            `json:"consumer_wait_seconds"`
 	OverlapSec                         float64            `json:"overlap_seconds"`
+	InputOverlapSec                    float64            `json:"input_overlap_seconds"`
 	MaxQueuedBatches                   int                `json:"max_queued_batches"`
 	MaxBatchBytes                      int64              `json:"max_batch_bytes"`
 	MaxInFlightBytesBound              int64              `json:"max_in_flight_bytes_bound"`
@@ -236,22 +262,24 @@ type queryRow map[string]any
 
 func parseRunFlags(args []string) (runConfig, error) {
 	cfg := runConfig{
-		DataDir:           "~/data/bluesky",
-		Scale:             "subset",
-		Format:            "json",
-		StorageLayout:     storageLayoutRow,
-		QueryMode:         queryModeOneShotEndToEnd,
-		MetadataMode:      metadataModeAutoAggregateMetadata,
-		Projection:        "full",
-		BatchSize:         defaultBatchSize,
-		LoadPipelineDepth: 1,
-		Profile:           "fast",
-		DataRoot:          "fast",
-		Collection:        defaultCollectionName,
-		Checkpoint:        true,
-		CompactBatchSize:  defaultBatchSize,
-		Tries:             1,
-		Queries:           append([]string(nil), jsonBenchQueryNames...),
+		DataDir:               "~/data/bluesky",
+		Scale:                 "subset",
+		Format:                "json",
+		StorageLayout:         storageLayoutRow,
+		QueryMode:             queryModeOneShotEndToEnd,
+		MetadataMode:          metadataModeAutoAggregateMetadata,
+		Projection:            "full",
+		BatchSize:             defaultBatchSize,
+		LoadPipelineDepth:     1,
+		EnginePrepareDepth:    1,
+		EnginePrepareMaxBytes: 9 << 29,
+		Profile:               "fast",
+		DataRoot:              "fast",
+		Collection:            defaultCollectionName,
+		Checkpoint:            true,
+		CompactBatchSize:      defaultBatchSize,
+		Tries:                 1,
+		Queries:               append([]string(nil), jsonBenchQueryNames...),
 	}
 	var queryList string
 	var deprecatedAllowShortData bool
@@ -273,6 +301,8 @@ func parseRunFlags(args []string) (runConfig, error) {
 	fs.StringVar(&queryList, "queries", "all", "Comma-separated query names: all, q1, q2, q3, q4, q4a, q4b, q5, qexpr")
 	fs.IntVar(&cfg.BatchSize, "batch-size", cfg.BatchSize, "Documents per InsertBatch")
 	fs.IntVar(&cfg.LoadPipelineDepth, "load-pipeline-depth", cfg.LoadPipelineDepth, "Prepared load batches queued ahead of InsertBatch; 0 preserves serial loading")
+	fs.IntVar(&cfg.EnginePrepareDepth, "engine-prepare-depth", cfg.EnginePrepareDepth, "Engine batches prepared ahead of ordered commit (0 or 1)")
+	fs.Int64Var(&cfg.EnginePrepareMaxBytes, "engine-prepare-max-bytes", cfg.EnginePrepareMaxBytes, "Total in-flight source, prepared batch, and ordered-commit reservation bytes")
 	fs.StringVar(&cfg.Profile, "profile", cfg.Profile, "TreeDB profile: fast, wal_on_fast, durable, bench")
 	fs.StringVar(&cfg.QueryProfileDir, "query-profile-dir", "", "Directory for per-query timed-attempt CPU and allocs pprof artifacts; disabled when empty")
 	fs.StringVar(&cfg.DataRoot, "data-root", cfg.DataRoot, "Collection data root storage: fast or compressed")
@@ -333,6 +363,9 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if cfg.LoadPipelineDepth < 0 {
 		return cfg, errors.New("-load-pipeline-depth must be non-negative")
 	}
+	if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 {
+		return cfg, errors.New("-engine-prepare-depth requires 0 or 1")
+	}
 	if cfg.CompactBatchSize <= 0 {
 		return cfg, errors.New("-compact-batch-size must be positive")
 	}
@@ -357,6 +390,14 @@ func parseRunFlags(args []string) (runConfig, error) {
 	if isColumnStoreLayout(cfg.StorageLayout) {
 		if _, err := columnStoreConfigForProjection(cfg.Projection, cfg.StorageLayout, cfg.RetainedPayloadEncoding); err != nil {
 			return cfg, err
+		}
+	}
+	if enginePreparationTargetConfig(cfg) {
+		if cfg.EnginePrepareMaxBytes <= 0 || cfg.LoadPipelineDepth > 1 || cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1 {
+			return cfg, errors.New("target engine preparation requires a positive byte limit, input depth at most 1, and input depth 1 when engine depth is 1")
+		}
+		if cfg.BatchSize > 16<<10 {
+			return cfg, errors.New("target engine preparation requires -batch-size at most 16384")
 		}
 	}
 	if cfg.ValidateReconstruction && !isFullDataColumnStoreLayout(cfg.StorageLayout) {
@@ -677,10 +718,46 @@ func createCollection(manager *collections.CollectionManager, cfg runConfig) (*c
 	return collection, nil
 }
 
+func enginePreparationTargetConfig(cfg runConfig) bool {
+	if cfg.StorageLayout != storageLayoutColumnStoreFullPrepared {
+		return false
+	}
+	encoding, _ := columnStoreRetainedPayloadEncodingStatus(cfg)
+	return encoding == string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1)
+}
+
 func loadData(collection *collections.Collection, backend *backenddb.DB, cfg runConfig, files []string) (loadResult, error) {
 	format, err := collectionFormat(cfg.Format)
 	if err != nil {
 		return loadResult{}, err
+	}
+	retainedEncoding, _ := collections.ColumnRetainedPayloadEncodingStatus(collection.Meta().Options.ColumnStore)
+	// Direct programmatic configs with an unset limit keep the historical
+	// ordinary path. Parsed target CLI configs require a positive limit.
+	engineTarget := cfg.StorageLayout == storageLayoutColumnStoreFullPrepared && cfg.Projection == "full" && format == collections.DocumentFormatJSON &&
+		retainedEncoding == string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1) && cfg.EnginePrepareMaxBytes > 0
+	const preparedSourceScratchReserve = 2 << 20 // Scanner token and gzip/buffered-reader scratch.
+	const preparedIdleScratchReserve = 32 << 20  // TreeDB retained raw-block pool: four 8 MiB slots.
+	const preparedSourceBatchCeiling = 10 << 20
+	var sourceBatchCeiling, sourceSlotBytes int64
+	var engineReservation *enginePrepareReservation
+	if engineTarget {
+		if cfg.EnginePrepareDepth < 0 || cfg.EnginePrepareDepth > 1 || cfg.LoadPipelineDepth < 0 || cfg.LoadPipelineDepth > 1 || cfg.EnginePrepareDepth == 1 && cfg.LoadPipelineDepth != 1 {
+			return loadResult{}, fmt.Errorf("target engine preparation requires engine and input depths 0 or 1; engine depth 1 requires input depth 1")
+		}
+		if cfg.BatchSize <= 0 || cfg.BatchSize > 16<<10 {
+			return loadResult{}, fmt.Errorf("%w: target batch size %d must be between 1 and 16384 rows", collections.ErrPreparedInsertResourceLimit, cfg.BatchSize)
+		}
+		fixedReserve := int64(preparedSourceScratchReserve + preparedIdleScratchReserve)
+		if cfg.EnginePrepareMaxBytes <= fixedReserve {
+			return loadResult{}, fmt.Errorf("%w: prepared engine byte limit %d cannot reserve source and idle encoder scratch", collections.ErrPreparedInsertResourceLimit, cfg.EnginePrepareMaxBytes)
+		}
+		engineReservation = newEnginePrepareReservation(cfg.EnginePrepareMaxBytes - fixedReserve)
+		sourceBatchCeiling = min(int64(preparedSourceBatchCeiling), max(int64(1<<20), cfg.EnginePrepareMaxBytes/16))
+		sourceSlotBytes = sourceBatchCeiling + int64(2*cfg.BatchSize)*24
+		if sourceSlotBytes >= engineReservation.limit {
+			return loadResult{}, fmt.Errorf("%w: prepared source slot %d exceeds byte limit %d", collections.ErrPreparedInsertResourceLimit, sourceSlotBytes, cfg.EnginePrepareMaxBytes)
+		}
 	}
 	var memBefore runtime.MemStats
 	runtime.ReadMemStats(&memBefore)
@@ -691,16 +768,138 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var aggregateMetadataAccounting aggregateMetadataLoadAccounting
 	var flushElapsed time.Duration
 	var checkpointElapsed time.Duration
+	var enginePrepareElapsed, engineCommitElapsed, engineOverlapElapsed time.Duration
+	var previousCommitStart, previousCommitEnd time.Time
+	var enginePrepared, engineCommitted int
+	var engineAbandoned atomic.Int64
+	var engineFallbackBatches atomic.Int64
+	var producerCreditWait atomic.Int64
+	var producerSourceCreditWait, producerPrepareCreditWait, producerRetryWait, producerHandoffWait atomic.Int64
+	var engineMaxTokenReservedBytes atomic.Int64
+	var engineBudgetRetryBatches atomic.Int64
+	var engineFirstBudgetRetryReason string
+	var engineFallbackReason string
+	var engineLiveBytes, enginePeakOwnedBytes atomic.Int64
+	var engineLiveBatches, enginePeakOwnedBatches atomic.Int64
+	trackPrepared := func(prepared *collections.PreparedInsertBatch) {
+		if prepared == nil {
+			return
+		}
+		liveBytes := engineLiveBytes.Add(prepared.OwnedBytes())
+		liveBatches := engineLiveBatches.Add(1)
+		for peak := enginePeakOwnedBytes.Load(); liveBytes > peak && !enginePeakOwnedBytes.CompareAndSwap(peak, liveBytes); peak = enginePeakOwnedBytes.Load() {
+		}
+		for peak := enginePeakOwnedBatches.Load(); liveBatches > peak && !enginePeakOwnedBatches.CompareAndSwap(peak, liveBatches); peak = enginePeakOwnedBatches.Load() {
+		}
+	}
+	releasePrepared := func(prepared *collections.PreparedInsertBatch) {
+		if prepared == nil {
+			return
+		}
+		engineLiveBytes.Add(-prepared.OwnedBytes())
+		engineLiveBatches.Add(-1)
+	}
+	prepareEngineBatch := func(ctx context.Context, batch *preparedLoadBatch) error {
+		if !engineTarget {
+			return nil
+		}
+		for {
+			creditWaitStart := time.Now()
+			extra, hadOther, err := engineReservation.acquireAvailable(ctx, sourceSlotBytes, batch.reservation)
+			if cfg.EnginePrepareDepth == 1 {
+				elapsed := int64(time.Since(creditWaitStart))
+				producerCreditWait.Add(elapsed)
+				producerPrepareCreditWait.Add(elapsed)
+			}
+			if err != nil {
+				if batch.prepCreditReady != nil {
+					close(batch.prepCreditReady)
+				}
+				return err
+			}
+			batch.reservation += extra
+			if batch.prepCreditReady != nil {
+				close(batch.prepCreditReady)
+				batch.prepCreditReady = nil
+			}
+			batch.enginePrepareStart = time.Now()
+			batch.engine, err = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, batch.reservation)
+			batch.enginePrepareEnd = time.Now()
+			enginePrepareElapsed += batch.enginePrepareEnd.Sub(batch.enginePrepareStart)
+			if err == nil {
+				enginePrepared++
+				trackPrepared(batch.engine)
+				for peak := engineMaxTokenReservedBytes.Load(); batch.engine.ReservedBytes() > peak && !engineMaxTokenReservedBytes.CompareAndSwap(peak, batch.engine.ReservedBytes()); peak = engineMaxTokenReservedBytes.Load() {
+				}
+				engineReservation.shrink(batch.reservation, batch.engine.ReservedBytes())
+				batch.reservation = batch.engine.ReservedBytes()
+				return nil
+			}
+			if cfg.EnginePrepareDepth == 1 && errors.Is(err, collections.ErrPreparedInsertResourceLimit) && hadOther {
+				engineBudgetRetryBatches.Add(1)
+				if engineFirstBudgetRetryReason == "" {
+					engineFirstBudgetRetryReason = err.Error()
+				}
+				// A temporary shortfall is not a structural resource rejection.
+				// Retire excess credit so the ordered committer can finish, then
+				// retry once its reservation has been returned.
+				engineReservation.release(extra)
+				batch.reservation -= extra
+				creditWaitStart = time.Now()
+				err := engineReservation.waitForOtherOwner(ctx, batch.reservation)
+				elapsed := int64(time.Since(creditWaitStart))
+				producerCreditWait.Add(elapsed)
+				producerRetryWait.Add(elapsed)
+				if err != nil {
+					return err
+				}
+				continue
+			}
+			if errors.Is(err, collections.ErrPreparedInsertResourceLimit) || !errors.Is(err, collections.ErrPreparedInsertIneligible) {
+				return err
+			}
+			engineFallbackReason = err.Error()
+			engineFallbackBatches.Add(1)
+			return nil
+		}
+	}
 	wallStart := time.Now()
 	var sourceHasher *canonicalJSONHasher
-	if cfg.ValidateReconstruction {
+	if cfg.ValidateReconstruction && !engineTarget {
 		sourceHasher = newCanonicalJSONHasher()
 	}
 
 	prepare := func(ctx context.Context, emit func(context.Context, preparedLoadBatch) error) error {
 		var encoder collections.TemplateV1Encoder
-		ids := make([][]byte, 0, cfg.BatchSize)
-		docs := make([][]byte, 0, cfg.BatchSize)
+		var ids, docs [][]byte
+		if !engineTarget {
+			ids = make([][]byte, 0, cfg.BatchSize)
+			docs = make([][]byte, 0, cfg.BatchSize)
+		}
+		var currentReservation int64
+		defer func() {
+			if currentReservation != 0 {
+				engineReservation.release(currentReservation)
+			}
+		}()
+		ensureBatchBuffers := func() error {
+			if !engineTarget || currentReservation != 0 {
+				return nil
+			}
+			outerBytes := int64(2*cfg.BatchSize) * 24
+			creditWaitStart := time.Now()
+			err := engineReservation.acquire(ctx, outerBytes)
+			elapsed := int64(time.Since(creditWaitStart))
+			producerCreditWait.Add(elapsed)
+			producerSourceCreditWait.Add(elapsed)
+			if err != nil {
+				return err
+			}
+			currentReservation = outerBytes
+			ids = make([][]byte, 0, cfg.BatchSize)
+			docs = make([][]byte, 0, cfg.BatchSize)
+			return nil
+		}
 		var logicalBytes int64
 		batchOrdinal := 0
 		lastProgress := time.Now()
@@ -720,11 +919,54 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				ids:          ids,
 				docs:         docs,
 				logicalBytes: logicalBytes,
+				reservation:  currentReservation,
 			}
+			if engineTarget {
+				if cfg.EnginePrepareDepth == 1 {
+					if err := prepareEngineBatch(ctx, &batch); err != nil {
+						currentReservation = batch.reservation
+						return err
+					}
+				} else if cfg.LoadPipelineDepth > 0 {
+					batch.prepCreditReady = make(chan struct{})
+				}
+			}
+			currentReservation = 0 // ownership transfers to the emitted batch
 			if err := emit(ctx, batch); err != nil {
+				// Depth zero invokes insert synchronously, so the consumer has
+				// already released this batch. At depth one, a failed send did not
+				// transfer it to the consumer.
+				if cfg.LoadPipelineDepth > 0 {
+					if batch.engine != nil {
+						batch.engine.Abandon()
+						releasePrepared(batch.engine)
+						engineAbandoned.Add(1)
+					}
+					if engineReservation != nil {
+						engineReservation.release(batch.reservation)
+					}
+				}
 				return err
 			}
-			ids, docs = resetPreparedLoadBuffers(ids, docs, cfg.BatchSize, cfg.LoadPipelineDepth == 0)
+			if batch.prepCreditReady != nil {
+				creditWaitStart := time.Now()
+				select {
+				case <-batch.prepCreditReady:
+				case <-ctx.Done():
+					elapsed := int64(time.Since(creditWaitStart))
+					producerCreditWait.Add(elapsed)
+					producerHandoffWait.Add(elapsed)
+					return ctx.Err()
+				}
+				elapsed := int64(time.Since(creditWaitStart))
+				producerCreditWait.Add(elapsed)
+				producerHandoffWait.Add(elapsed)
+			}
+			if engineTarget {
+				ids, docs = nil, nil // allocate successor backing only after admission
+			} else {
+				ids, docs = resetPreparedLoadBuffers(ids, docs, cfg.BatchSize, cfg.LoadPipelineDepth == 0)
+			}
 			logicalBytes = 0
 			return nil
 		}
@@ -733,7 +975,13 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			if targetReached() {
 				break
 			}
-			readBytes, compressedBytes, err := scanInputFile(path, func(raw []byte) error {
+			maxInputLineBytes := 1 << 30
+			if engineTarget {
+				// The prepared lane fails closed on unusually large source rows
+				// before Scanner can grow to its ordinary 1 GiB token limit.
+				maxInputLineBytes = 1 << 20
+			}
+			readBytes, compressedBytes, err := scanInputFile(path, maxInputLineBytes, func(raw []byte) error {
 				select {
 				case <-ctx.Done():
 					return ctx.Err()
@@ -749,6 +997,35 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 						return nil
 					}
 					return fmt.Errorf("invalid source JSON input row %d", out.InputRows)
+				}
+				if err := ensureBatchBuffers(); err != nil {
+					return err
+				}
+				if engineTarget {
+					if len(raw) > 128<<10 {
+						return fmt.Errorf("%w: document at input row %d exceeds prepared 128 KiB limit", collections.ErrPreparedInsertResourceLimit, out.InputRows)
+					}
+					// The full projection clones this source row. Check the request
+					// and outer slice capacities before the clone can allocate.
+					outerBytes := int64(cap(ids)+cap(docs)) * 24
+					needed := outerBytes + logicalBytes + int64(len(raw)) + 8
+					if needed > currentReservation {
+						if needed > engineReservation.limit {
+							return fmt.Errorf("%w: source batch needs %d bytes before input row %d, limit %d", collections.ErrPreparedInsertResourceLimit, needed, out.InputRows, engineReservation.limit)
+						}
+						creditWaitStart := time.Now()
+						err := engineReservation.acquire(ctx, needed-currentReservation)
+						elapsed := int64(time.Since(creditWaitStart))
+						producerCreditWait.Add(elapsed)
+						producerSourceCreditWait.Add(elapsed)
+						if err != nil {
+							return err
+						}
+						currentReservation = needed
+					}
+					if logicalBytes+int64(len(raw)+8) > sourceBatchCeiling {
+						return fmt.Errorf("%w: prepared source batch exceeds %d bytes at input row %d", collections.ErrPreparedInsertResourceLimit, sourceBatchCeiling, out.InputRows)
+					}
 				}
 				if sourceHasher != nil {
 					if err := sourceHasher.Add(raw); err != nil {
@@ -792,8 +1069,45 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		cfg.LoadPipelineDepth,
 		prepare,
 		func(batch preparedLoadBatch) error {
-			if _, err := collection.InsertBatch(batch.ids, batch.docs); err != nil {
-				return err
+			if engineReservation != nil {
+				defer func() { engineReservation.release(batch.reservation) }()
+			}
+			prepared := batch.engine
+			if engineTarget && cfg.EnginePrepareDepth == 0 {
+				if err := prepareEngineBatch(context.Background(), &batch); err != nil {
+					return err
+				}
+				prepared = batch.engine
+			}
+			if prepared != nil && !previousCommitStart.IsZero() {
+				start := batch.enginePrepareStart
+				if start.Before(previousCommitStart) {
+					start = previousCommitStart
+				}
+				end := batch.enginePrepareEnd
+				if end.After(previousCommitEnd) {
+					end = previousCommitEnd
+				}
+				if end.After(start) {
+					engineOverlapElapsed += end.Sub(start)
+				}
+			}
+			start := time.Now()
+			var commitErr error
+			if prepared != nil {
+				_, commitErr = prepared.Commit()
+				releasePrepared(prepared)
+				if commitErr == nil {
+					engineCommitted++
+				}
+			} else {
+				_, commitErr = collection.InsertBatch(batch.ids, batch.docs)
+			}
+			commitEnd := time.Now()
+			engineCommitElapsed += commitEnd.Sub(start)
+			previousCommitStart, previousCommitEnd = start, commitEnd
+			if commitErr != nil {
+				return commitErr
 			}
 			lastInsertStats := collection.LastInsertStats()
 			insertStats.add(lastInsertStats)
@@ -801,9 +1115,58 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 			batches++
 			return nil
 		},
+		func(batch preparedLoadBatch) {
+			if engineReservation != nil {
+				engineReservation.release(batch.reservation)
+			}
+			if batch.engine != nil {
+				batch.engine.Abandon()
+				releasePrepared(batch.engine)
+				engineAbandoned.Add(1)
+			}
+		},
 	)
+	// Pipeline work excludes only channel-send wait. Reservation admission and
+	// the depth-zero credit handoff also leave the producer idle; remove those
+	// waits before reporting work or overlap. Depth-one preparation is producer
+	// work, so expose source overlap separately from engine/commit overlap.
+	pipelineStats.ProducerCreditWait = time.Duration(producerCreditWait.Load())
+	pipelineStats.ProducerWork = max(0, pipelineStats.ProducerWork-pipelineStats.ProducerCreditWait)
+	pipelineStats.Overlap = max(0, pipelineStats.Overlap-pipelineStats.ProducerCreditWait)
+	pipelineStats.InputOverlap = max(0, pipelineStats.Overlap-engineOverlapElapsed)
 	if err != nil {
 		return loadResult{}, err
+	}
+	if cfg.ValidateReconstruction && engineTarget {
+		// Canonicalization decodes into dynamic Go maps. Keep that validation
+		// pass outside the bounded producer/committer window so its scratch
+		// cannot coexist with either prepared token or commit buffers.
+		sourceHasher = newCanonicalJSONHasher()
+		remaining := out.Rows
+		for _, path := range out.Files {
+			if remaining == 0 {
+				break
+			}
+			_, _, scanErr := scanInputFile(path, 1<<20, func(raw []byte) error {
+				if remaining == 0 {
+					return errStopScan
+				}
+				if !json.Valid(raw) {
+					return nil
+				}
+				if err := sourceHasher.Add(raw); err != nil {
+					return err
+				}
+				remaining--
+				return nil
+			})
+			if scanErr != nil {
+				return loadResult{}, fmt.Errorf("hash source after bounded load %s: %w", path, scanErr)
+			}
+		}
+		if remaining != 0 {
+			return loadResult{}, fmt.Errorf("source hash pass found %d of %d loaded rows", out.Rows-remaining, out.Rows)
+		}
 	}
 	flushStart := time.Now()
 	if err := collection.Flush(); err != nil {
@@ -824,11 +1187,42 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	out.GenerationSec = generationElapsed.Seconds()
 	out.InsertSec = pipelineStats.InsertElapsed.Seconds()
 	out.PipelineDepth = pipelineStats.Depth
+	out.EnginePrepareDepth = cfg.EnginePrepareDepth
+	out.EnginePreparePath = "ordinary"
+	if engineTarget {
+		out.EnginePreparePath = "prepared"
+	}
+	if engineFallbackReason != "" {
+		out.EnginePreparePath = "mixed-or-fallback"
+	}
+	out.EngineFallbackReason = engineFallbackReason
+	out.EngineFallbackBatches = int(engineFallbackBatches.Load())
+	out.EnginePreparedBatches = enginePrepared
+	out.EngineCommittedBatches = engineCommitted
+	out.EngineAbandonedBatches = int(engineAbandoned.Load())
+	out.EnginePrepareSec = enginePrepareElapsed.Seconds()
+	out.EngineCommitSec = engineCommitElapsed.Seconds()
+	out.EngineOverlapSec = engineOverlapElapsed.Seconds()
+	out.EnginePeakOwnedBytes = enginePeakOwnedBytes.Load()
+	if engineReservation != nil {
+		out.EngineIdleScratchReserveBytes = preparedIdleScratchReserve
+		out.EnginePeakReservedBytes = engineReservation.peak() + preparedSourceScratchReserve + preparedIdleScratchReserve
+	}
+	out.EnginePeakOwnedBatches = int(enginePeakOwnedBatches.Load())
+	out.EngineMaxTokenReservedBytes = engineMaxTokenReservedBytes.Load()
+	out.EngineBudgetRetryBatches = int(engineBudgetRetryBatches.Load())
+	out.EngineFirstBudgetRetryReason = engineFirstBudgetRetryReason
 	out.ProducerElapsedSec = pipelineStats.ProducerElapsed.Seconds()
 	out.ProducerWorkSec = pipelineStats.ProducerWork.Seconds()
 	out.ProducerWaitSec = pipelineStats.ProducerWait.Seconds()
+	out.ProducerCreditWaitSec = pipelineStats.ProducerCreditWait.Seconds()
+	out.ProducerSourceCreditWaitSec = time.Duration(producerSourceCreditWait.Load()).Seconds()
+	out.ProducerPrepareCreditWaitSec = time.Duration(producerPrepareCreditWait.Load()).Seconds()
+	out.ProducerRetryWaitSec = time.Duration(producerRetryWait.Load()).Seconds()
+	out.ProducerHandoffWaitSec = time.Duration(producerHandoffWait.Load()).Seconds()
 	out.ConsumerWaitSec = pipelineStats.ConsumerWait.Seconds()
 	out.OverlapSec = pipelineStats.Overlap.Seconds()
+	out.InputOverlapSec = pipelineStats.InputOverlap.Seconds()
 	out.MaxQueuedBatches = pipelineStats.MaxQueuedBatches
 	out.MaxBatchBytes = pipelineStats.MaxBatchBytes
 	out.MaxInFlightBytesBound = pipelineStats.MaxInFlightBytesBound
@@ -922,7 +1316,7 @@ func documentScanStatsResultFromCollectionStats(stats collections.CollectionDocu
 
 var errStopScan = errors.New("stop scan")
 
-func scanInputFile(path string, fn func(raw []byte) error) (readBytes int64, compressedBytes int64, err error) {
+func scanInputFile(path string, maxInputLineBytes int, fn func(raw []byte) error) (readBytes int64, compressedBytes int64, err error) {
 	stat, statErr := os.Stat(path)
 	if statErr == nil {
 		compressedBytes = stat.Size()
@@ -944,8 +1338,10 @@ func scanInputFile(path string, fn func(raw []byte) error) (readBytes int64, com
 	}
 	counting := &countingReader{reader: reader}
 	scanner := bufio.NewScanner(counting)
-	scanner.Buffer(make([]byte, 0, 1024*1024), 1024*1024*1024)
+	scanner.Buffer(make([]byte, 0, min(1<<20, maxInputLineBytes)), maxInputLineBytes)
+	var lineNumber int
 	for scanner.Scan() {
+		lineNumber++
 		raw := bytes.TrimSpace(scanner.Bytes())
 		if len(raw) == 0 {
 			continue
@@ -958,7 +1354,7 @@ func scanInputFile(path string, fn func(raw []byte) error) (readBytes int64, com
 		}
 	}
 	if err := scanner.Err(); err != nil {
-		return counting.n, compressedBytes, err
+		return counting.n, compressedBytes, fmt.Errorf("source line %d in %s: %w", lineNumber+1, path, err)
 	}
 	return counting.n, compressedBytes, nil
 }
@@ -978,6 +1374,14 @@ func buildDocument(raw []byte, format collections.DocumentFormat, projection, st
 	if projection == "full" {
 		if format == collections.DocumentFormatTemplateV1 {
 			return collections.EncodeTemplateV1DocumentJSON(raw)
+		}
+		if storageLayout == storageLayoutColumnStoreFullPrepared {
+			// Source credit is acquired before this clone using len(raw).
+			// make with an explicit length gives the charged target lane an
+			// exact-capacity backing, unlike bytes.Clone's append growth.
+			doc := make([]byte, len(raw))
+			copy(doc, raw)
+			return doc, nil
 		}
 		return bytes.Clone(raw), nil
 	}

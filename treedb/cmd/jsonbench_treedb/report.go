@@ -200,11 +200,33 @@ type reportRow struct {
 	LoadSec                                                       float64   `json:"load_seconds,omitempty"`
 	InsertSec                                                     float64   `json:"insert_seconds,omitempty"`
 	LoadPipelineDepth                                             int       `json:"load_pipeline_depth"`
+	LoadEnginePrepareDepth                                        int       `json:"load_engine_prepare_depth"`
+	LoadEnginePreparePath                                         string    `json:"load_engine_prepare_path,omitempty"`
+	LoadEngineFallbackReason                                      string    `json:"load_engine_fallback_reason,omitempty"`
+	LoadEngineFallbackBatches                                     int       `json:"load_engine_fallback_batches,omitempty"`
+	LoadEnginePreparedBatches                                     int       `json:"load_engine_prepared_batches,omitempty"`
+	LoadEngineCommittedBatches                                    int       `json:"load_engine_committed_batches,omitempty"`
+	LoadEngineAbandonedBatches                                    int       `json:"load_engine_abandoned_batches,omitempty"`
+	LoadEnginePrepareSec                                          float64   `json:"load_engine_prepare_seconds,omitempty"`
+	LoadEngineCommitSec                                           float64   `json:"load_engine_commit_seconds,omitempty"`
+	LoadEngineOverlapSec                                          float64   `json:"load_engine_prepare_commit_overlap_seconds,omitempty"`
+	LoadEnginePeakOwnedBytes                                      int64     `json:"load_engine_peak_owned_bytes,omitempty"`
+	LoadEnginePeakReservedBytes                                   int64     `json:"load_engine_peak_reserved_bytes,omitempty"`
+	LoadEngineIdleScratchReserveBytes                             int64     `json:"load_engine_idle_scratch_reserve_bytes,omitempty"`
+	LoadEngineMaxTokenReservedBytes                               int64     `json:"load_engine_max_token_reserved_bytes,omitempty"`
+	LoadEngineBudgetRetryBatches                                  int       `json:"load_engine_budget_retry_batches,omitempty"`
+	LoadEnginePeakOwnedBatches                                    int       `json:"load_engine_peak_owned_batches,omitempty"`
 	LoadProducerElapsedSec                                        float64   `json:"load_producer_elapsed_seconds,omitempty"`
 	LoadProducerWorkSec                                           float64   `json:"load_producer_work_seconds,omitempty"`
 	LoadProducerWaitSec                                           float64   `json:"load_producer_wait_seconds,omitempty"`
+	LoadProducerCreditWaitSec                                     float64   `json:"load_producer_credit_wait_seconds,omitempty"`
+	LoadProducerSourceCreditWaitSec                               float64   `json:"load_producer_source_credit_wait_seconds,omitempty"`
+	LoadProducerPrepareCreditWaitSec                              float64   `json:"load_producer_prepare_credit_wait_seconds,omitempty"`
+	LoadProducerRetryWaitSec                                      float64   `json:"load_producer_retry_wait_seconds,omitempty"`
+	LoadProducerHandoffWaitSec                                    float64   `json:"load_producer_handoff_wait_seconds,omitempty"`
 	LoadConsumerWaitSec                                           float64   `json:"load_consumer_wait_seconds,omitempty"`
 	LoadOverlapSec                                                float64   `json:"load_overlap_seconds,omitempty"`
+	LoadInputOverlapSec                                           float64   `json:"load_input_overlap_seconds,omitempty"`
 	LoadMaxQueuedBatches                                          int       `json:"load_max_queued_batches,omitempty"`
 	LoadMaxBatchBytes                                             int64     `json:"load_max_batch_bytes,omitempty"`
 	LoadMaxInFlightBytesBound                                     int64     `json:"load_max_in_flight_bytes_bound,omitempty"`
@@ -680,11 +702,33 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				LoadSec:                            result.Load.WallSec,
 				InsertSec:                          result.Load.InsertSec,
 				LoadPipelineDepth:                  result.Load.PipelineDepth,
+				LoadEnginePrepareDepth:             result.Load.EnginePrepareDepth,
+				LoadEnginePreparePath:              result.Load.EnginePreparePath,
+				LoadEngineFallbackReason:           result.Load.EngineFallbackReason,
+				LoadEngineFallbackBatches:          result.Load.EngineFallbackBatches,
+				LoadEnginePreparedBatches:          result.Load.EnginePreparedBatches,
+				LoadEngineCommittedBatches:         result.Load.EngineCommittedBatches,
+				LoadEngineAbandonedBatches:         result.Load.EngineAbandonedBatches,
+				LoadEnginePrepareSec:               result.Load.EnginePrepareSec,
+				LoadEngineCommitSec:                result.Load.EngineCommitSec,
+				LoadEngineOverlapSec:               result.Load.EngineOverlapSec,
+				LoadEnginePeakOwnedBytes:           result.Load.EnginePeakOwnedBytes,
+				LoadEnginePeakReservedBytes:        result.Load.EnginePeakReservedBytes,
+				LoadEngineIdleScratchReserveBytes:  result.Load.EngineIdleScratchReserveBytes,
+				LoadEngineMaxTokenReservedBytes:    result.Load.EngineMaxTokenReservedBytes,
+				LoadEngineBudgetRetryBatches:       result.Load.EngineBudgetRetryBatches,
+				LoadEnginePeakOwnedBatches:         result.Load.EnginePeakOwnedBatches,
 				LoadProducerElapsedSec:             result.Load.ProducerElapsedSec,
 				LoadProducerWorkSec:                result.Load.ProducerWorkSec,
 				LoadProducerWaitSec:                result.Load.ProducerWaitSec,
+				LoadProducerCreditWaitSec:          result.Load.ProducerCreditWaitSec,
+				LoadProducerSourceCreditWaitSec:    result.Load.ProducerSourceCreditWaitSec,
+				LoadProducerPrepareCreditWaitSec:   result.Load.ProducerPrepareCreditWaitSec,
+				LoadProducerRetryWaitSec:           result.Load.ProducerRetryWaitSec,
+				LoadProducerHandoffWaitSec:         result.Load.ProducerHandoffWaitSec,
 				LoadConsumerWaitSec:                result.Load.ConsumerWaitSec,
 				LoadOverlapSec:                     result.Load.OverlapSec,
+				LoadInputOverlapSec:                result.Load.InputOverlapSec,
 				LoadMaxQueuedBatches:               result.Load.MaxQueuedBatches,
 				LoadMaxBatchBytes:                  result.Load.MaxBatchBytes,
 				LoadMaxInFlightBytesBound:          result.Load.MaxInFlightBytesBound,

@@ -18,7 +18,7 @@ Relevant `snissn/gomap` trackers:
 - column-store RFC PR: `https://github.com/snissn/gomap/pull/1527`
 - command-WAL contract PR: `https://github.com/snissn/gomap/pull/1530`
 
-This harness requires Go 1.25.0 or newer, matching the TreeDB module version
+This harness requires Go 1.26.0 or newer, matching the TreeDB module version
 used by the current `github.com/snissn/gomap` dependency. Download Go toolchains
 from https://go.dev/dl.
 
@@ -89,15 +89,48 @@ column scans even when aggregate metadata is available, pass
 
 The run fails if fewer rows are available than requested.
 
-TreeDB loads use a bounded ordered producer/consumer handoff by default:
-`-load-pipeline-depth 1` permits one prepared batch to wait ahead of the batch
-currently in `InsertBatch`. Use `-load-pipeline-depth 0` as the exact serial
-control. The result JSON and generated report export producer work/wait,
-consumer wait, estimated overlap, maximum queued batches, maximum logical batch
-bytes, the conservative logical in-flight byte bound, total load allocations,
-bytes/row, and allocations/row. Batch insertion order,
-document IDs, malformed-row accounting, and reconstruction hashes are unchanged.
-The matrix scripts expose the same setting as `LOAD_PIPELINE_DEPTH`.
+TreeDB loads use two bounded stages. `-load-pipeline-depth 1` keeps one raw
+input batch ahead. For eligible no-index full-retained JSON collections,
+`-engine-prepare-depth 1` (default) also prepares retained blocks and declared
+rows for batch N+1 while the single committer publishes N. The same-refactor
+engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
+serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
+`-engine-prepare-max-bytes` defaults to 4.5 GiB for the shared producer and
+committer reservation ledger: room for two observed near-2 GiB engine-token
+reservations, plus source and idle scratch and a successor source slot. A larger
+token can use more of the limit, with less or no preparation overlap. The
+loader permanently reserves 32 MiB for the engine's four-slot,
+8 MiB-per-slot idle raw-block pool,
+reserves source scratch, and acquires batch credits before cloning a source row;
+after preparation it retains the engine's full `ReservedBytes()` credit,
+including ordered-commit publication scratch, until Commit or Abandon. The
+credit is a bound on in-flight request-owned backing, not a process RSS limit.
+For the full-prepared semantic-stream target, both engine depths accept
+at most 16,384 rows per batch, cap a source line at 1 MiB, and bound
+source-side batch bytes to the lesser of 10 MiB and the larger of 1 MiB or
+one-sixteenth of the engine byte limit. A separate source slot stays free
+while the consumer prepares the depth-zero control, so source reading can
+overlap that preparation and commit. With `-validate-reconstruction`, source
+canonicalization runs in a separate pass after all load tokens have retired;
+its dynamic JSON-map scratch is outside the concurrent load reservation ledger.
+A source or engine resource-limit rejection fails the load without falling back
+to an ordinary insert; the loader rejects documents over 128 KiB before
+preparation, while the 1 MiB line cap protects the source scanner. Unsupported
+collection configurations use ordinary `InsertBatch` and record the fallback
+reason. Non-target layouts retain their ordinary input
+policy. The result JSON and
+report export selected path, fallback reason and count, prepared/committed/abandoned counts, engine work
+and measured prepare/commit overlap, peak live prepared bytes/batches, peak
+reserved credits (including the fixed source and idle-pool reserves), input
+producer work/channel wait/credit wait, input-only overlap (with concurrent
+engine preparation subtracted), credit-wait stage breakdown and prepared-token
+reservation/retry counters, and conservative logical in-flight input bytes, total load
+allocations, bytes/row, and allocations/row. Peak prepared bytes cover the
+owned prepared objects, not total DB/cache RSS; collect process RSS separately.
+Batch order, row numbering, malformed-row accounting, source hashes, query
+hashes, and separate reopen reconstruction remain comparable. The matrix scripts
+expose `LOAD_PIPELINE_DEPTH`, `ENGINE_PREPARE_DEPTH`, and
+`ENGINE_PREPARE_MAX_BYTES`.
 
 To make the reported TreeDB storage column represent a post-load fully
 compacted database, enable post-load maintenance:
@@ -264,6 +297,56 @@ DATA_DIR=./testdata/bluesky SUBSET_ROWS=6 TRIES=1 ./run_matrix.sh
 ```
 
 The checked-in fixture has only 6 rows.
+
+For #4819's matched engine-preparation load decision, build one binary from
+the reviewed, landed engine and loader, then use `issue4819_final_matrix.sh`
+with its sibling `issue4819_analyze_matrix.py`. The runner requires `BIN`,
+`BIN_SHA256`, `BUILD_MANIFEST`, `DATA_DIR`, `FIXTURE_SHA256`, `ENGINE_SHA`,
+`LOADER_SHA`, `ANALYZER`, `ENGINE_PREPARE_MAX_BYTES`,
+`ENGINE_IDLE_SCRATCH_RESERVE_BYTES`, `BASELINE_QUERY_HASHES_1M`,
+`BASELINE_QUERY_HASHES_10M`, `BASELINE_RESULT_1M`, `BASELINE_RESULT_10M`,
+`BASELINE_BUILD_INFO`, `BASELINE_RUN_BENCHMARKS`, `BASELINE_RUN_SCALING`,
+and a fresh `OUT` directory. Use the sibling
+`issue4819_baseline_query_hashes_{1m,10m}.json` files for the pinned Bluesky
+fixture (`cf0c282fd2eb885966f8cf9abee365257709eff23370ab91b13b93c4a6afb796`).
+Those q1–q5/qexpr controls come from the pre-change `.185` baseline results
+`/home/mikers/column-alloc-20260922-fonMf5/timing/{1m,10m}-baseline-1/result.json`;
+their respective result SHA-256 values are
+`20b45e7225a184b4db20bbfe525a077f21cce0b3d3a8dc96820f164bd2cccd68` and
+`2bb1f23e1aca21be538067b3620cfc5f8cc54d87cb9f0ff3a5e48f111182be44`.
+Their source binary SHA-256 is `648df56f48bdbfb90d8f82aa2e7e4dafbed6e620912b0f7a7b689ef1e969356f`,
+built from gomap `1271d2ed425a67d18474ea076e53cf0e9d3f18a2` and
+JSONBench `cc24e19cd4f9c3c764107fd01d0e971e46d2d921` with a local gomap
+replacement. `issue4819_baseline_sources.json` pins these identities plus the
+source scripts and build-info hashes. Copies of all five source files are
+retained on `.111` under `/home/mikers/issue-4819/baseline/`; the runner copies
+the raw results, build information, and scripts into `OUT`, verifies their
+hashes, and derives the six query hashes before checking each cell. Set the two
+memory values from the reviewed engine bound and loader scratch reserve. The
+manifest contains
+`engine=<sha>`, `loader=<sha>`, `binary_sha256=<sha>`,
+`build_command=GOWORK=off go build -buildvcs=true -o "$BIN" ./cmd/jsonbench_treedb`,
+`engine_main_contains=true`, and `loader_main_contains=true` from the final
+build. Verify main containment before writing those last two lines, and retain
+the build command and module information with the manifest. The fixture hash is
+the SHA-256 of the sorted per-file `sha256sum` list, computed by the runner
+before and after the matrix. Build from a clean loader checkout with Go build
+VCS information enabled. The runner checks its embedded loader revision and
+pinned engine version, and rejects a local module replacement. On a host
+without `go` on `PATH`, set `GO_INSPECT` to a Go inspector binary and `GOROOT`
+if that binary requires it; the runner records the inspector hash. The script runs
+five fresh 1M and 10M pairs in
+predeclared A-B-B-A-A-B-B-A-A-B order, plus separate historical input controls.
+The timing rule requires at least four of five adjacent pairs faster and a
+positive median gain greater than the largest control deviation from its own
+median at both scales. The analyzer verifies cell result/time hashes and
+validation fields; archive the completed output with a published bundle digest.
+The result is not a
+canonical ClickHouse comparison. Run `-validate-reconstruction` separately
+on the same frozen product and fixture, and retain source/stored hashes and
+q1–q5/qexpr hashes. The reserved-byte counter reports admission credit;
+the full request-owned memory bound also requires the engine's source-derived
+publisher and WAL accounting and measured RSS.
 
 ## 1MM and 10MM Run
 
