@@ -241,6 +241,17 @@ func TestParseRunFlagsRejectsOversizedEnginePreparedBatch(t *testing.T) {
 	}
 }
 
+func TestDirectEnginePreparedBatchSizeFailsBeforeLoad(t *testing.T) {
+	cfg := malformedJSONBenchRunConfig(t, writeMalformedJSONBenchFixture(t))
+	cfg.BatchSize = 16385
+	cfg.EnginePrepareMaxBytes = 512 << 20
+	cfg.AllowErrors = true
+	if _, err := runTreeDBBenchmark(cfg); !errors.Is(err, collections.ErrPreparedInsertResourceLimit) {
+		t.Fatalf("direct oversized batch error=%v, want resource limit", err)
+	}
+	assertNoRowAfterRejectedEnginePrepare(t, cfg)
+}
+
 func TestPreparedInputScannerFailsClosedOnLargeLine(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "input.json")
 	if err := os.WriteFile(path, []byte(`{"value":"`+strings.Repeat("x", 2<<20)+`"}`+"\n"), 0600); err != nil {

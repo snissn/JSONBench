@@ -740,6 +740,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	var sourceBatchCeiling, sourceSlotBytes int64
 	var engineReservation *enginePrepareReservation
 	if engineTarget {
+		if cfg.BatchSize <= 0 || cfg.BatchSize > 16<<10 {
+			return loadResult{}, fmt.Errorf("%w: target batch size %d must be between 1 and 16384 rows", collections.ErrPreparedInsertResourceLimit, cfg.BatchSize)
+		}
 		if cfg.EnginePrepareMaxBytes <= preparedSourceScratchReserve {
 			return loadResult{}, fmt.Errorf("%w: prepared engine byte limit %d cannot reserve source scratch", collections.ErrPreparedInsertResourceLimit, cfg.EnginePrepareMaxBytes)
 		}
