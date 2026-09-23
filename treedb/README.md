@@ -315,8 +315,9 @@ predeclared A-B-B-A-A-B-B-A-A-B order, plus separate historical input controls.
 Its analyzer checks the declared paired timing rule; the result is not a
 canonical ClickHouse comparison. Run `-validate-reconstruction` separately
 on the same frozen product and fixture, and retain source/stored hashes and
-q1–q5/qexpr hashes. The current reserved-byte counter is an estimate; it
-cannot by itself prove the 1.25 GiB total preparation cap.
+q1–q5/qexpr hashes. The reserved-byte counter reports admission credit;
+the full request-owned memory bound also requires the engine's source-derived
+publisher and WAL accounting and measured RSS.
 
 ## 1MM and 10MM Run
 
