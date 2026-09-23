@@ -24,11 +24,11 @@ for identity in 'build_command=GOWORK=off go build -buildvcs=true -o "$BIN" ./cm
 done
 mkdir "$OUT"
 cp "$0" "$OUT/harness.sh"
-sha256sum "$OUT/harness.sh" > "$OUT/harness.sha256"
+sha256sum "$OUT/harness.sh" > "$OUT/harness.sh.sha256"
 cp "$ANALYZER" "$OUT/analyze.py"
-sha256sum "$OUT/analyze.py" > "$OUT/analyze.sha256"
+sha256sum "$OUT/analyze.py" > "$OUT/analyze.py.sha256"
 cp "$BUILD_MANIFEST" "$OUT/build-manifest.txt"
-sha256sum "$OUT/build-manifest.txt" > "$OUT/build-manifest.sha256"
+sha256sum "$OUT/build-manifest.txt" > "$OUT/build-manifest.txt.sha256"
 cp "$BASELINE_QUERY_HASHES_1M" "$OUT/1m-query-hashes.json"
 cp "$BASELINE_QUERY_HASHES_10M" "$OUT/10m-query-hashes.json"
 cp "$BASELINE_RESULT_1M" "$OUT/1m-baseline-result.json"
@@ -128,8 +128,8 @@ validation = {"rows": load["rows"], "skipped": expected[1], "wall_seconds": load
 validation_path.write_text(json.dumps(validation, sort_keys=True, indent=2) + "\n")
 print(result_path, "rows", load["rows"], "wall_seconds", load["wall_seconds"], flush=True)
 PY
-  sha256sum "$cell/result.json" > "$cell/result.sha256"
-  sha256sum "$cell/time.txt" > "$cell/time.sha256"
+  sha256sum "$cell/result.json" > "$cell/result.json.sha256"
+  sha256sum "$cell/time.txt" > "$cell/time.txt.sha256"
   date -u > "$cell/finished.txt"
 }
 
