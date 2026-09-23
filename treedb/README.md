@@ -293,6 +293,22 @@ DATA_DIR=./testdata/bluesky SUBSET_ROWS=6 TRIES=1 ./run_matrix.sh
 
 The checked-in fixture has only 6 rows.
 
+For #4819's matched engine-preparation load decision, build one binary from
+the reviewed, landed engine and loader, then use `issue4819_final_matrix.sh`
+with its sibling `issue4819_analyze_matrix.py`. The runner requires `BIN`,
+`BIN_SHA256`, `BUILD_MANIFEST`, `DATA_DIR`, `FIXTURE_SHA256`, `ENGINE_SHA`,
+`LOADER_SHA`, `ANALYZER`, and a fresh `OUT` directory. The manifest contains
+`engine=<sha>`, `loader=<sha>`, and `binary_sha256=<sha>` from that build;
+retain the build command and module information with it. The fixture hash is
+the SHA-256 of the sorted per-file `sha256sum` list, computed by the runner
+before and after the matrix. The script runs five fresh 1M and 10M pairs in
+predeclared A-B-B-A-A-B-B-A-A-B order, plus separate historical input controls.
+Its analyzer checks the declared paired timing rule; the result is not a
+canonical ClickHouse comparison. Run `-validate-reconstruction` separately
+on the same frozen product and fixture, and retain source/stored hashes and
+q1–q5/qexpr hashes. The current reserved-byte counter is an estimate; it
+cannot by itself prove the 512 MiB total preparation cap.
+
 ## 1MM and 10MM Run
 
 Download JSONBench data first from the repository root:
