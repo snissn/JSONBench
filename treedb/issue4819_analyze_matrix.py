@@ -11,6 +11,9 @@ import re
 import statistics
 from pathlib import Path
 
+if not __debug__:
+    raise SystemExit("run without Python optimization; assertions are validation gates")
+
 
 def load_cell(root: Path, scale: str, ordinal: int, max_bytes: int, idle_bytes: int):
     depth = (0, 1, 1, 0, 0, 1, 1, 0, 0, 1)[ordinal - 1]

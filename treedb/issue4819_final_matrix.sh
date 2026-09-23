@@ -59,7 +59,7 @@ run_cell() {
     -engine-prepare-max-bytes "$ENGINE_PREPARE_MAX_BYTES" -scale "$scale" \
     -db-dir "$cell/db" -out "$cell/result.json" \
     > "$cell/stdout.txt" 2> "$cell/stderr.txt"
-  python3 - "$cell/result.json" "$cell/validation.json" "$OUT/$scale-query-hashes.json" "$scale" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" <<'PY'
+  python3 -I - "$cell/result.json" "$cell/validation.json" "$OUT/$scale-query-hashes.json" "$scale" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" <<'PY'
 import json, math, pathlib, sys
 result_path, validation_path, hashes_path, scale = map(pathlib.Path, sys.argv[1:5])
 max_bytes, idle_bytes = map(int, sys.argv[5:7])
