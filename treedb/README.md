@@ -96,9 +96,11 @@ rows for batch N+1 while the single committer publishes N. The same-refactor
 engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
 serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
 `-engine-prepare-max-bytes` defaults to 4.5 GiB for the shared producer and
-committer reservation ledger: two 2 GiB engine-token ceilings, plus source
-and idle scratch with room for a successor source slot. The loader permanently
-reserves 32 MiB for the engine's four-slot, 8 MiB-per-slot idle raw-block pool,
+committer reservation ledger: room for two observed near-2 GiB engine-token
+reservations, plus source and idle scratch and a successor source slot. A larger
+token can use more of the limit, with less or no preparation overlap. The
+loader permanently reserves 32 MiB for the engine's four-slot,
+8 MiB-per-slot idle raw-block pool,
 reserves source scratch, and acquires batch credits before cloning a source row;
 after preparation it retains the engine's full `ReservedBytes()` credit,
 including ordered-commit publication scratch, until Commit or Abandon. The
