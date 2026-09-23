@@ -1000,6 +1000,9 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 					return err
 				}
 				if engineTarget {
+					if len(raw) > 128<<10 {
+						return fmt.Errorf("%w: document at input row %d exceeds prepared 128 KiB limit", collections.ErrPreparedInsertResourceLimit, out.InputRows)
+					}
 					// The full projection clones this source row. Check the request
 					// and outer slice capacities before the clone can allocate.
 					outerBytes := int64(cap(ids)+cap(docs)) * 24
