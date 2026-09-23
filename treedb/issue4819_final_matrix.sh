@@ -69,6 +69,7 @@ assert load.get("engine_abandoned_batches", 0) == 0
 assert load.get("engine_fallback_batches", 0) == 0
 assert 0 < load["engine_peak_owned_bytes"] <= 1_342_177_280
 assert 0 < load["engine_peak_reserved_bytes"] <= 1_342_177_280
+assert load["engine_idle_scratch_reserve_bytes"] == 32 << 20
 assert math.isfinite(load["wall_seconds"]) and load["wall_seconds"] > 0
 for counter in ("input_overlap_seconds", "engine_prepare_commit_overlap_seconds", "producer_credit_wait_seconds", "producer_source_credit_wait_seconds", "producer_prepare_credit_wait_seconds", "producer_retry_wait_seconds"):
     assert math.isfinite(load[counter]) and load[counter] >= 0, counter
@@ -80,7 +81,7 @@ if hashes_path.exists():
     assert hashes == json.loads(hashes_path.read_text()), "query hash mismatch"
 else:
     hashes_path.write_text(json.dumps(hashes, sort_keys=True, indent=2) + "\n")
-validation = {"rows": load["rows"], "skipped": expected[1], "wall_seconds": load["wall_seconds"], "query_hashes": hashes, "engine_peak_owned_bytes": load["engine_peak_owned_bytes"], "engine_peak_reserved_bytes": load["engine_peak_reserved_bytes"], "input_overlap_seconds": load["input_overlap_seconds"], "engine_overlap_seconds": load["engine_prepare_commit_overlap_seconds"], "producer_credit_wait_seconds": load["producer_credit_wait_seconds"]}
+validation = {"rows": load["rows"], "skipped": expected[1], "wall_seconds": load["wall_seconds"], "query_hashes": hashes, "engine_peak_owned_bytes": load["engine_peak_owned_bytes"], "engine_peak_reserved_bytes": load["engine_peak_reserved_bytes"], "engine_idle_scratch_reserve_bytes": load["engine_idle_scratch_reserve_bytes"], "input_overlap_seconds": load["input_overlap_seconds"], "engine_overlap_seconds": load["engine_prepare_commit_overlap_seconds"], "producer_credit_wait_seconds": load["producer_credit_wait_seconds"]}
 validation_path.write_text(json.dumps(validation, sort_keys=True, indent=2) + "\n")
 print(result_path, "rows", load["rows"], "wall_seconds", load["wall_seconds"], flush=True)
 PY

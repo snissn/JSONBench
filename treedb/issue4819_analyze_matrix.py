@@ -21,6 +21,8 @@ def load_cell(root: Path, scale: str, ordinal: int):
     assert load["engine_prepare_depth"] == depth, path
     assert load["pipeline_depth"] == 1, path
     assert load["engine_prepare_path"] == "prepared", path
+    assert load["engine_idle_scratch_reserve_bytes"] == 32 << 20, path
+    assert 0 < load["engine_peak_reserved_bytes"] <= 1_342_177_280, path
     rss_match = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", (path / "time.txt").read_text())
     assert rss_match, path
     return {
@@ -37,6 +39,7 @@ def load_cell(root: Path, scale: str, ordinal: int):
         "allocated_bytes_per_row": load["allocated_bytes_per_row"],
         "allocations_per_row": load["allocations_per_row"],
         "peak_reserved_bytes": load["engine_peak_reserved_bytes"],
+        "idle_scratch_reserve_bytes": load["engine_idle_scratch_reserve_bytes"],
         "peak_rss_kib": int(rss_match.group(1)),
         "durable_storage_bytes": result["storage"]["durable_storage_bytes_wal_excluded"],
     }

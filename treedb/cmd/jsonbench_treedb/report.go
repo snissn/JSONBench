@@ -212,7 +212,8 @@ type reportRow struct {
 	LoadEngineOverlapSec                                          float64   `json:"load_engine_prepare_commit_overlap_seconds,omitempty"`
 	LoadEnginePeakOwnedBytes                                      int64     `json:"load_engine_peak_owned_bytes,omitempty"`
 	LoadEnginePeakReservedBytes                                   int64     `json:"load_engine_peak_reserved_bytes,omitempty"`
-	LoadEngineMaxTokenReservedBytes                                int64     `json:"load_engine_max_token_reserved_bytes,omitempty"`
+	LoadEngineIdleScratchReserveBytes                             int64     `json:"load_engine_idle_scratch_reserve_bytes,omitempty"`
+	LoadEngineMaxTokenReservedBytes                               int64     `json:"load_engine_max_token_reserved_bytes,omitempty"`
 	LoadEngineBudgetRetryBatches                                  int       `json:"load_engine_budget_retry_batches,omitempty"`
 	LoadEnginePeakOwnedBatches                                    int       `json:"load_engine_peak_owned_batches,omitempty"`
 	LoadProducerElapsedSec                                        float64   `json:"load_producer_elapsed_seconds,omitempty"`
@@ -713,7 +714,8 @@ func collectTreeDBRows(dir string) ([]reportRow, error) {
 				LoadEngineOverlapSec:               result.Load.EngineOverlapSec,
 				LoadEnginePeakOwnedBytes:           result.Load.EnginePeakOwnedBytes,
 				LoadEnginePeakReservedBytes:        result.Load.EnginePeakReservedBytes,
-				LoadEngineMaxTokenReservedBytes:     result.Load.EngineMaxTokenReservedBytes,
+				LoadEngineIdleScratchReserveBytes:  result.Load.EngineIdleScratchReserveBytes,
+				LoadEngineMaxTokenReservedBytes:    result.Load.EngineMaxTokenReservedBytes,
 				LoadEngineBudgetRetryBatches:       result.Load.EngineBudgetRetryBatches,
 				LoadEnginePeakOwnedBatches:         result.Load.EnginePeakOwnedBatches,
 				LoadProducerElapsedSec:             result.Load.ProducerElapsedSec,

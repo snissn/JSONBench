@@ -129,6 +129,7 @@ type loadResult struct {
 	EngineOverlapSec                   float64            `json:"engine_prepare_commit_overlap_seconds"`
 	EnginePeakOwnedBytes               int64              `json:"engine_peak_owned_bytes"`
 	EnginePeakReservedBytes            int64              `json:"engine_peak_reserved_bytes"`
+	EngineIdleScratchReserveBytes      int64              `json:"engine_idle_scratch_reserve_bytes"`
 	EngineMaxTokenReservedBytes        int64              `json:"engine_max_token_reserved_bytes"`
 	EngineBudgetRetryBatches           int                `json:"engine_budget_retry_batches"`
 	EngineFirstBudgetRetryReason       string             `json:"engine_first_budget_retry_reason,omitempty"`
@@ -736,6 +737,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	engineTarget := cfg.StorageLayout == storageLayoutColumnStoreFullPrepared && cfg.Projection == "full" && format == collections.DocumentFormatJSON &&
 		retainedEncoding == string(collections.ColumnRetainedPayloadEncodingSemanticStreamV1) && cfg.EnginePrepareMaxBytes > 0
 	const preparedSourceScratchReserve = 2 << 20 // Scanner token and gzip/buffered-reader scratch.
+	const preparedIdleScratchReserve = 32 << 20  // TreeDB retained raw-block pool: four 8 MiB slots.
 	const preparedSourceBatchCeiling = 10 << 20
 	var sourceBatchCeiling, sourceSlotBytes int64
 	var engineReservation *enginePrepareReservation
@@ -746,10 +748,11 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		if cfg.BatchSize <= 0 || cfg.BatchSize > 16<<10 {
 			return loadResult{}, fmt.Errorf("%w: target batch size %d must be between 1 and 16384 rows", collections.ErrPreparedInsertResourceLimit, cfg.BatchSize)
 		}
-		if cfg.EnginePrepareMaxBytes <= preparedSourceScratchReserve {
-			return loadResult{}, fmt.Errorf("%w: prepared engine byte limit %d cannot reserve source scratch", collections.ErrPreparedInsertResourceLimit, cfg.EnginePrepareMaxBytes)
+		fixedReserve := int64(preparedSourceScratchReserve + preparedIdleScratchReserve)
+		if cfg.EnginePrepareMaxBytes <= fixedReserve {
+			return loadResult{}, fmt.Errorf("%w: prepared engine byte limit %d cannot reserve source and idle encoder scratch", collections.ErrPreparedInsertResourceLimit, cfg.EnginePrepareMaxBytes)
 		}
-		engineReservation = newEnginePrepareReservation(cfg.EnginePrepareMaxBytes - preparedSourceScratchReserve)
+		engineReservation = newEnginePrepareReservation(cfg.EnginePrepareMaxBytes - fixedReserve)
 		sourceBatchCeiling = min(int64(preparedSourceBatchCeiling), max(int64(1<<20), cfg.EnginePrepareMaxBytes/16))
 		sourceSlotBytes = sourceBatchCeiling + int64(2*cfg.BatchSize)*24
 		if sourceSlotBytes >= engineReservation.limit {
@@ -1202,7 +1205,8 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 	out.EngineOverlapSec = engineOverlapElapsed.Seconds()
 	out.EnginePeakOwnedBytes = enginePeakOwnedBytes.Load()
 	if engineReservation != nil {
-		out.EnginePeakReservedBytes = engineReservation.peak() + preparedSourceScratchReserve
+		out.EngineIdleScratchReserveBytes = preparedIdleScratchReserve
+		out.EnginePeakReservedBytes = engineReservation.peak() + preparedSourceScratchReserve + preparedIdleScratchReserve
 	}
 	out.EnginePeakOwnedBatches = int(enginePeakOwnedBatches.Load())
 	out.EngineMaxTokenReservedBytes = engineMaxTokenReservedBytes.Load()

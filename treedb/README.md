@@ -96,7 +96,8 @@ rows for batch N+1 while the single committer publishes N. The same-refactor
 engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
 serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
 `-engine-prepare-max-bytes` defaults to 1.25 GiB for the shared producer and
-committer reservation ledger. The loader reserves source scratch and acquires
+committer reservation ledger. The loader permanently reserves 32 MiB for the
+engine's four-slot, 8 MiB-per-slot idle raw-block pool, reserves source scratch, and acquires
 batch credits before cloning a source row; after preparation it retains the
 engine's estimated commit reservation until ordered commit or abandon. Those
 engine charges are not yet proven upper bounds for transient preparation,
@@ -116,7 +117,7 @@ and record the fallback reason. Non-target layouts retain their ordinary input
 policy. The result JSON and
 report export selected path, fallback reason and count, prepared/committed/abandoned counts, engine work
 and measured prepare/commit overlap, peak live prepared bytes/batches, peak
-reserved credits (including the fixed source reserve), input
+reserved credits (including the fixed source and idle-pool reserves), input
 producer work/channel wait/credit wait, input-only overlap (with concurrent
 engine preparation subtracted), credit-wait stage breakdown and prepared-token
 reservation/retry counters, and conservative logical in-flight input bytes, total load
