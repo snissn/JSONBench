@@ -802,7 +802,7 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 		}
 		for {
 			creditWaitStart := time.Now()
-			extra, err := engineReservation.acquireAvailable(ctx, sourceSlotBytes)
+			extra, hadOther, err := engineReservation.acquireAvailable(ctx, sourceSlotBytes, batch.reservation)
 			if cfg.EnginePrepareDepth == 1 {
 				elapsed := int64(time.Since(creditWaitStart))
 				producerCreditWait.Add(elapsed)
@@ -819,7 +819,6 @@ func loadData(collection *collections.Collection, backend *backenddb.DB, cfg run
 				close(batch.prepCreditReady)
 				batch.prepCreditReady = nil
 			}
-			hadOther := engineReservation.otherOwner(batch.reservation)
 			batch.enginePrepareStart = time.Now()
 			batch.engine, err = collection.PrepareInsertBatchOwned(batch.ids, batch.docs, batch.reservation)
 			batch.enginePrepareEnd = time.Now()

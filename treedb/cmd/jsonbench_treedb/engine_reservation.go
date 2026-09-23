@@ -52,30 +52,31 @@ func (q *enginePrepareReservation) acquire(ctx context.Context, amount int64) er
 
 // acquireAvailable gives preparation the currently free credit. Source-only
 // credit is kept separately so a committer can overlap the next source batch.
-func (q *enginePrepareReservation) acquireAvailable(ctx context.Context, leave int64) (int64, error) {
+func (q *enginePrepareReservation) acquireAvailable(ctx context.Context, leave, own int64) (int64, bool, error) {
 	if leave < 0 || leave >= q.limit {
-		return 0, fmt.Errorf("invalid engine reservation source slot %d against limit %d", leave, q.limit)
+		return 0, false, fmt.Errorf("invalid engine reservation source slot %d against limit %d", leave, q.limit)
 	}
 	for {
 		if err := ctx.Err(); err != nil {
-			return 0, err
+			return 0, false, err
 		}
 		q.mu.Lock()
 		available := q.limit - q.used - leave
 		if available > 0 {
+			hadOther := q.used > own
 			q.used += available
 			if q.used > q.maximum {
 				q.maximum = q.used
 			}
 			q.mu.Unlock()
-			return available, nil
+			return available, hadOther, nil
 		}
 		changed := q.changed
 		q.mu.Unlock()
 		select {
 		case <-changed:
 		case <-ctx.Done():
-			return 0, ctx.Err()
+			return 0, false, ctx.Err()
 		}
 	}
 }
@@ -83,12 +84,6 @@ func (q *enginePrepareReservation) acquireAvailable(ctx context.Context, leave i
 // waitForOtherOwner waits after a budget rejection that may be caused by the
 // predecessor's still-live reservation. The caller releases temporary prep
 // credit first, preserving the ordered committer's already admitted headroom.
-func (q *enginePrepareReservation) otherOwner(own int64) bool {
-	q.mu.Lock()
-	defer q.mu.Unlock()
-	return q.used > own
-}
-
 func (q *enginePrepareReservation) waitForOtherOwner(ctx context.Context, own int64) error {
 	for {
 		if err := ctx.Err(); err != nil {

@@ -12,9 +12,9 @@ func TestEnginePrepareReservationCommitCannotStarve(t *testing.T) {
 	if err := quota.acquire(context.Background(), 2); err != nil {
 		t.Fatal(err)
 	}
-	first, err := quota.acquireAvailable(context.Background(), 2)
-	if err != nil || first != 12 {
-		t.Fatalf("prepare credit=%d err=%v", first, err)
+	first, hadOther, err := quota.acquireAvailable(context.Background(), 2, 2)
+	if err != nil || first != 12 || hadOther {
+		t.Fatalf("prepare credit=%d hadOther=%v err=%v", first, hadOther, err)
 	}
 	quota.shrink(14, 12)
 	acquired := make(chan int64, 1)
@@ -22,7 +22,7 @@ func TestEnginePrepareReservationCommitCannotStarve(t *testing.T) {
 		if err := quota.acquire(context.Background(), 2); err != nil {
 			return
 		}
-		credit, err := quota.acquireAvailable(context.Background(), 2)
+		credit, _, err := quota.acquireAvailable(context.Background(), 2, 2)
 		if err == nil {
 			acquired <- credit + 2
 		}
@@ -77,9 +77,9 @@ func TestEnginePrepareReservationSourceOverlapsCommit(t *testing.T) {
 	if err := quota.acquire(context.Background(), 2); err != nil {
 		t.Fatal(err)
 	}
-	extra, err := quota.acquireAvailable(context.Background(), 2)
-	if err != nil || extra != 12 {
-		t.Fatalf("prepare credit=%d err=%v", extra, err)
+	extra, hadOther, err := quota.acquireAvailable(context.Background(), 2, 2)
+	if err != nil || extra != 12 || hadOther {
+		t.Fatalf("prepare credit=%d hadOther=%v err=%v", extra, hadOther, err)
 	}
 	quota.shrink(14, 6) // admitted commit token
 	if err := quota.acquire(context.Background(), 2); err != nil {
@@ -95,4 +95,23 @@ func TestEnginePrepareReservationSourceOverlapsCommit(t *testing.T) {
 		t.Fatal(err)
 	}
 	quota.release(2)
+}
+
+func TestEnginePrepareReservationRemembersOtherOwnerAtAdmission(t *testing.T) {
+	quota := newEnginePrepareReservation(16)
+	if err := quota.acquire(context.Background(), 6); err != nil {
+		t.Fatal(err)
+	}
+	if err := quota.acquire(context.Background(), 2); err != nil {
+		t.Fatal(err)
+	}
+	extra, hadOther, err := quota.acquireAvailable(context.Background(), 2, 2)
+	if err != nil || extra != 6 || !hadOther {
+		t.Fatalf("prepare credit=%d hadOther=%v err=%v", extra, hadOther, err)
+	}
+	quota.release(6) // Predecessor can complete before preparation rejects the old credit.
+	if !hadOther {
+		t.Fatal("lost predecessor ownership after release")
+	}
+	quota.release(8)
 }
