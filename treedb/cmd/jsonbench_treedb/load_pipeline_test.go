@@ -337,13 +337,14 @@ func TestRunTreeDBBenchmarkPipelinedLoadMatchesSerialReconstruction(t *testing.T
 }
 
 func TestRunTreeDBBenchmarkEnginePrepareDepthMatchesControl(t *testing.T) {
+	const engineByteLimit = 9 << 29
 	dataDir := writeMalformedJSONBenchFixture(t)
 	controlCfg := malformedJSONBenchRunConfig(t, dataDir)
 	controlCfg.AllowErrors = true
 	controlCfg.BatchSize = 1
 	controlCfg.LoadPipelineDepth = 1
 	controlCfg.EnginePrepareDepth = 0
-	controlCfg.EnginePrepareMaxBytes = 256 << 20
+	controlCfg.EnginePrepareMaxBytes = engineByteLimit
 	control, err := runTreeDBBenchmark(controlCfg)
 	if err != nil {
 		t.Fatal(err)
@@ -361,8 +362,8 @@ func TestRunTreeDBBenchmarkEnginePrepareDepthMatchesControl(t *testing.T) {
 		}
 		if result.Load.EnginePreparePath != "prepared" || result.Load.EnginePreparedBatches != 2 ||
 			result.Load.EngineCommittedBatches != 2 || result.Load.EngineAbandonedBatches != 0 ||
-			result.Load.EnginePeakOwnedBytes <= 0 || result.Load.EnginePeakOwnedBytes > 2*(256<<20) ||
-			result.Load.EnginePeakReservedBytes <= 0 || result.Load.EnginePeakReservedBytes > 256<<20 ||
+			result.Load.EnginePeakOwnedBytes <= 0 || result.Load.EnginePeakOwnedBytes > 2*engineByteLimit ||
+			result.Load.EnginePeakReservedBytes <= 0 || result.Load.EnginePeakReservedBytes > engineByteLimit ||
 			result.Load.EngineIdleScratchReserveBytes != 32<<20 ||
 			result.Load.EnginePeakOwnedBatches < 1 || result.Load.EnginePeakOwnedBatches > 2 {
 			t.Fatalf("engine accounting=%+v", result.Load)

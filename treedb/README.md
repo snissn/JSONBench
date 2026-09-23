@@ -114,9 +114,10 @@ overlap that preparation and commit. With `-validate-reconstruction`, source
 canonicalization runs in a separate pass after all load tokens have retired;
 its dynamic JSON-map scratch is outside the concurrent load reservation ledger.
 A source or engine resource-limit rejection fails the load without falling back
-to an ordinary insert; a 129 KiB to 1 MiB document reaches the engine and is
-rejected there. Unsupported collection configurations use ordinary `InsertBatch`
-and record the fallback reason. Non-target layouts retain their ordinary input
+to an ordinary insert; the loader rejects documents over 128 KiB before
+preparation, while the 1 MiB line cap protects the source scanner. Unsupported
+collection configurations use ordinary `InsertBatch` and record the fallback
+reason. Non-target layouts retain their ordinary input
 policy. The result JSON and
 report export selected path, fallback reason and count, prepared/committed/abandoned counts, engine work
 and measured prepare/commit overlap, peak live prepared bytes/batches, peak
