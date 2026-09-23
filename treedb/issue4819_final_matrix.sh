@@ -51,7 +51,7 @@ run_cell() {
     -projection full -queries q1,q2,q3,q4,q5,qexpr \
     -batch-size 16000 -tries 1 -profile durable -data-root fast \
     -allow-errors -load-pipeline-depth "$input_depth" -engine-prepare-depth "$depth" \
-    -engine-prepare-max-bytes 536870912 -scale "$scale" \
+    -engine-prepare-max-bytes 1073741824 -scale "$scale" \
     -db-dir "$cell/db" -out "$cell/result.json" \
     > "$cell/stdout.txt" 2> "$cell/stderr.txt"
   python3 - "$cell/result.json" "$cell/validation.json" "$OUT/$scale-query-hashes.json" "$scale" <<'PY'
@@ -67,8 +67,8 @@ assert load["engine_prepare_path"] == "prepared"
 assert load["engine_prepared_batches"] == load["engine_committed_batches"] > 0
 assert load.get("engine_abandoned_batches", 0) == 0
 assert load.get("engine_fallback_batches", 0) == 0
-assert 0 < load["engine_peak_owned_bytes"] <= 536_870_912
-assert 0 < load["engine_peak_reserved_bytes"] <= 536_870_912
+assert 0 < load["engine_peak_owned_bytes"] <= 1_073_741_824
+assert 0 < load["engine_peak_reserved_bytes"] <= 1_073_741_824
 assert math.isfinite(load["wall_seconds"]) and load["wall_seconds"] > 0
 for counter in ("input_overlap_seconds", "engine_prepare_commit_overlap_seconds", "producer_credit_wait_seconds", "producer_source_credit_wait_seconds", "producer_prepare_credit_wait_seconds", "producer_retry_wait_seconds"):
     assert math.isfinite(load[counter]) and load[counter] >= 0, counter
