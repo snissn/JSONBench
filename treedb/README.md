@@ -301,7 +301,9 @@ with its sibling `issue4819_analyze_matrix.py`. The runner requires `BIN`,
 `engine=<sha>`, `loader=<sha>`, and `binary_sha256=<sha>` from that build;
 retain the build command and module information with it. The fixture hash is
 the SHA-256 of the sorted per-file `sha256sum` list, computed by the runner
-before and after the matrix. The script runs five fresh 1M and 10M pairs in
+before and after the matrix. The runner also checks that the binary embeds
+the pinned engine version without a local module replacement. The script runs
+five fresh 1M and 10M pairs in
 predeclared A-B-B-A-A-B-B-A-A-B order, plus separate historical input controls.
 Its analyzer checks the declared paired timing rule; the result is not a
 canonical ClickHouse comparison. Run `-validate-reconstruction` separately

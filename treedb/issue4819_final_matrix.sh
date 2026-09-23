@@ -5,6 +5,7 @@ set -euo pipefail
 for name in BIN BIN_SHA256 BUILD_MANIFEST DATA_DIR FIXTURE_SHA256 ENGINE_SHA LOADER_SHA ANALYZER OUT; do
   [[ -n "$(printenv "$name" 2>/dev/null || true)" ]] || { echo "missing $name" >&2; exit 2; }
 done
+[[ "$ENGINE_SHA" =~ ^[0-9a-f]{40}$ && "$LOADER_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "engine and loader identities must be full commit SHAs" >&2; exit 2; }
 [[ ! -e "$OUT" ]] || { echo "refusing existing output: $OUT" >&2; exit 2; }
 [[ -x "$BIN" && -f "$BUILD_MANIFEST" && -d "$DATA_DIR" && -f "$ANALYZER" ]] || { echo "binary, build manifest, fixture, or analyzer missing" >&2; exit 2; }
 actual_binary=$(sha256sum "$BIN" | awk '{print $1}')
@@ -20,6 +21,11 @@ sha256sum "$OUT/analyze.py" > "$OUT/analyze.sha256"
 cp "$BUILD_MANIFEST" "$OUT/build-manifest.txt"
 sha256sum "$OUT/build-manifest.txt" > "$OUT/build-manifest.sha256"
 go version -m "$BIN" > "$OUT/go-build-info.txt"
+gomap_build=$(grep -F $'\tdep\tgithub.com/snissn/gomap\t' "$OUT/go-build-info.txt" || true)
+[[ "$gomap_build" == *"-${ENGINE_SHA:0:12}"* ]] || { echo "binary does not embed the pinned engine version" >&2; exit 2; }
+if grep -F -A1 $'\tdep\tgithub.com/snissn/gomap\t' "$OUT/go-build-info.txt" | grep -q $'\t=>'; then
+  echo "binary contains a local gomap replacement" >&2; exit 2
+fi
 (
   cd "$DATA_DIR"
   find . -type f -print0 | LC_ALL=C sort -z | xargs -0 sha256sum
