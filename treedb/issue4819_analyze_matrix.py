@@ -12,7 +12,7 @@ import statistics
 from pathlib import Path
 
 
-def load_cell(root: Path, scale: str, ordinal: int):
+def load_cell(root: Path, scale: str, ordinal: int, max_bytes: int, idle_bytes: int):
     depth = (0, 1, 1, 0, 0, 1, 1, 0, 0, 1)[ordinal - 1]
     path = root / f"{scale}-{ordinal:02d}-engine-{depth}-input-1"
     assert (path / "validation.json").is_file(), path
@@ -21,8 +21,8 @@ def load_cell(root: Path, scale: str, ordinal: int):
     assert load["engine_prepare_depth"] == depth, path
     assert load["pipeline_depth"] == 1, path
     assert load["engine_prepare_path"] == "prepared", path
-    assert load["engine_idle_scratch_reserve_bytes"] == 32 << 20, path
-    assert 0 < load["engine_peak_reserved_bytes"] <= 1_342_177_280, path
+    assert load["engine_idle_scratch_reserve_bytes"] == idle_bytes, path
+    assert 0 < load["engine_peak_reserved_bytes"] <= max_bytes, path
     rss_match = re.search(r"Maximum resident set size \(kbytes\):\s*(\d+)", (path / "time.txt").read_text())
     assert rss_match, path
     return {
@@ -46,7 +46,10 @@ def load_cell(root: Path, scale: str, ordinal: int):
 
 
 def summarize(root: Path, scale: str):
-    cells = [load_cell(root, scale, i) for i in range(1, 11)]
+    identity = dict(line.split("=", 1) for line in (root / "identity.txt").read_text().splitlines())
+    max_bytes = int(identity["engine_prepare_max_bytes"])
+    idle_bytes = int(identity["engine_idle_scratch_reserve_bytes"])
+    cells = [load_cell(root, scale, i, max_bytes, idle_bytes) for i in range(1, 11)]
     controls = [cell for cell in cells if cell["depth"] == 0]
     candidates = [cell for cell in cells if cell["depth"] == 1]
     pairs = []

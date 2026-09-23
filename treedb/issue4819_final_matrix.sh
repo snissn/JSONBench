@@ -2,10 +2,12 @@
 set -euo pipefail
 
 # Freeze the product and harness before invoking. Every cell gets a new DB.
-for name in BIN BIN_SHA256 BUILD_MANIFEST DATA_DIR FIXTURE_SHA256 ENGINE_SHA LOADER_SHA ANALYZER OUT; do
+for name in BIN BIN_SHA256 BUILD_MANIFEST DATA_DIR FIXTURE_SHA256 ENGINE_SHA LOADER_SHA ANALYZER OUT ENGINE_PREPARE_MAX_BYTES ENGINE_IDLE_SCRATCH_RESERVE_BYTES; do
   [[ -n "$(printenv "$name" 2>/dev/null || true)" ]] || { echo "missing $name" >&2; exit 2; }
 done
 [[ "$ENGINE_SHA" =~ ^[0-9a-f]{40}$ && "$LOADER_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "engine and loader identities must be full commit SHAs" >&2; exit 2; }
+[[ "$ENGINE_PREPARE_MAX_BYTES" =~ ^[1-9][0-9]*$ && "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" =~ ^[0-9]+$ ]] || { echo "memory gate values must be nonnegative integer bytes" >&2; exit 2; }
+(( ENGINE_PREPARE_MAX_BYTES > ENGINE_IDLE_SCRATCH_RESERVE_BYTES )) || { echo "memory gate must exceed idle scratch reserve" >&2; exit 2; }
 [[ ! -e "$OUT" ]] || { echo "refusing existing output: $OUT" >&2; exit 2; }
 [[ -x "$BIN" && -f "$BUILD_MANIFEST" && -d "$DATA_DIR" && -f "$ANALYZER" ]] || { echo "binary, build manifest, fixture, or analyzer missing" >&2; exit 2; }
 actual_binary=$(sha256sum "$BIN" | awk '{print $1}')
@@ -32,7 +34,7 @@ fi
 ) > "$OUT/fixture-files.sha256"
 actual_fixture=$(sha256sum "$OUT/fixture-files.sha256" | awk '{print $1}')
 [[ "$actual_fixture" == "$FIXTURE_SHA256" ]] || { echo "fixture hash mismatch: $actual_fixture" >&2; exit 2; }
-printf 'engine=%s\nloader=%s\nbinary_sha256=%s\nfixture_sha256=%s\n' "$ENGINE_SHA" "$LOADER_SHA" "$actual_binary" "$actual_fixture" > "$OUT/identity.txt"
+printf 'engine=%s\nloader=%s\nbinary_sha256=%s\nfixture_sha256=%s\nengine_prepare_max_bytes=%s\nengine_idle_scratch_reserve_bytes=%s\n' "$ENGINE_SHA" "$LOADER_SHA" "$actual_binary" "$actual_fixture" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" > "$OUT/identity.txt"
 { date -u; uname -a; lscpu; df -h "$OUT" "$DATA_DIR"; uptime; } > "$OUT/host-start.txt"
 printf 'GOWORK=off\nGOMAXPROCS=12\n' > "$OUT/environment.txt"
 
@@ -51,12 +53,13 @@ run_cell() {
     -projection full -queries q1,q2,q3,q4,q5,qexpr \
     -batch-size 16000 -tries 1 -profile durable -data-root fast \
     -allow-errors -load-pipeline-depth "$input_depth" -engine-prepare-depth "$depth" \
-    -engine-prepare-max-bytes 1342177280 -scale "$scale" \
+    -engine-prepare-max-bytes "$ENGINE_PREPARE_MAX_BYTES" -scale "$scale" \
     -db-dir "$cell/db" -out "$cell/result.json" \
     > "$cell/stdout.txt" 2> "$cell/stderr.txt"
-  python3 - "$cell/result.json" "$cell/validation.json" "$OUT/$scale-query-hashes.json" "$scale" <<'PY'
+  python3 - "$cell/result.json" "$cell/validation.json" "$OUT/$scale-query-hashes.json" "$scale" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" <<'PY'
 import json, math, pathlib, sys
-result_path, validation_path, hashes_path, scale = map(pathlib.Path, sys.argv[1:])
+result_path, validation_path, hashes_path, scale = map(pathlib.Path, sys.argv[1:5])
+max_bytes, idle_bytes = map(int, sys.argv[5:7])
 with result_path.open() as f:
     result = json.load(f)
 load = result["load"]
@@ -67,9 +70,9 @@ assert load["engine_prepare_path"] == "prepared"
 assert load["engine_prepared_batches"] == load["engine_committed_batches"] > 0
 assert load.get("engine_abandoned_batches", 0) == 0
 assert load.get("engine_fallback_batches", 0) == 0
-assert 0 < load["engine_peak_owned_bytes"] <= 1_342_177_280
-assert 0 < load["engine_peak_reserved_bytes"] <= 1_342_177_280
-assert load["engine_idle_scratch_reserve_bytes"] == 32 << 20
+assert 0 < load["engine_peak_owned_bytes"] <= max_bytes
+assert 0 < load["engine_peak_reserved_bytes"] <= max_bytes
+assert load["engine_idle_scratch_reserve_bytes"] == idle_bytes
 assert math.isfinite(load["wall_seconds"]) and load["wall_seconds"] > 0
 for counter in ("input_overlap_seconds", "engine_prepare_commit_overlap_seconds", "producer_credit_wait_seconds", "producer_source_credit_wait_seconds", "producer_prepare_credit_wait_seconds", "producer_retry_wait_seconds"):
     assert math.isfinite(load[counter]) and load[counter] >= 0, counter
