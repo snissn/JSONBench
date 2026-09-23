@@ -305,8 +305,9 @@ manifest contains
 `engine=<sha>`, `loader=<sha>`, and `binary_sha256=<sha>` from that build;
 retain the build command and module information with it. The fixture hash is
 the SHA-256 of the sorted per-file `sha256sum` list, computed by the runner
-before and after the matrix. The runner also checks that the binary embeds
-the pinned engine version without a local module replacement. On a host
+before and after the matrix. Build from a clean loader checkout with Go build
+VCS information enabled. The runner checks its embedded loader revision and
+pinned engine version, and rejects a local module replacement. On a host
 without `go` on `PATH`, set `GO_INSPECT` to a Go inspector binary and `GOROOT`
 if that binary requires it; the runner records the inspector hash. The script runs
 five fresh 1M and 10M pairs in

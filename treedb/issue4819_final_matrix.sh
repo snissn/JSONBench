@@ -26,6 +26,8 @@ sha256sum "$OUT/analyze.py" > "$OUT/analyze.sha256"
 cp "$BUILD_MANIFEST" "$OUT/build-manifest.txt"
 sha256sum "$OUT/build-manifest.txt" > "$OUT/build-manifest.sha256"
 "$go_inspect_path" version -m "$BIN" > "$OUT/go-build-info.txt"
+grep -Fxq $'\tbuild\tvcs.revision='"$LOADER_SHA" "$OUT/go-build-info.txt" || { echo "binary does not embed the loader revision" >&2; exit 2; }
+grep -Fxq $'\tbuild\tvcs.modified=false' "$OUT/go-build-info.txt" || { echo "binary was not built from a clean loader checkout" >&2; exit 2; }
 gomap_build=$(grep -F $'\tdep\tgithub.com/snissn/gomap\t' "$OUT/go-build-info.txt" || true)
 [[ "$gomap_build" == *"-${ENGINE_SHA:0:12}"* ]] || { echo "binary does not embed the pinned engine version" >&2; exit 2; }
 if grep -F -A1 $'\tdep\tgithub.com/snissn/gomap\t' "$OUT/go-build-info.txt" | grep -q $'\t=>'; then
