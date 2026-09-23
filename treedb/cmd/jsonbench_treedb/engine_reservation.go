@@ -9,8 +9,7 @@ import (
 )
 
 // enginePrepareReservation controls batch-owned capacity across the producer
-// and ordered committer. The charges supplied by the engine still need their
-// own proven transient bounds before this becomes a strict memory limit.
+// and ordered committer. Engine token credits include publication scratch.
 type enginePrepareReservation struct {
 	mu      sync.Mutex
 	limit   int64

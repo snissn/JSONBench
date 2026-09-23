@@ -95,14 +95,15 @@ input batch ahead. For eligible no-index full-retained JSON collections,
 rows for batch N+1 while the single committer publishes N. The same-refactor
 engine control is `-load-pipeline-depth 1 -engine-prepare-depth 0`; the historical
 serial-input control is `-load-pipeline-depth 0 -engine-prepare-depth 0`.
-`-engine-prepare-max-bytes` defaults to 1.25 GiB for the shared producer and
-committer reservation ledger. The loader permanently reserves 32 MiB for the
-engine's four-slot, 8 MiB-per-slot idle raw-block pool, reserves source scratch, and acquires
-batch credits before cloning a source row; after preparation it retains the
-engine's estimated commit reservation until ordered commit or abandon. Those
-engine charges are not yet proven upper bounds for transient preparation,
-typed-part, WAL, or root-publication allocations, so the ledger is not a proven
-peak heap cap. For the full-prepared semantic-stream target, both engine depths accept
+`-engine-prepare-max-bytes` defaults to 4.5 GiB for the shared producer and
+committer reservation ledger: two 2 GiB engine-token ceilings, plus source
+and idle scratch with room for a successor source slot. The loader permanently
+reserves 32 MiB for the engine's four-slot, 8 MiB-per-slot idle raw-block pool,
+reserves source scratch, and acquires batch credits before cloning a source row;
+after preparation it retains the engine's full `ReservedBytes()` credit,
+including ordered-commit publication scratch, until Commit or Abandon. The
+credit is a bound on in-flight request-owned backing, not a process RSS limit.
+For the full-prepared semantic-stream target, both engine depths accept
 at most 16,384 rows per batch, cap a source line at 1 MiB, and bound
 source-side batch bytes to the lesser of 10 MiB and the larger of 1 MiB or
 one-sixteenth of the engine byte limit. A separate source slot stays free
