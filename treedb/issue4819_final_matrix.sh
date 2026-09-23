@@ -2,14 +2,14 @@
 set -euo pipefail
 
 # Freeze the product and harness before invoking. Every cell gets a new DB.
-for name in BIN BIN_SHA256 BUILD_MANIFEST DATA_DIR FIXTURE_SHA256 ENGINE_SHA LOADER_SHA ANALYZER OUT ENGINE_PREPARE_MAX_BYTES ENGINE_IDLE_SCRATCH_RESERVE_BYTES; do
+for name in BIN BIN_SHA256 BUILD_MANIFEST DATA_DIR FIXTURE_SHA256 ENGINE_SHA LOADER_SHA ANALYZER OUT ENGINE_PREPARE_MAX_BYTES ENGINE_IDLE_SCRATCH_RESERVE_BYTES BASELINE_QUERY_HASHES_1M BASELINE_QUERY_HASHES_10M; do
   [[ -n "$(printenv "$name" 2>/dev/null || true)" ]] || { echo "missing $name" >&2; exit 2; }
 done
 [[ "$ENGINE_SHA" =~ ^[0-9a-f]{40}$ && "$LOADER_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo "engine and loader identities must be full commit SHAs" >&2; exit 2; }
 [[ "$ENGINE_PREPARE_MAX_BYTES" =~ ^[1-9][0-9]*$ && "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" =~ ^[0-9]+$ ]] || { echo "memory gate values must be nonnegative integer bytes" >&2; exit 2; }
 (( ENGINE_PREPARE_MAX_BYTES > ENGINE_IDLE_SCRATCH_RESERVE_BYTES )) || { echo "memory gate must exceed idle scratch reserve" >&2; exit 2; }
 [[ ! -e "$OUT" ]] || { echo "refusing existing output: $OUT" >&2; exit 2; }
-[[ -x "$BIN" && -f "$BUILD_MANIFEST" && -d "$DATA_DIR" && -f "$ANALYZER" ]] || { echo "binary, build manifest, fixture, or analyzer missing" >&2; exit 2; }
+[[ -x "$BIN" && -f "$BUILD_MANIFEST" && -d "$DATA_DIR" && -f "$ANALYZER" && -f "$BASELINE_QUERY_HASHES_1M" && -f "$BASELINE_QUERY_HASHES_10M" ]] || { echo "binary, build manifest, fixture, analyzer, or baseline hashes missing" >&2; exit 2; }
 GO_INSPECT=${GO_INSPECT:-go}
 go_inspect_path=$(command -v "$GO_INSPECT") || { echo "missing Go build-info inspector: $GO_INSPECT" >&2; exit 2; }
 go_inspect_sha=$(sha256sum "$go_inspect_path" | awk '{print $1}')
@@ -25,6 +25,9 @@ cp "$ANALYZER" "$OUT/analyze.py"
 sha256sum "$OUT/analyze.py" > "$OUT/analyze.sha256"
 cp "$BUILD_MANIFEST" "$OUT/build-manifest.txt"
 sha256sum "$OUT/build-manifest.txt" > "$OUT/build-manifest.sha256"
+cp "$BASELINE_QUERY_HASHES_1M" "$OUT/1m-query-hashes.json"
+cp "$BASELINE_QUERY_HASHES_10M" "$OUT/10m-query-hashes.json"
+sha256sum "$OUT"/*-query-hashes.json > "$OUT/baseline-query-hashes.sha256"
 "$go_inspect_path" version -m "$BIN" > "$OUT/go-build-info.txt"
 grep -Fxq $'\tbuild\tvcs.revision='"$LOADER_SHA" "$OUT/go-build-info.txt" || { echo "binary does not embed the loader revision" >&2; exit 2; }
 grep -Fxq $'\tbuild\tvcs.modified=false' "$OUT/go-build-info.txt" || { echo "binary was not built from a clean loader checkout" >&2; exit 2; }
@@ -39,7 +42,7 @@ fi
 ) > "$OUT/fixture-files.sha256"
 actual_fixture=$(sha256sum "$OUT/fixture-files.sha256" | awk '{print $1}')
 [[ "$actual_fixture" == "$FIXTURE_SHA256" ]] || { echo "fixture hash mismatch: $actual_fixture" >&2; exit 2; }
-printf 'engine=%s\nloader=%s\nbinary_sha256=%s\nfixture_sha256=%s\nengine_prepare_max_bytes=%s\nengine_idle_scratch_reserve_bytes=%s\ngo_inspect_sha256=%s\n' "$ENGINE_SHA" "$LOADER_SHA" "$actual_binary" "$actual_fixture" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" "$go_inspect_sha" > "$OUT/identity.txt"
+printf 'engine=%s\nloader=%s\nbinary_sha256=%s\nfixture_sha256=%s\nengine_prepare_max_bytes=%s\nengine_idle_scratch_reserve_bytes=%s\ngo_inspect_sha256=%s\nbaseline_1m_sha256=%s\nbaseline_10m_sha256=%s\n' "$ENGINE_SHA" "$LOADER_SHA" "$actual_binary" "$actual_fixture" "$ENGINE_PREPARE_MAX_BYTES" "$ENGINE_IDLE_SCRATCH_RESERVE_BYTES" "$go_inspect_sha" "$(sha256sum "$OUT/1m-query-hashes.json" | awk '{print $1}')" "$(sha256sum "$OUT/10m-query-hashes.json" | awk '{print $1}')" > "$OUT/identity.txt"
 { date -u; uname -a; lscpu; df -h "$OUT" "$DATA_DIR"; uptime; } > "$OUT/host-start.txt"
 printf 'GOWORK=off\nGOMAXPROCS=12\nGO_INSPECT=%s\nGOROOT=%s\n' "$go_inspect_path" "${GOROOT:-}" > "$OUT/environment.txt"
 
@@ -83,12 +86,10 @@ for counter in ("input_overlap_seconds", "engine_prepare_commit_overlap_seconds"
     assert math.isfinite(load[counter]) and load[counter] >= 0, counter
 assert load["engine_budget_retry_batches"] >= 0
 hashes = {q["name"]: q["result_hash"] for q in result["queries"]}
-assert set(hashes) == {"q1", "q2", "q3", "q4", "q5", "qexpr"}
-assert all(len(value) == 64 for value in hashes.values())
-if hashes_path.exists():
-    assert hashes == json.loads(hashes_path.read_text()), "query hash mismatch"
-else:
-    hashes_path.write_text(json.dumps(hashes, sort_keys=True, indent=2) + "\n")
+expected_hashes = json.loads(hashes_path.read_text())
+assert set(expected_hashes) == set(hashes) == {"q1", "q2", "q3", "q4", "q5", "qexpr"}
+assert all(len(value) == 64 for value in expected_hashes.values())
+assert hashes == expected_hashes, "pre-change baseline query hash mismatch"
 validation = {"rows": load["rows"], "skipped": expected[1], "wall_seconds": load["wall_seconds"], "query_hashes": hashes, "engine_peak_owned_bytes": load["engine_peak_owned_bytes"], "engine_peak_reserved_bytes": load["engine_peak_reserved_bytes"], "engine_idle_scratch_reserve_bytes": load["engine_idle_scratch_reserve_bytes"], "input_overlap_seconds": load["input_overlap_seconds"], "engine_overlap_seconds": load["engine_prepare_commit_overlap_seconds"], "producer_credit_wait_seconds": load["producer_credit_wait_seconds"]}
 validation_path.write_text(json.dumps(validation, sort_keys=True, indent=2) + "\n")
 print(result_path, "rows", load["rows"], "wall_seconds", load["wall_seconds"], flush=True)

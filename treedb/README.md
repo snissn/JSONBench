@@ -299,7 +299,13 @@ the reviewed, landed engine and loader, then use `issue4819_final_matrix.sh`
 with its sibling `issue4819_analyze_matrix.py`. The runner requires `BIN`,
 `BIN_SHA256`, `BUILD_MANIFEST`, `DATA_DIR`, `FIXTURE_SHA256`, `ENGINE_SHA`,
 `LOADER_SHA`, `ANALYZER`, `ENGINE_PREPARE_MAX_BYTES`,
-`ENGINE_IDLE_SCRATCH_RESERVE_BYTES`, and a fresh `OUT` directory. Set the two
+`ENGINE_IDLE_SCRATCH_RESERVE_BYTES`, `BASELINE_QUERY_HASHES_1M`,
+`BASELINE_QUERY_HASHES_10M`, and a fresh `OUT` directory. Use the sibling
+`issue4819_baseline_query_hashes_{1m,10m}.json` files for the pinned Bluesky
+fixture (`cf0c282fd2eb885966f8cf9abee365257709eff23370ab91b13b93c4a6afb796`).
+Those q1–q5/qexpr controls come from the pre-change `.185` baseline results
+`/home/mikers/column-alloc-20260922-fonMf5/timing/{1m,10m}-baseline-1/result.json`;
+the runner copies and hashes them before checking every cell. Set the two
 memory values from the reviewed engine bound and loader scratch reserve. The
 manifest contains
 `engine=<sha>`, `loader=<sha>`, and `binary_sha256=<sha>` from that build;
