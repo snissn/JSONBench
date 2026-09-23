@@ -6,6 +6,7 @@ separate and require evidence beyond this paired timing calculation.
 """
 
 import argparse
+import hashlib
 import json
 import re
 import statistics
@@ -15,12 +16,34 @@ if not __debug__:
     raise SystemExit("run without Python optimization; assertions are validation gates")
 
 
+def check_hash(path: Path):
+    expected = (path.parent / (path.name + ".sha256")).read_text().split()[0]
+    assert hashlib.sha256(path.read_bytes()).hexdigest() == expected, path
+
+
 def load_cell(root: Path, scale: str, ordinal: int, max_bytes: int, idle_bytes: int):
     depth = (0, 1, 1, 0, 0, 1, 1, 0, 0, 1)[ordinal - 1]
     path = root / f"{scale}-{ordinal:02d}-engine-{depth}-input-1"
     assert (path / "validation.json").is_file(), path
+    check_hash(path / "result.json")
+    check_hash(path / "time.txt")
     result = json.loads((path / "result.json").read_text())
     load = result["load"]
+    validation = json.loads((path / "validation.json").read_text())
+    hashes = {q["name"]: q["result_hash"] for q in result["queries"]}
+    assert hashes == json.loads((root / f"{scale}-query-hashes.json").read_text()), path
+    for key, actual in (
+        ("rows", load["rows"]),
+        ("wall_seconds", load["wall_seconds"]),
+        ("query_hashes", hashes),
+        ("engine_peak_owned_bytes", load["engine_peak_owned_bytes"]),
+        ("engine_peak_reserved_bytes", load["engine_peak_reserved_bytes"]),
+        ("engine_idle_scratch_reserve_bytes", load["engine_idle_scratch_reserve_bytes"]),
+        ("input_overlap_seconds", load["input_overlap_seconds"]),
+        ("engine_overlap_seconds", load["engine_prepare_commit_overlap_seconds"]),
+        ("producer_credit_wait_seconds", load["producer_credit_wait_seconds"]),
+    ):
+        assert validation[key] == actual, (path, key)
     assert load["engine_prepare_depth"] == depth, path
     assert load["pipeline_depth"] == 1, path
     assert load["engine_prepare_path"] == "prepared", path
@@ -50,6 +73,24 @@ def load_cell(root: Path, scale: str, ordinal: int, max_bytes: int, idle_bytes: 
 
 def summarize(root: Path, scale: str):
     identity = dict(line.split("=", 1) for line in (root / "identity.txt").read_text().splitlines())
+    check_hash(root / "harness.sh")
+    check_hash(root / "analyze.py")
+    check_hash(root / "build-manifest.txt")
+    check_hash(root / "baseline-sources.json")
+    assert hashlib.sha256((root / "baseline-sources.json").read_bytes()).hexdigest() == identity["baseline_sources_sha256"]
+    source = json.loads((root / "baseline-sources.json").read_text())
+    for key, filename in (("go_build_info_sha256", "baseline-go-build-info.txt"), ("run_benchmarks_sha256", "baseline-run-benchmarks.sh"), ("run_scaling_sha256", "baseline-run-scaling.sh")):
+        path = root / filename
+        check_hash(path)
+        assert hashlib.sha256(path.read_bytes()).hexdigest() == source[key], path
+    for checked_scale in ("1m", "10m"):
+        baseline = root / f"{checked_scale}-query-hashes.json"
+        assert hashlib.sha256(baseline.read_bytes()).hexdigest() == identity[f"baseline_{checked_scale}_sha256"]
+        result_path = root / f"{checked_scale}-baseline-result.json"
+        check_hash(result_path)
+        assert hashlib.sha256(result_path.read_bytes()).hexdigest() == source["results"][checked_scale]
+        baseline_result = json.loads(result_path.read_text())
+        assert {q["name"]: q["result_hash"] for q in baseline_result["queries"]} == json.loads(baseline.read_text())
     max_bytes = int(identity["engine_prepare_max_bytes"])
     idle_bytes = int(identity["engine_idle_scratch_reserve_bytes"])
     cells = [load_cell(root, scale, i, max_bytes, idle_bytes) for i in range(1, 11)]

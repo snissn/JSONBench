@@ -18,7 +18,7 @@ Relevant `snissn/gomap` trackers:
 - column-store RFC PR: `https://github.com/snissn/gomap/pull/1527`
 - command-WAL contract PR: `https://github.com/snissn/gomap/pull/1530`
 
-This harness requires Go 1.25.0 or newer, matching the TreeDB module version
+This harness requires Go 1.26.0 or newer, matching the TreeDB module version
 used by the current `github.com/snissn/gomap` dependency. Download Go toolchains
 from https://go.dev/dl.
 
@@ -300,7 +300,9 @@ with its sibling `issue4819_analyze_matrix.py`. The runner requires `BIN`,
 `BIN_SHA256`, `BUILD_MANIFEST`, `DATA_DIR`, `FIXTURE_SHA256`, `ENGINE_SHA`,
 `LOADER_SHA`, `ANALYZER`, `ENGINE_PREPARE_MAX_BYTES`,
 `ENGINE_IDLE_SCRATCH_RESERVE_BYTES`, `BASELINE_QUERY_HASHES_1M`,
-`BASELINE_QUERY_HASHES_10M`, and a fresh `OUT` directory. Use the sibling
+`BASELINE_QUERY_HASHES_10M`, `BASELINE_RESULT_1M`, `BASELINE_RESULT_10M`,
+`BASELINE_BUILD_INFO`, `BASELINE_RUN_BENCHMARKS`, `BASELINE_RUN_SCALING`,
+and a fresh `OUT` directory. Use the sibling
 `issue4819_baseline_query_hashes_{1m,10m}.json` files for the pinned Bluesky
 fixture (`cf0c282fd2eb885966f8cf9abee365257709eff23370ab91b13b93c4a6afb796`).
 Those q1–q5/qexpr controls come from the pre-change `.185` baseline results
@@ -308,11 +310,21 @@ Those q1–q5/qexpr controls come from the pre-change `.185` baseline results
 their respective result SHA-256 values are
 `20b45e7225a184b4db20bbfe525a077f21cce0b3d3a8dc96820f164bd2cccd68` and
 `2bb1f23e1aca21be538067b3620cfc5f8cc54d87cb9f0ff3a5e48f111182be44`.
-The runner copies and hashes them before checking every cell. Set the two
+Their source binary SHA-256 is `648df56f48bdbfb90d8f82aa2e7e4dafbed6e620912b0f7a7b689ef1e969356f`,
+built from gomap `1271d2ed425a67d18474ea076e53cf0e9d3f18a2` and
+JSONBench `cc24e19cd4f9c3c764107fd01d0e971e46d2d921` with a local gomap
+replacement. `issue4819_baseline_sources.json` pins these identities plus the
+source scripts and build-info hashes. Copies of all five source files are
+retained on `.111` under `/home/mikers/issue-4819/baseline/`; the runner copies
+the raw results, build information, and scripts into `OUT`, verifies their
+hashes, and derives the six query hashes before checking each cell. Set the two
 memory values from the reviewed engine bound and loader scratch reserve. The
 manifest contains
-`engine=<sha>`, `loader=<sha>`, and `binary_sha256=<sha>` from that build;
-retain the build command and module information with it. The fixture hash is
+`engine=<sha>`, `loader=<sha>`, `binary_sha256=<sha>`,
+`build_command=GOWORK=off go build -buildvcs=true -o "$BIN" ./cmd/jsonbench_treedb`,
+`engine_main_contains=true`, and `loader_main_contains=true` from the final
+build. Verify main containment before writing those last two lines, and retain
+the build command and module information with the manifest. The fixture hash is
 the SHA-256 of the sorted per-file `sha256sum` list, computed by the runner
 before and after the matrix. Build from a clean loader checkout with Go build
 VCS information enabled. The runner checks its embedded loader revision and
@@ -321,7 +333,11 @@ without `go` on `PATH`, set `GO_INSPECT` to a Go inspector binary and `GOROOT`
 if that binary requires it; the runner records the inspector hash. The script runs
 five fresh 1M and 10M pairs in
 predeclared A-B-B-A-A-B-B-A-A-B order, plus separate historical input controls.
-Its analyzer checks the declared paired timing rule; the result is not a
+The timing rule requires at least four of five adjacent pairs faster and a
+positive median gain greater than the largest control deviation from its own
+median at both scales. The analyzer verifies cell result/time hashes and
+validation fields; archive the completed output with a published bundle digest.
+The result is not a
 canonical ClickHouse comparison. Run `-validate-reconstruction` separately
 on the same frozen product and fixture, and retain source/stored hashes and
 q1–q5/qexpr hashes. The reserved-byte counter reports admission credit;

@@ -1,0 +1,13 @@
+{
+  "engine_sha": "1271d2ed425a67d18474ea076e53cf0e9d3f18a2",
+  "loader_sha": "cc24e19cd4f9c3c764107fd01d0e971e46d2d921",
+  "binary_sha256": "648df56f48bdbfb90d8f82aa2e7e4dafbed6e620912b0f7a7b689ef1e969356f",
+  "go_build_info_sha256": "c227e69fb19322cf890dfb6f374009cbafdc7de30ec8158b2d11c23c75318073",
+  "run_benchmarks_sha256": "235d78a9eb3f0b8a6b09acebe3c7815a67b4998875ae5641e7631ccd45ad38ca",
+  "run_scaling_sha256": "14b9b658f2f5b680b664f7c39c445f3b254a50b228192a257ed41161d5ada3c0",
+  "fixture_sha256": "cf0c282fd2eb885966f8cf9abee365257709eff23370ab91b13b93c4a6afb796",
+  "results": {
+    "1m": "20b45e7225a184b4db20bbfe525a077f21cce0b3d3a8dc96820f164bd2cccd68",
+    "10m": "2bb1f23e1aca21be538067b3620cfc5f8cc54d87cb9f0ff3a5e48f111182be44"
+  }
+}
