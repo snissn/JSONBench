@@ -4,6 +4,8 @@ import (
 	"context"
 	"fmt"
 	"sync"
+
+	"github.com/snissn/gomap/TreeDB/collections"
 )
 
 // enginePrepareReservation controls batch-owned capacity across the producer
@@ -70,6 +72,10 @@ func (q *enginePrepareReservation) acquireAvailable(ctx context.Context, leave, 
 			}
 			q.mu.Unlock()
 			return available, hadOther, nil
+		}
+		if q.used == own {
+			q.mu.Unlock()
+			return 0, false, fmt.Errorf("%w: source owner %d and successor slot %d exceed limit %d", collections.ErrPreparedInsertResourceLimit, own, leave, q.limit)
 		}
 		changed := q.changed
 		q.mu.Unlock()

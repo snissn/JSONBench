@@ -5,7 +5,22 @@ import (
 	"errors"
 	"testing"
 	"time"
+
+	"github.com/snissn/gomap/TreeDB/collections"
 )
+
+func TestEnginePrepareReservationRejectsUnfillableSourceSlot(t *testing.T) {
+	quota := newEnginePrepareReservation(16)
+	if err := quota.acquire(context.Background(), 9); err != nil {
+		t.Fatal(err)
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
+	defer cancel()
+	if _, _, err := quota.acquireAvailable(ctx, 8, 9); !errors.Is(err, collections.ErrPreparedInsertResourceLimit) {
+		t.Fatalf("unfillable source slot should fail closed, got %v", err)
+	}
+	quota.release(9)
+}
 
 func TestEnginePrepareReservationCommitCannotStarve(t *testing.T) {
 	quota := newEnginePrepareReservation(16)
